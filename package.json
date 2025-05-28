@@ -1,0 +1,40 @@
+{
+  "name": "timetrack-monorepo",
+  "version": "1.0.0",
+  "description": "TimeTrack monorepo containing API and UI packages",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=@timetrack/api\" \"npm run dev --workspace=timetrack-ui\"",
+    "dev:api": "npm run dev --workspace=@timetrack/api",
+    "dev:ui": "npm run dev --workspace=timetrack-ui",
+    "build:all": "npm run build:shared && npm run build:api && npm run build:ui",
+    "build:shared": "cd packages/shared && npx tsc",
+    "build:api": "npm run build --workspace=@timetrack/api",
+    "build:ui": "npm run build --workspace=timetrack-ui",
+    "test:all": "npm run test --workspace=@timetrack/api && npm run test --workspace=timetrack-ui",
+    "lint:all": "npm run lint --workspace=@timetrack/api && npm run lint --workspace=timetrack-ui",
+    "type-check:all": "npm run type-check --workspace=@timetrack/shared && npm run type-check --workspace=@timetrack/api && npm run type-check --workspace=timetrack-ui",
+    "clean": "npm run clean --workspace=@timetrack/shared && npm run clean --workspace=@timetrack/api && npm run clean --workspace=timetrack-ui && rm -rf node_modules",
+    "install:all": "npm install",
+    "package:ui": "npm run package --workspace=timetrack-ui"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "@typescript-eslint/eslint-plugin": "^6.13.1",
+    "@typescript-eslint/parser": "^6.13.1",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.2"
+  },
+  "keywords": [
+    "monorepo",
+    "timetrack",
+    "electron",
+    "react",
+    "typescript"
+  ],
+  "author": "TimeTrack Team",
+  "license": "MIT"
+}
