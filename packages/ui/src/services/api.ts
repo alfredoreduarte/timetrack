@@ -97,6 +97,27 @@ class APIClient {
       return response.user;
     },
 
+    getDashboardEarnings: async () => {
+      return this.request<{
+        earnings: {
+          currentTimer: {
+            earnings: number;
+            duration: number;
+            isRunning: boolean;
+            hourlyRate: number;
+          };
+          today: {
+            earnings: number;
+            duration: number;
+          };
+          thisWeek: {
+            earnings: number;
+            duration: number;
+          };
+        };
+      }>("GET", "/users/dashboard-earnings");
+    },
+
     logout: async () => {
       return this.request<void>("POST", "/auth/logout");
     },

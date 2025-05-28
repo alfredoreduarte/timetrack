@@ -267,4 +267,134 @@ router.get(
   })
 );
 
+/**
+ * @swagger
+ * /api/users/dashboard-earnings:
+ *   get:
+ *     summary: Get dashboard earnings data
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dashboard earnings retrieved successfully
+ */
+router.get(
+  "/dashboard-earnings",
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+
+    // Get current running timer
+    const runningEntry = await prisma.timeEntry.findFirst({
+      where: { userId, isRunning: true },
+      select: {
+        id: true,
+        startTime: true,
+        hourlyRateSnapshot: true,
+        project: {
+          select: {
+            name: true,
+            hourlyRate: true,
+          },
+        },
+        task: {
+          select: {
+            name: true,
+            hourlyRate: true,
+          },
+        },
+      },
+    });
+
+    // Calculate current timer earnings
+    let currentTimerEarnings = 0;
+    let currentTimerDuration = 0;
+    if (runningEntry) {
+      const startTime = new Date(runningEntry.startTime).getTime();
+      const now = new Date().getTime();
+      currentTimerDuration = Math.floor((now - startTime) / 1000); // in seconds
+      const hourlyRate = runningEntry.hourlyRateSnapshot || 0;
+      currentTimerEarnings = (hourlyRate * currentTimerDuration) / 3600; // convert seconds to hours
+    }
+
+    // Get today's earnings (start of day to now)
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const todayTimeEntries = await prisma.timeEntry.findMany({
+      where: {
+        userId,
+        isRunning: false,
+        startTime: {
+          gte: startOfToday,
+        },
+      },
+      select: {
+        duration: true,
+        hourlyRateSnapshot: true,
+      },
+    });
+
+    const todayEarnings = todayTimeEntries.reduce((sum: number, entry: any) => {
+      const rate = entry.hourlyRateSnapshot || 0;
+      const hours = (entry.duration || 0) / 3600;
+      return sum + rate * hours;
+    }, 0);
+
+    const todayDuration = todayTimeEntries.reduce(
+      (sum: number, entry: any) => sum + (entry.duration || 0),
+      0
+    );
+
+    // Get this week's earnings (start of week to now)
+    const startOfWeek = new Date();
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const thisWeekTimeEntries = await prisma.timeEntry.findMany({
+      where: {
+        userId,
+        isRunning: false,
+        startTime: {
+          gte: startOfWeek,
+        },
+      },
+      select: {
+        duration: true,
+        hourlyRateSnapshot: true,
+      },
+    });
+
+    const thisWeekEarnings = thisWeekTimeEntries.reduce((sum: number, entry: any) => {
+      const rate = entry.hourlyRateSnapshot || 0;
+      const hours = (entry.duration || 0) / 3600;
+      return sum + rate * hours;
+    }, 0);
+
+    const thisWeekDuration = thisWeekTimeEntries.reduce(
+      (sum: number, entry: any) => sum + (entry.duration || 0),
+      0
+    );
+
+    res.json({
+      earnings: {
+        currentTimer: {
+          earnings: currentTimerEarnings,
+          duration: currentTimerDuration,
+          isRunning: !!runningEntry,
+          hourlyRate: runningEntry?.hourlyRateSnapshot || 0,
+        },
+        today: {
+          earnings: todayEarnings,
+          duration: todayDuration,
+        },
+        thisWeek: {
+          earnings: thisWeekEarnings,
+          duration: thisWeekDuration,
+        },
+      },
+    });
+  })
+);
+
 export default router;

@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { AppDispatch, RootState } from "../store";
 import { stopTimer, tick, syncTimer } from "../store/slices/timerSlice";
+import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
 import { PlayIcon, StopIcon, ClockIcon } from "@heroicons/react/24/outline";
 
 const TimerWidget: React.FC = () => {
@@ -71,6 +72,8 @@ const TimerWidget: React.FC = () => {
     if (currentEntry) {
       try {
         await dispatch(stopTimer(currentEntry.id)).unwrap();
+        // Refresh earnings data after stopping timer
+        dispatch(fetchDashboardEarnings());
       } catch (error) {
         console.error("Failed to stop timer:", error);
       }

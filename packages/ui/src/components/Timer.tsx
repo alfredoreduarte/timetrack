@@ -9,6 +9,7 @@ import {
 } from "../store/slices/timerSlice";
 import { fetchProjects } from "../store/slices/projectsSlice";
 import { fetchTasks } from "../store/slices/projectsSlice";
+import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
 import {
   PlayIcon,
   StopIcon,
@@ -114,6 +115,8 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
         })
       ).unwrap();
       setShowProjectSelector(false);
+      // Refresh earnings data after starting timer
+      dispatch(fetchDashboardEarnings());
     } catch (error) {
       console.error("Failed to start timer:", error);
     }
@@ -124,6 +127,8 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
       try {
         await dispatch(stopTimer(currentEntry.id)).unwrap();
         setDescription("");
+        // Refresh earnings data after stopping timer
+        dispatch(fetchDashboardEarnings());
       } catch (error) {
         console.error("Failed to stop timer:", error);
       }
