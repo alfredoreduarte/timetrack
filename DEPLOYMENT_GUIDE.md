@@ -35,8 +35,8 @@ POSTGRES_PASSWORD=your_secure_password_here
 JWT_SECRET=your_very_long_random_secret_key_here
 
 # Optional - Customize as needed
-ALLOWED_ORIGINS=http://localhost:4000,https://yourdomain.com
-REACT_APP_API_URL=http://localhost:3001
+ALLOWED_ORIGINS=http://localhost:3010,https://yourdomain.com
+REACT_APP_API_URL=http://localhost:3011
 ```
 
 ### 3. Start Development Environment
@@ -45,10 +45,10 @@ REACT_APP_API_URL=http://localhost:3001
 ```
 
 ### 4. Access Your Application
-- **Web UI**: http://localhost:4000
-- **API**: http://localhost:3001
-- **API Docs**: http://localhost:3001/api-docs
-- **Database**: localhost:5432 (user: `timetrack_user`)
+- **Web UI**: http://localhost:3010
+- **API**: http://localhost:3011
+- **API Docs**: http://localhost:3011/api-docs
+- **Database**: localhost:3012 (user: `timetrack_user`)
 
 ---
 
@@ -358,8 +358,8 @@ psql -U timetrack_user timetrack_db
 |----------|----------|---------|-------------|
 | `POSTGRES_PASSWORD` | ✅ | - | Database password |
 | `JWT_SECRET` | ✅ | - | JWT signing secret (32+ chars) |
-| `ALLOWED_ORIGINS` | ❌ | `http://localhost:4000` | CORS allowed origins |
-| `REACT_APP_API_URL` | ❌ | `http://localhost:3001` | API URL for frontend |
+| `ALLOWED_ORIGINS` | ❌ | `http://localhost:3010` | CORS allowed origins |
+| `REACT_APP_API_URL` | ❌ | `http://localhost:3011` | API URL for frontend |
 | `LOG_LEVEL` | ❌ | `info` | Logging level |
 | `RATE_LIMIT_MAX_REQUESTS` | ❌ | `100` | Rate limit per window |
 
@@ -392,10 +392,10 @@ docker-compose up -d --build [service]  # Rebuild and restart service
 
 | Service | Development | Production |
 |---------|-------------|------------|
-| Web UI | 4000 | 80/443 |
-| API | 3001 | 3001 |
-| PostgreSQL | 5432 | 5432 |
-| Redis | 6379 | 6379 |
+| Web UI | 3010 | 80/443 |
+| API | 3011 | 3011 |
+| PostgreSQL | 3012 | 5432 |
+| Redis | 3013 | 6379 |
 
 ### File Structure
 ```

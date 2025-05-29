@@ -29,7 +29,7 @@ cp docker.env.example docker.env
 ./deploy.sh dev
 ```
 
-Access your app at http://localhost:4000
+Access your app at http://localhost:3010
 
 ## 📦 Packages
 
