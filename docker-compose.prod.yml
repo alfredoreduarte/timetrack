@@ -6,6 +6,7 @@ services:
     image: postgres:15-alpine
     container_name: timetrack-postgres-prod
     restart: unless-stopped
+    env_file: docker.env
     environment:
       POSTGRES_DB: timetrack_db
       POSTGRES_USER: timetrack_user
@@ -32,6 +33,7 @@ services:
       target: production
     container_name: timetrack-api-prod
     restart: unless-stopped
+    env_file: docker.env
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://timetrack_user:${POSTGRES_PASSWORD}@postgres:5432/timetrack_db
@@ -66,6 +68,7 @@ services:
       target: production
     container_name: timetrack-web-prod
     restart: unless-stopped
+    env_file: docker.env
     environment:
       REACT_APP_API_URL: ${REACT_APP_API_URL}
     ports:
@@ -85,6 +88,7 @@ services:
     image: redis:7-alpine
     container_name: timetrack-redis-prod
     restart: unless-stopped
+    env_file: docker.env
     networks:
       - timetrack-network
     volumes:
