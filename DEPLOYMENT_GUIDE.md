@@ -177,12 +177,17 @@ apt update && apt install certbot nginx
 # Get certificates
 certbot certonly --standalone -d yourdomain.com -d api.yourdomain.com
 
+# Setup rate limiting (optional but recommended)
+cp nginx-rate-limits.conf /etc/nginx/conf.d/rate-limits.conf
+
 # Copy nginx config template
 cp nginx-host-config.example /etc/nginx/sites-available/timetrack
 ln -s /etc/nginx/sites-available/timetrack /etc/nginx/sites-enabled/
 
 # Edit nginx config with your domain
 nano /etc/nginx/sites-available/timetrack
+
+# If you set up rate limiting, uncomment the limit_req lines in the config
 
 # Test and reload nginx
 nginx -t

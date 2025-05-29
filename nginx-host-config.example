@@ -1,6 +1,11 @@
 # /etc/nginx/sites-available/timetrack
 # Replace yourdomain.com with your actual domain
 
+# IMPORTANT: Add these rate limiting zones to your main nginx.conf in the http{} block
+# OR create a separate file /etc/nginx/conf.d/rate-limits.conf with:
+# limit_req_zone $binary_remote_addr zone=timetrack_api:10m rate=10r/s;
+# limit_req_zone $binary_remote_addr zone=timetrack_web:10m rate=30r/s;
+
 server {
     listen 80;
     server_name yourdomain.com www.yourdomain.com;
@@ -11,13 +16,10 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
 
-    # Rate limiting
-    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
-    limit_req_zone $binary_remote_addr zone=web:10m rate=30r/s;
-
     # API endpoints - proxy to API service
     location /api/ {
-        limit_req zone=api burst=10 nodelay;
+        # Uncomment if you've added rate limiting zones to nginx.conf
+        # limit_req zone=timetrack_api burst=10 nodelay;
 
         proxy_pass http://localhost:3011;
         proxy_http_version 1.1;
@@ -53,7 +55,8 @@ server {
 
     # Frontend static files and React app - proxy to Web service
     location / {
-        limit_req zone=web burst=20 nodelay;
+        # Uncomment if you've added rate limiting zones to nginx.conf
+        # limit_req zone=timetrack_web burst=20 nodelay;
 
         proxy_pass http://localhost:3010;
         proxy_http_version 1.1;
@@ -84,7 +87,8 @@ server {
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
 
     location / {
-        limit_req zone=api burst=10 nodelay;
+        # Uncomment if you've added rate limiting zones to nginx.conf
+        # limit_req zone=timetrack_api burst=10 nodelay;
 
         proxy_pass http://localhost:3011;
         proxy_http_version 1.1;
