@@ -28,9 +28,9 @@ const httpServer = createServer(app);
 
 // CORS configuration for development - allow frontend origins
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || [
-  "http://localhost:3001",
+  "http://localhost:3010", // Web UI port
   "http://localhost:5173", // Vite dev server (Electron frontend)
-  "http://localhost:3001", // Alternative frontend port
+  "http://localhost:3011", // API port for direct access
 ];
 
 const io = new Server(httpServer, {
@@ -41,7 +41,7 @@ const io = new Server(httpServer, {
   },
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3011;
 
 // Swagger configuration
 const swaggerOptions = {

@@ -66,6 +66,8 @@ services:
       context: .
       dockerfile: ./packages/ui/Dockerfile
       target: production
+      args:
+        VITE_API_URL: ${VITE_API_URL}
     container_name: timetrack-web-prod
     restart: unless-stopped
     env_file: docker.env

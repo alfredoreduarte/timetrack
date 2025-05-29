@@ -3,7 +3,8 @@ import { User } from "../store/slices/authSlice";
 import { Project, Task } from "../store/slices/projectsSlice";
 import { TimeEntry } from "../store/slices/timeEntriesSlice";
 
-const API_BASE_URL = "http://localhost:3001/api";
+// Use environment variable or fallback to localhost:3011 for development
+const API_BASE_URL = (import.meta as any).env.VITE_API_URL || "http://localhost:3011/api";
 
 class APIClient {
   private client: AxiosInstance;
@@ -314,7 +315,6 @@ class APIClient {
       }> = await this.client.request({
         method: "GET",
         url: "/health",
-        baseURL: "http://localhost:3001",
       });
       return response.data;
     },
