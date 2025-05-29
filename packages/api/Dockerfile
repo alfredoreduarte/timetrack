@@ -55,7 +55,6 @@ COPY --from=build --chown=nodeuser:nodejs /app/packages/api/dist ./packages/api/
 COPY --from=build --chown=nodeuser:nodejs /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build --chown=nodeuser:nodejs /app/packages/api/prisma ./packages/api/prisma
 COPY --from=build --chown=nodeuser:nodejs /app/node_modules ./node_modules
-COPY --from=build --chown=nodeuser:nodejs /app/packages/api/node_modules ./packages/api/node_modules
 
 # Create startup script
 RUN echo '#!/bin/sh' > /app/start.sh && \
