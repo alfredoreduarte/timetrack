@@ -251,6 +251,7 @@ case "$1" in
         deploy_production
         ;;
     "logs")
+        check_requirements
         if [ "$2" = "prod" ]; then
             show_logs "$PROD_COMPOSE_FILE"
         else
@@ -258,6 +259,7 @@ case "$1" in
         fi
         ;;
     "status")
+        check_requirements
         if [ "$2" = "prod" ]; then
             show_status "$PROD_COMPOSE_FILE"
         else
@@ -265,9 +267,11 @@ case "$1" in
         fi
         ;;
     "backup")
+        check_requirements
         backup_database
         ;;
     "stop")
+        check_requirements
         if [ "$2" = "prod" ]; then
             docker_compose -f "$PROD_COMPOSE_FILE" down
         else
@@ -276,6 +280,7 @@ case "$1" in
         log_info "Services stopped"
         ;;
     "restart")
+        check_requirements
         if [ "$2" = "prod" ]; then
             docker_compose -f "$PROD_COMPOSE_FILE" restart
         else
