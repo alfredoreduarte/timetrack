@@ -109,6 +109,27 @@ setup_environment() {
 deploy_development() {
     log_info "Deploying in development mode..."
 
+    # Debug information
+    log_info "Current directory: $(pwd)"
+    log_info "Checking required files..."
+
+    if [ ! -f "$COMPOSE_FILE" ]; then
+        log_error "Development compose file not found: $COMPOSE_FILE"
+        exit 1
+    fi
+
+    if [ ! -f "packages/api/Dockerfile" ]; then
+        log_error "API Dockerfile not found: packages/api/Dockerfile"
+        exit 1
+    fi
+
+    if [ ! -f "packages/ui/Dockerfile" ]; then
+        log_error "UI Dockerfile not found: packages/ui/Dockerfile"
+        exit 1
+    fi
+
+    log_info "All required files found"
+
     # Stop existing containers
     docker_compose down
 
@@ -117,13 +138,36 @@ deploy_development() {
 
     log_info "Development deployment complete!"
     log_info "Access the application at:"
-    log_info "  Web UI: http://localhost:3000"
-    log_info "  API: http://localhost:3001"
-    log_info "  API Docs: http://localhost:3001/api-docs"
+    log_info "  Web UI: http://localhost:${WEB_PORT:-3010}"
+    log_info "  API: http://localhost:${API_PORT:-3011}"
+    log_info "  API Docs: http://localhost:${API_PORT:-3011}/api-docs"
+    log_info "  PostgreSQL: localhost:${POSTGRES_PORT:-3012}"
+    log_info "  Redis: localhost:${REDIS_PORT:-3013}"
 }
 
 deploy_production() {
     log_info "Deploying in production mode..."
+
+    # Debug information
+    log_info "Current directory: $(pwd)"
+    log_info "Checking required files..."
+
+    if [ ! -f "$PROD_COMPOSE_FILE" ]; then
+        log_error "Production compose file not found: $PROD_COMPOSE_FILE"
+        exit 1
+    fi
+
+    if [ ! -f "packages/api/Dockerfile" ]; then
+        log_error "API Dockerfile not found: packages/api/Dockerfile"
+        exit 1
+    fi
+
+    if [ ! -f "packages/ui/Dockerfile" ]; then
+        log_error "UI Dockerfile not found: packages/ui/Dockerfile"
+        exit 1
+    fi
+
+    log_info "All required files found"
 
     # Stop existing containers
     docker_compose -f "$PROD_COMPOSE_FILE" down
