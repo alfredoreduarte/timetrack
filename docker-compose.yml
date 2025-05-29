@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: timetrack-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: timetrack_db
+      POSTGRES_USER: timetrack_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-timetrack_secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./packages/api/prisma/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - timetrack-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U timetrack_user -d timetrack_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Service
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    container_name: timetrack-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://timetrack_user:${POSTGRES_PASSWORD:-timetrack_secure_password}@postgres:5432/timetrack_db
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
+      JWT_EXPIRES_IN: 7d
+      PORT: 3001
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX_REQUESTS: 100
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:4000,https://yourdomain.com}
+      LOG_LEVEL: info
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - timetrack-network
+    volumes:
+      - api_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Web UI Service (React app served by nginx)
+  web:
+    build:
+      context: .
+      dockerfile: packages/ui/Dockerfile
+    container_name: timetrack-web
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:3001}
+    ports:
+      - "4000:80"
+    depends_on:
+      - api
+    networks:
+      - timetrack-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for caching (optional, for future scaling)
+  redis:
+    image: redis:7-alpine
+    container_name: timetrack-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - timetrack-network
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  timetrack-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  api_logs:
+    driver: local

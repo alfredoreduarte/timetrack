@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { logger } from "../utils/logger";
+import { ZodError } from "zod";
 
 export interface AppError extends Error {
   statusCode?: number;
@@ -7,12 +8,13 @@ export interface AppError extends Error {
 }
 
 export const errorHandler = (
-  err: AppError,
+  err: AppError | ZodError,
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  let { statusCode = 500, message } = err;
+  let statusCode = 500;
+  let message = err.message;
 
   // Log error
   logger.error({
@@ -24,26 +26,35 @@ export const errorHandler = (
     userAgent: req.get("User-Agent"),
   });
 
+  // Zod validation errors
+  if (err instanceof ZodError) {
+    statusCode = 400;
+    const validationErrors = err.errors.map((error) => {
+      const field = error.path.join(".");
+      return `${field}: ${error.message}`;
+    });
+    message = validationErrors.join(", ");
+  }
   // Prisma errors
-  if (err.name === "PrismaClientKnownRequestError") {
+  else if (err.name === "PrismaClientKnownRequestError") {
     statusCode = 400;
     message = "Database operation failed";
   }
-
   // Validation errors
-  if (err.name === "ValidationError") {
+  else if (err.name === "ValidationError") {
     statusCode = 400;
   }
-
   // JWT errors
-  if (err.name === "JsonWebTokenError") {
+  else if (err.name === "JsonWebTokenError") {
     statusCode = 401;
     message = "Invalid token";
-  }
-
-  if (err.name === "TokenExpiredError") {
+  } else if (err.name === "TokenExpiredError") {
     statusCode = 401;
     message = "Token expired";
+  }
+  // App errors
+  else if ("statusCode" in err && err.statusCode) {
+    statusCode = err.statusCode;
   }
 
   // Don't leak error details in production

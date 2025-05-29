@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -26,6 +26,7 @@ model User {
   apiKeys      ApiKey[]
 
   @@map("users")
+  @@index([email])
 }
 
 model Project {
@@ -45,6 +46,8 @@ model Project {
   timeEntries TimeEntry[]
 
   @@map("projects")
+  @@index([userId])
+  @@index([userId, isActive])
 }
 
 model Task {
@@ -64,6 +67,9 @@ model Task {
   timeEntries TimeEntry[]
 
   @@map("tasks")
+  @@index([projectId])
+  @@index([userId])
+  @@index([userId, isCompleted])
 }
 
 model TimeEntry {
@@ -86,6 +92,11 @@ model TimeEntry {
   task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   @@map("time_entries")
+  @@index([userId])
+  @@index([userId, isRunning])
+  @@index([userId, startTime])
+  @@index([projectId])
+  @@index([taskId])
 }
 
 model ApiKey {
@@ -102,4 +113,7 @@ model ApiKey {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("api_keys")
+  @@index([userId])
+  @@index([key])
+  @@index([userId, isActive])
 }
