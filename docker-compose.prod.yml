@@ -13,7 +13,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./packages/api/prisma/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # Temporarily commenting out init.sql mount due to directory mount error
+      # - ./packages/api/prisma/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - timetrack-network
     healthcheck:
