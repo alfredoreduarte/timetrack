@@ -16,6 +16,9 @@ COMPOSE_FILE="docker-compose.yml"
 PROD_COMPOSE_FILE="docker-compose.prod.yml"
 ENV_FILE="docker.env"
 
+# Docker Compose command detection
+DOCKER_COMPOSE_CMD=""
+
 # Functions
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -29,6 +32,20 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Function to run docker compose with the correct command
+docker_compose() {
+    if [ -z "$DOCKER_COMPOSE_CMD" ]; then
+        log_error "Docker Compose command not initialized. Call check_requirements first."
+        exit 1
+    fi
+
+    if [ "$DOCKER_COMPOSE_CMD" = "docker-compose" ]; then
+        docker-compose "$@"
+    else
+        docker compose "$@"
+    fi
+}
+
 check_requirements() {
     log_info "Checking requirements..."
 
@@ -37,12 +54,22 @@ check_requirements() {
         exit 1
     fi
 
-    if ! command -v docker-compose &> /dev/null; then
-        log_error "Docker Compose is not installed"
+    # Check for docker-compose (legacy) first
+    if command -v docker-compose &> /dev/null; then
+        DOCKER_COMPOSE_CMD="docker-compose"
+        log_info "Found legacy docker-compose command"
+    # Check for docker compose plugin
+    elif docker compose version &> /dev/null; then
+        DOCKER_COMPOSE_CMD="docker compose"
+        log_info "Found Docker Compose plugin (docker compose)"
+    else
+        log_error "Docker Compose is not installed. Please install either:"
+        log_error "  - Legacy: docker-compose standalone binary"
+        log_error "  - Modern: Docker Compose plugin (docker compose)"
         exit 1
     fi
 
-    log_info "Requirements check passed"
+    log_info "Requirements check passed using: $DOCKER_COMPOSE_CMD"
 }
 
 setup_environment() {
@@ -83,10 +110,10 @@ deploy_development() {
     log_info "Deploying in development mode..."
 
     # Stop existing containers
-    docker-compose down
+    docker_compose down
 
     # Build and start services
-    docker-compose up -d --build
+    docker_compose up -d --build
 
     log_info "Development deployment complete!"
     log_info "Access the application at:"
@@ -99,15 +126,15 @@ deploy_production() {
     log_info "Deploying in production mode..."
 
     # Stop existing containers
-    docker-compose -f "$PROD_COMPOSE_FILE" down
+    docker_compose -f "$PROD_COMPOSE_FILE" down
 
     # Pull latest images and build
-    docker-compose -f "$PROD_COMPOSE_FILE" pull
-    docker-compose -f "$PROD_COMPOSE_FILE" up -d --build
+    docker_compose -f "$PROD_COMPOSE_FILE" pull
+    docker_compose -f "$PROD_COMPOSE_FILE" up -d --build
 
     log_info "Production deployment complete!"
     log_info "Services are starting up. Check status with:"
-    log_info "  docker-compose -f $PROD_COMPOSE_FILE ps"
+    log_info "  $DOCKER_COMPOSE_CMD -f $PROD_COMPOSE_FILE ps"
 }
 
 show_logs() {
@@ -117,7 +144,7 @@ show_logs() {
     fi
 
     log_info "Showing logs..."
-    docker-compose -f "$compose_file" logs -f
+    docker_compose -f "$compose_file" logs -f
 }
 
 show_status() {
@@ -127,7 +154,7 @@ show_status() {
     fi
 
     log_info "Service status:"
-    docker-compose -f "$compose_file" ps
+    docker_compose -f "$compose_file" ps
 }
 
 backup_database() {
@@ -198,17 +225,17 @@ case "$1" in
         ;;
     "stop")
         if [ "$2" = "prod" ]; then
-            docker-compose -f "$PROD_COMPOSE_FILE" down
+            docker_compose -f "$PROD_COMPOSE_FILE" down
         else
-            docker-compose down
+            docker_compose down
         fi
         log_info "Services stopped"
         ;;
     "restart")
         if [ "$2" = "prod" ]; then
-            docker-compose -f "$PROD_COMPOSE_FILE" restart
+            docker_compose -f "$PROD_COMPOSE_FILE" restart
         else
-            docker-compose restart
+            docker_compose restart
         fi
         log_info "Services restarted"
         ;;
