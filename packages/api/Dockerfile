@@ -17,11 +17,17 @@ RUN npm ci --only=production && npm cache clean --force
 
 # Development stage
 FROM base AS development
+# Install all dependencies (including dev dependencies) for development
 RUN npm ci
 COPY . .
+# Build shared package first
 RUN npm run build:shared
-RUN npm run build:api
-CMD ["npm", "run", "dev:api"]
+# Generate Prisma client
+RUN cd packages/api && npx prisma generate
+# Set working directory to API package for development
+WORKDIR /app/packages/api
+# Use the development script that includes migrations
+CMD ["npm", "run", "dev:docker"]
 
 # Production build stage
 FROM base AS build
