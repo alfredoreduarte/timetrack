@@ -69,8 +69,22 @@ export const fetchTimeEntries = createAsyncThunk(
 export const fetchCurrentEntry = createAsyncThunk(
   "timeEntries/fetchCurrentEntry",
   async () => {
-    const response = await timeEntriesAPI.getCurrentEntry();
-    return response;
+    try {
+      const response = await timeEntriesAPI.getCurrentEntry();
+      // Handle API response format: {timeEntry: TimeEntry | null}
+      if (response && typeof response === "object" && "timeEntry" in response) {
+        return (response as any).timeEntry;
+      }
+      // Fallback for direct TimeEntry response (backward compatibility)
+      return response;
+    } catch (error: any) {
+      // Handle 404 error gracefully - no current entry is not an error condition
+      if (error.response?.status === 404) {
+        return null;
+      }
+      // Re-throw other errors
+      throw error;
+    }
   }
 );
 

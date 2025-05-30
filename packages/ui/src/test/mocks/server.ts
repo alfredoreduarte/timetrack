@@ -54,7 +54,7 @@ let mockTimeEntries: any[] = [];
 // Define request handlers
 export const handlers = [
   // Auth endpoints
-  http.post("http://localhost:3000/auth/login", () => {
+  http.post("http://localhost:3011/auth/login", () => {
     return HttpResponse.json({
       token: "mock-jwt-token",
       user: {
@@ -66,11 +66,11 @@ export const handlers = [
   }),
 
   // Projects endpoints - Fixed to match API service expectations
-  http.get("http://localhost:3000/projects", () => {
+  http.get("http://localhost:3011/projects", () => {
     return HttpResponse.json({ projects: mockProjects });
   }),
 
-  http.get("http://localhost:3000/projects/:id/tasks", ({ params }) => {
+  http.get("http://localhost:3011/projects/:id/tasks", ({ params }) => {
     const projectId = params.id;
     const projectTasks = mockTasks.filter(
       (task) => task.projectId === projectId
@@ -79,7 +79,7 @@ export const handlers = [
   }),
 
   // Tasks endpoints - Fixed to match API service expectations
-  http.get("http://localhost:3000/tasks", ({ request }) => {
+  http.get("http://localhost:3011/tasks", ({ request }) => {
     const url = new URL(request.url);
     const projectId = url.searchParams.get("projectId");
 
@@ -94,7 +94,12 @@ export const handlers = [
   }),
 
   // Time entries endpoints
-  http.get("http://localhost:3000/time-entries/current", () => {
+  http.get("http://localhost:3011/time-entries/current", () => {
+    // Return 200 with { timeEntry: null } instead of 404 when no current entry
+    if (mockCurrentEntry === undefined || mockCurrentEntry === null) {
+      return HttpResponse.json({ timeEntry: null });
+    }
+
     if (
       mockCurrentEntry &&
       mockCurrentEntry.startTime &&
@@ -106,48 +111,47 @@ export const handlers = [
       const calculatedDuration = Math.floor((now - startTime) / 1000);
 
       return HttpResponse.json({
-        ...mockCurrentEntry,
-        duration: calculatedDuration,
+        timeEntry: {
+          ...mockCurrentEntry,
+          duration: calculatedDuration,
+        },
       });
     }
-    return HttpResponse.json(mockCurrentEntry);
+    return HttpResponse.json({ timeEntry: mockCurrentEntry });
+  }),
+
+  http.post("http://localhost:3011/time-entries/start", async ({ request }) => {
+    const body = (await request.json()) as any;
+
+    // Simulate error if no projectId provided
+    if (!body.projectId) {
+      return HttpResponse.json(
+        { error: "Project ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const newEntry = {
+      id: `entry-${Date.now()}`,
+      description: body.description || "",
+      startTime: new Date().toISOString(),
+      endTime: null,
+      duration: 0,
+      projectId: body.projectId,
+      taskId: body.taskId || null,
+      userId: "user-1",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    mockCurrentEntry = newEntry;
+    mockTimeEntries.unshift(newEntry);
+
+    return HttpResponse.json(newEntry);
   }),
 
   http.post(
-    "http://localhost:3000/time-entries/start",
-    async ({ request }) => {
-      const body = (await request.json()) as any;
-
-      // Simulate error if no projectId provided
-      if (!body.projectId) {
-        return HttpResponse.json(
-          { error: "Project ID is required" },
-          { status: 400 }
-        );
-      }
-
-      const newEntry = {
-        id: `entry-${Date.now()}`,
-        description: body.description || "",
-        startTime: new Date().toISOString(),
-        endTime: null,
-        duration: 0,
-        projectId: body.projectId,
-        taskId: body.taskId || null,
-        userId: "user-1",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      mockCurrentEntry = newEntry;
-      mockTimeEntries.unshift(newEntry);
-
-      return HttpResponse.json(newEntry);
-    }
-  ),
-
-  http.post(
-    "http://localhost:3000/time-entries/:id/stop",
+    "http://localhost:3011/time-entries/:id/stop",
     async ({ params }) => {
       const entryId = params.id;
       const entry = mockTimeEntries.find((e) => e.id === entryId);

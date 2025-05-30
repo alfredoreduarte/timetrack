@@ -429,13 +429,9 @@ router.get(
       },
     });
 
-    if (!timeEntry) {
-      return res.status(404).json({
-        message: "No running time entry found",
-      });
-    }
-
-    return res.json({ timeEntry });
+    // Return 200 with null when no current entry exists
+    // This follows REST conventions better than 404
+    return res.json({ timeEntry: timeEntry || null });
   })
 );
 
