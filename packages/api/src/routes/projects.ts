@@ -373,8 +373,19 @@ router.delete(
       throw createError("Project not found", 404);
     }
 
+    // Delete the project (this will set projectId to null for associated time entries due to onDelete: SetNull)
     await prisma.project.delete({
       where: { id },
+    });
+
+    // Clean up orphaned time entries that belong to this user and have null projectId
+    // This prevents them from affecting dashboard earnings calculations
+    await prisma.timeEntry.deleteMany({
+      where: {
+        userId: req.user!.id,
+        projectId: null,
+        taskId: null, // Only delete entries that are completely orphaned
+      },
     });
 
     // Emit real-time update

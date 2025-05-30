@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { timeEntriesAPI } from "../../services/api";
+import { fetchDashboardEarnings } from "./dashboardSlice";
 
 export interface TimeEntry {
   id: string;
@@ -90,30 +91,42 @@ export const fetchCurrentEntry = createAsyncThunk(
 
 export const createTimeEntry = createAsyncThunk(
   "timeEntries/createTimeEntry",
-  async (entryData: {
-    description?: string;
-    startTime: string;
-    endTime: string;
-    projectId?: string;
-    taskId?: string;
-  }) => {
+  async (
+    entryData: {
+      description?: string;
+      startTime: string;
+      endTime: string;
+      projectId?: string;
+      taskId?: string;
+    },
+    { dispatch }
+  ) => {
     const response = await timeEntriesAPI.createTimeEntry(entryData);
+    // Refresh dashboard earnings after creating a time entry
+    dispatch(fetchDashboardEarnings());
     return response;
   }
 );
 
 export const updateTimeEntry = createAsyncThunk(
   "timeEntries/updateTimeEntry",
-  async ({ id, data }: { id: string; data: Partial<TimeEntry> }) => {
+  async (
+    { id, data }: { id: string; data: Partial<TimeEntry> },
+    { dispatch }
+  ) => {
     const response = await timeEntriesAPI.updateTimeEntry(id, data);
+    // Refresh dashboard earnings after updating a time entry
+    dispatch(fetchDashboardEarnings());
     return response;
   }
 );
 
 export const deleteTimeEntry = createAsyncThunk(
   "timeEntries/deleteTimeEntry",
-  async (id: string) => {
+  async (id: string, { dispatch }) => {
     await timeEntriesAPI.deleteTimeEntry(id);
+    // Refresh dashboard earnings after deleting a time entry
+    dispatch(fetchDashboardEarnings());
     return id;
   }
 );

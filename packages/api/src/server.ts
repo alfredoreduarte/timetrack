@@ -90,17 +90,12 @@ app.use(helmet());
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Log the incoming origin for debugging
-      logger.info(`CORS check for origin: ${origin}`);
-
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) {
-        logger.info("Allowing request with no origin");
         return callback(null, true);
       }
 
       if (allowedOrigins.indexOf(origin) !== -1) {
-        logger.info(`Origin ${origin} is in allowed list`);
         callback(null, true);
       } else {
         logger.warn(
