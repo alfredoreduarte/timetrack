@@ -8,9 +8,9 @@ The TimeTrack API has been updated to properly handle CORS requests from fronten
 
 ### Allowed Origins
 The API now accepts requests from:
-- `http://localhost:3000` - API server itself
+- `http://localhost:3011` - API server itself
 - `http://localhost:5173` - Vite dev server (Electron frontend)
-- `http://localhost:3001` - Alternative frontend port
+- `http://localhost:3010` - Web UI port
 
 ### Allowed Methods
 - `GET`, `HEAD`, `PUT`, `PATCH`, `POST`, `DELETE`, `OPTIONS`
@@ -31,14 +31,14 @@ Create a `.env` file with:
 
 ```env
 # Server Configuration
-PORT=3000
+PORT=3011
 NODE_ENV=development
 
 # JWT Configuration
 JWT_SECRET=your-super-secret-jwt-key-here
 
 # CORS Configuration (optional - defaults are set)
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:3001
+ALLOWED_ORIGINS=http://localhost:3010,http://localhost:5173,http://localhost:3011
 
 # Rate Limiting Configuration
 DISABLE_RATE_LIMIT=true                    # Disable rate limiting for development
@@ -73,7 +73,7 @@ Then restart the server.
 
 ```javascript
 // From http://localhost:5173
-fetch('http://localhost:3000/api/auth/register', {
+fetch('http://localhost:3011/api/auth/register', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -93,7 +93,7 @@ fetch('http://localhost:3000/api/auth/register', {
 
 ```javascript
 // With JWT token
-fetch('http://localhost:3000/api/projects', {
+fetch('http://localhost:3011/api/projects', {
   method: 'GET',
   headers: {
     'Content-Type': 'application/json',
@@ -133,7 +133,7 @@ ALLOWED_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
 Add this to your frontend to debug:
 
 ```javascript
-fetch('http://localhost:3000/health', {
+fetch('http://localhost:3011/health', {
   method: 'GET',
   mode: 'cors',
   credentials: 'include'
@@ -150,7 +150,7 @@ fetch('http://localhost:3000/health', {
 Update the `ALLOWED_ORIGINS` environment variable:
 
 ```env
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:8080,https://myapp.com
+ALLOWED_ORIGINS=http://localhost:3010,http://localhost:5173,http://localhost:8080,https://myapp.com
 ```
 
 Or modify `src/server.ts` directly in the `allowedOrigins` array.

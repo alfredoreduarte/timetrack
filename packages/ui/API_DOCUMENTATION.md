@@ -4,7 +4,7 @@
 
 TimeTrack API is a comprehensive time tracking service similar to Toggl, providing project management, time tracking, and reporting capabilities.
 
-**Base URL:** `http://localhost:3001`
+**Base URL:** `http://localhost:3011`
 **API Version:** v1
 **Authentication:** JWT Bearer Token
 
@@ -1277,7 +1277,7 @@ window.addEventListener("online", async () => {
 
 ## Interactive API Documentation
 
-Visit `http://localhost:3001/api-docs` when the server is running for interactive Swagger documentation with live testing capabilities.
+Visit `http://localhost:3011/api-docs` when the server is running for interactive Swagger documentation with live testing capabilities.
 
 ## Changelog
 

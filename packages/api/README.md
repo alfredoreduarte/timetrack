@@ -41,7 +41,7 @@ cp .env.example .env
 
 4. Configure your `.env` file:
 ```env
-PORT=3000
+PORT=3011
 JWT_SECRET=your-super-secret-jwt-key-here
 NODE_ENV=development
 ```
@@ -51,12 +51,12 @@ NODE_ENV=development
 npm run dev
 ```
 
-The API will be available at `http://localhost:3000`
+The API will be available at `http://localhost:3011`
 
 ## API Documentation
 
-- **Interactive Docs**: http://localhost:3000/api-docs
-- **Health Check**: http://localhost:3000/health
+- **Interactive Docs**: http://localhost:3011/api-docs
+- **Health Check**: http://localhost:3011/health
 - **Detailed Documentation**: See [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
 
 ## Project Structure
@@ -166,7 +166,7 @@ Common HTTP status codes:
 
 ### Environment Variables
 
-- `PORT` - Server port (default: 3000)
+- `PORT` - Server port (default: 3011)
 - `JWT_SECRET` - Secret key for JWT tokens
 - `NODE_ENV` - Environment (development/production)
 

@@ -23,7 +23,7 @@ export const API_ENDPOINTS = {
 
 // Default values
 export const DEFAULT_VALUES = {
-  API_BASE_URL: "http://localhost:3000",
+  API_BASE_URL: "http://localhost:3011",
   PAGINATION: {
     DEFAULT_PAGE: 1,
     DEFAULT_LIMIT: 20,
