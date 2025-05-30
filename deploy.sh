@@ -169,8 +169,22 @@ deploy_production() {
 
     log_info "All required files found"
 
-    # Stop existing containers
-    docker_compose -f "$PROD_COMPOSE_FILE" down
+    # Create automatic backup before deployment
+    log_info "Creating automatic backup before deployment..."
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local backup_file="backup_prod_${timestamp}.sql"
+
+    if docker ps | grep -q "timetrack-postgres-prod"; then
+        docker exec timetrack-postgres-prod pg_dump -U timetrack_user timetrack_db > "$backup_file"
+        log_info "Pre-deployment backup created: $backup_file"
+    else
+        log_warn "PostgreSQL container not running - skipping backup"
+        backup_file="(no backup created - database not running)"
+    fi
+
+    # Stop existing containers (but keep database running)
+    log_info "Stopping application services (keeping database running)..."
+    docker_compose -f "$PROD_COMPOSE_FILE" stop api web redis
 
     # Pull latest images and build
     docker_compose -f "$PROD_COMPOSE_FILE" pull
@@ -179,6 +193,9 @@ deploy_production() {
     log_info "Production deployment complete!"
     log_info "Services are starting up. Check status with:"
     log_info "  $DOCKER_COMPOSE_CMD -f $PROD_COMPOSE_FILE ps"
+    if docker ps | grep -q "timetrack-postgres-prod"; then
+        log_info "Database backup was saved as: $backup_file"
+    fi
 }
 
 show_logs() {
@@ -216,6 +233,37 @@ backup_database() {
     fi
 }
 
+migrate_database() {
+    local environment="${1:-dev}"
+
+    if [ "$environment" = "prod" ]; then
+        log_info "Running database migrations in production..."
+        if docker ps | grep -q "timetrack-postgres-prod"; then
+            # Create backup before migration
+            local timestamp=$(date +%Y%m%d_%H%M%S)
+            local backup_file="backup_pre_migration_${timestamp}.sql"
+            docker exec timetrack-postgres-prod pg_dump -U timetrack_user timetrack_db > "$backup_file"
+            log_info "Pre-migration backup created: $backup_file"
+
+            # Run migrations
+            docker_compose -f "$PROD_COMPOSE_FILE" exec api sh -c "cd /app/packages/api && npx prisma migrate deploy"
+            log_info "Production database migrations completed"
+        else
+            log_error "Production PostgreSQL container not found"
+            exit 1
+        fi
+    else
+        log_info "Running database migrations in development..."
+        if docker ps | grep -q "timetrack-postgres"; then
+            docker_compose exec api sh -c "cd /app/packages/api && npx prisma migrate deploy"
+            log_info "Development database migrations completed"
+        else
+            log_error "Development PostgreSQL container not found"
+            exit 1
+        fi
+    fi
+}
+
 show_help() {
     echo "TimeTrack Deployment Script"
     echo ""
@@ -227,6 +275,7 @@ show_help() {
     echo "  logs        Show application logs"
     echo "  status      Show service status"
     echo "  backup      Create database backup"
+    echo "  migrate     Run database migrations (usage: migrate [dev|prod])"
     echo "  stop        Stop all services"
     echo "  restart     Restart all services"
     echo "  help        Show this help message"
@@ -236,6 +285,7 @@ show_help() {
     echo "  $0 prod             # Deploy for production"
     echo "  $0 logs             # Show logs"
     echo "  $0 backup           # Create database backup"
+    echo "  $0 migrate prod     # Run migrations in production"
 }
 
 # Main script
@@ -269,6 +319,10 @@ case "$1" in
     "backup")
         check_requirements
         backup_database
+        ;;
+    "migrate")
+        check_requirements
+        migrate_database "$2"
         ;;
     "stop")
         check_requirements

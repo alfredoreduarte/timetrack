@@ -63,8 +63,8 @@ RUN echo '#!/bin/sh' > /app/start.sh && \
   echo 'cd /app/packages/api' >> /app/start.sh && \
   echo 'echo "Generating Prisma client..."' >> /app/start.sh && \
   echo 'npx prisma generate' >> /app/start.sh && \
-  echo 'echo "Setting up database schema..."' >> /app/start.sh && \
-  echo 'npx prisma db push --accept-data-loss' >> /app/start.sh && \
+  echo 'echo "Running database migrations..."' >> /app/start.sh && \
+  echo 'npx prisma migrate deploy' >> /app/start.sh && \
   echo 'echo "Starting server..."' >> /app/start.sh && \
   echo 'cd /app' >> /app/start.sh && \
   echo 'exec node packages/api/dist/server.js' >> /app/start.sh && \

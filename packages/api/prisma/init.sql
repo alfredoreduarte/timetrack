@@ -1,5 +1,6 @@
 -- PostgreSQL initialization script for TimeTrack
 -- This script runs when the PostgreSQL container starts for the first time
+-- WARNING: This only runs on FIRST startup - existing databases are preserved
 
 -- Create extensions if they don't exist
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
