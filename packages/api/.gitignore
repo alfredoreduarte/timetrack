@@ -109,7 +109,8 @@ Thumbs.db
 *.sqlite3
 
 # Prisma
-prisma/migrations/
+# NOTE: Migrations need to be committed for production deployments
+# prisma/migrations/
 
 # PM2
 ecosystem.config.js
