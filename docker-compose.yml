@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
     env_file: docker.env
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       DATABASE_URL: postgresql://timetrack_user:${POSTGRES_PASSWORD:-timetrack_secure_password}@postgres:5432/timetrack_db
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
       JWT_EXPIRES_IN: 7d

@@ -98,6 +98,19 @@ async function getHourlyRate(
  *           type: string
  *           format: date
  *         description: Filter entries until this date
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *           maximum: 100
+ *         description: Items per page
  *     responses:
  *       200:
  *         description: Time entries retrieved successfully
@@ -105,7 +118,22 @@ async function getHourlyRate(
 router.get(
   "/",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { projectId, isRunning, startDate, endDate } = req.query;
+    const {
+      projectId,
+      isRunning,
+      startDate,
+      endDate,
+      page = "1",
+      limit = "50",
+    } = req.query;
+
+    // Validate and parse pagination parameters
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(
+      100,
+      Math.max(1, parseInt(limit as string, 10) || 50)
+    );
+    const skip = (pageNum - 1) * limitNum;
 
     const where: any = {
       userId: req.user!.id,
@@ -129,6 +157,10 @@ router.get(
       }
     }
 
+    // Get total count for pagination
+    const total = await prisma.timeEntry.count({ where });
+
+    // Get paginated time entries
     const timeEntries = await prisma.timeEntry.findMany({
       where,
       select: {
@@ -139,7 +171,11 @@ router.get(
         duration: true,
         isRunning: true,
         hourlyRateSnapshot: true,
+        projectId: true,
+        taskId: true,
+        userId: true,
         createdAt: true,
+        updatedAt: true,
         project: {
           select: {
             id: true,
@@ -157,9 +193,22 @@ router.get(
       orderBy: {
         startTime: "desc",
       },
+      skip,
+      take: limitNum,
     });
 
-    res.json({ timeEntries });
+    // Calculate pagination metadata
+    const pages = Math.ceil(total / limitNum);
+
+    res.json({
+      entries: timeEntries,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages,
+      },
+    });
   })
 );
 
@@ -429,13 +478,9 @@ router.get(
       },
     });
 
-    if (!timeEntry) {
-      return res.status(404).json({
-        message: "No running time entry found",
-      });
-    }
-
-    return res.json({ timeEntry });
+    // Return 200 with null when no current entry exists
+    // This follows REST conventions better than 404
+    return res.json({ timeEntry: timeEntry || null });
   })
 );
 

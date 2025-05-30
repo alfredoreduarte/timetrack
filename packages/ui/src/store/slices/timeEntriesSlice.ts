@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { timeEntriesAPI } from "../../services/api";
+import { fetchDashboardEarnings } from "./dashboardSlice";
 
 export interface TimeEntry {
   id: string;
@@ -69,37 +70,63 @@ export const fetchTimeEntries = createAsyncThunk(
 export const fetchCurrentEntry = createAsyncThunk(
   "timeEntries/fetchCurrentEntry",
   async () => {
-    const response = await timeEntriesAPI.getCurrentEntry();
-    return response;
+    try {
+      const response = await timeEntriesAPI.getCurrentEntry();
+      // Handle API response format: {timeEntry: TimeEntry | null}
+      if (response && typeof response === "object" && "timeEntry" in response) {
+        return (response as any).timeEntry;
+      }
+      // Fallback for direct TimeEntry response (backward compatibility)
+      return response;
+    } catch (error: any) {
+      // Handle 404 error gracefully - no current entry is not an error condition
+      if (error.response?.status === 404) {
+        return null;
+      }
+      // Re-throw other errors
+      throw error;
+    }
   }
 );
 
 export const createTimeEntry = createAsyncThunk(
   "timeEntries/createTimeEntry",
-  async (entryData: {
-    description?: string;
-    startTime: string;
-    endTime: string;
-    projectId?: string;
-    taskId?: string;
-  }) => {
+  async (
+    entryData: {
+      description?: string;
+      startTime: string;
+      endTime: string;
+      projectId?: string;
+      taskId?: string;
+    },
+    { dispatch }
+  ) => {
     const response = await timeEntriesAPI.createTimeEntry(entryData);
+    // Refresh dashboard earnings after creating a time entry
+    dispatch(fetchDashboardEarnings());
     return response;
   }
 );
 
 export const updateTimeEntry = createAsyncThunk(
   "timeEntries/updateTimeEntry",
-  async ({ id, data }: { id: string; data: Partial<TimeEntry> }) => {
+  async (
+    { id, data }: { id: string; data: Partial<TimeEntry> },
+    { dispatch }
+  ) => {
     const response = await timeEntriesAPI.updateTimeEntry(id, data);
+    // Refresh dashboard earnings after updating a time entry
+    dispatch(fetchDashboardEarnings());
     return response;
   }
 );
 
 export const deleteTimeEntry = createAsyncThunk(
   "timeEntries/deleteTimeEntry",
-  async (id: string) => {
+  async (id: string, { dispatch }) => {
     await timeEntriesAPI.deleteTimeEntry(id);
+    // Refresh dashboard earnings after deleting a time entry
+    dispatch(fetchDashboardEarnings());
     return id;
   }
 );
@@ -146,8 +173,15 @@ const timeEntriesSlice = createSlice({
       })
       .addCase(fetchTimeEntries.fulfilled, (state, action) => {
         state.loading = false;
-        state.entries = action.payload.entries;
-        state.pagination = action.payload.pagination;
+        // Safely handle API response structure
+        const response = action.payload || {};
+        state.entries = response.entries || [];
+        state.pagination = response.pagination || {
+          page: 1,
+          limit: 50,
+          total: 0,
+          pages: 0,
+        };
       })
       .addCase(fetchTimeEntries.rejected, (state, action) => {
         state.loading = false;

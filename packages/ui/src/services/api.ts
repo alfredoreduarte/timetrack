@@ -261,11 +261,19 @@ class APIClient {
       taskId?: string;
       description?: string;
     }) => {
-      return this.request<TimeEntry>("POST", "/time-entries/start", data);
+      const response = await this.request<{
+        message: string;
+        timeEntry: TimeEntry;
+      }>("POST", "/time-entries/start", data);
+      return response.timeEntry;
     },
 
     stopTimer: async (id: string) => {
-      return this.request<TimeEntry>("POST", `/time-entries/${id}/stop`);
+      const response = await this.request<{
+        message: string;
+        timeEntry: TimeEntry;
+      }>("POST", `/time-entries/${id}/stop`);
+      return response.timeEntry;
     },
   };
 

@@ -325,6 +325,9 @@ router.get(
       where: {
         userId,
         isRunning: false,
+        projectId: {
+          not: null, // Exclude orphaned time entries
+        },
         startTime: {
           gte: startOfToday,
         },
@@ -355,6 +358,9 @@ router.get(
       where: {
         userId,
         isRunning: false,
+        projectId: {
+          not: null, // Exclude orphaned time entries
+        },
         startTime: {
           gte: startOfWeek,
         },
@@ -365,11 +371,14 @@ router.get(
       },
     });
 
-    const thisWeekEarnings = thisWeekTimeEntries.reduce((sum: number, entry: any) => {
-      const rate = entry.hourlyRateSnapshot || 0;
-      const hours = (entry.duration || 0) / 3600;
-      return sum + rate * hours;
-    }, 0);
+    const thisWeekEarnings = thisWeekTimeEntries.reduce(
+      (sum: number, entry: any) => {
+        const rate = entry.hourlyRateSnapshot || 0;
+        const hours = (entry.duration || 0) / 3600;
+        return sum + rate * hours;
+      },
+      0
+    );
 
     const thisWeekDuration = thisWeekTimeEntries.reduce(
       (sum: number, entry: any) => sum + (entry.duration || 0),

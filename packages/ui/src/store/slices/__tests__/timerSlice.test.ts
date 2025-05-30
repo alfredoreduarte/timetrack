@@ -312,6 +312,57 @@ describe("timerSlice", () => {
       expect(state.elapsedTime).toBe(0);
     });
 
+    it("should handle API returning null timeEntry gracefully", async () => {
+      // This test ensures that when the API returns { timeEntry: null },
+      // the frontend handles it correctly
+      const store = createTestStore();
+
+      // Explicitly set mock to null to get { timeEntry: null } response
+      setMockCurrentEntry(null);
+
+      const result = await store.dispatch(fetchCurrentEntry());
+
+      expect(result.type).toBe("timer/fetchCurrentEntry/fulfilled");
+      expect(result.payload).toBe(null);
+
+      const state = store.getState().timer;
+      expect(state.isRunning).toBe(false);
+      expect(state.currentEntry).toBe(null);
+      expect(state.elapsedTime).toBe(0);
+      expect(state.error).toBe(null);
+    });
+
+    it("should handle legacy 404 responses gracefully for backward compatibility", async () => {
+      // This test ensures backward compatibility with legacy API behavior
+      // that might still return 404 for no current entry
+      const store = createTestStore();
+
+      // Mock a 404 response directly using MSW
+      const { server } = await import("../../../test/mocks/server");
+      const { http, HttpResponse } = await import("msw");
+
+      server.use(
+        http.get("http://localhost:3011/time-entries/current", () => {
+          return HttpResponse.json(
+            { message: "No running time entry found" },
+            { status: 404 }
+          );
+        })
+      );
+
+      const result = await store.dispatch(fetchCurrentEntry());
+
+      // Should handle 404 gracefully and return fulfilled with null
+      expect(result.type).toBe("timer/fetchCurrentEntry/fulfilled");
+      expect(result.payload).toBe(null);
+
+      const state = store.getState().timer;
+      expect(state.isRunning).toBe(false);
+      expect(state.currentEntry).toBe(null);
+      expect(state.elapsedTime).toBe(0);
+      expect(state.error).toBe(null);
+    });
+
     it("should calculate elapsed time correctly", async () => {
       const startTime = new Date(Date.now() - 10000); // 10 seconds ago
       const mockEntry = {

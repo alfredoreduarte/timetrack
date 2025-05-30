@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { projectsAPI, tasksAPI } from "../../services/api";
+import { fetchDashboardEarnings } from "./dashboardSlice";
 
 export interface Project {
   id: string;
@@ -68,8 +69,10 @@ export const updateProject = createAsyncThunk(
 
 export const deleteProject = createAsyncThunk(
   "projects/deleteProject",
-  async (id: string) => {
+  async (id: string, { dispatch }) => {
     await projectsAPI.deleteProject(id);
+    // Refresh dashboard earnings after deleting a project since this affects associated time entries
+    dispatch(fetchDashboardEarnings());
     return id;
   }
 );
@@ -106,8 +109,10 @@ export const updateTask = createAsyncThunk(
 
 export const deleteTask = createAsyncThunk(
   "projects/deleteTask",
-  async (id: string) => {
+  async (id: string, { dispatch }) => {
     await tasksAPI.deleteTask(id);
+    // Refresh dashboard earnings after deleting a task since this affects associated time entries
+    dispatch(fetchDashboardEarnings());
     return id;
   }
 );
