@@ -27,11 +27,16 @@ const app = express();
 const httpServer = createServer(app);
 
 // CORS configuration for development - allow frontend origins
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || [
-  "http://localhost:3010", // Web UI port
-  "http://localhost:5173", // Vite dev server (Electron frontend)
-  "http://localhost:3011", // API port for direct access
-];
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
+  : [
+      "http://localhost:3010", // Web UI port
+      "http://localhost:5173", // Vite dev server (Electron frontend)
+      "http://localhost:3011", // API port for direct access
+    ];
+
+// Log allowed origins for debugging
+logger.info("Allowed CORS origins:", allowedOrigins);
 
 const io = new Server(httpServer, {
   cors: {
@@ -85,16 +90,30 @@ app.use(helmet());
 app.use(
   cors({
     origin: function (origin, callback) {
+      // Log the incoming origin for debugging
+      logger.info(`CORS check for origin: ${origin}`);
+
       // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
+      if (!origin) {
+        logger.info("Allowing request with no origin");
+        return callback(null, true);
+      }
 
       if (allowedOrigins.indexOf(origin) !== -1) {
+        logger.info(`Origin ${origin} is in allowed list`);
         callback(null, true);
       } else {
+        logger.warn(
+          `Origin ${origin} not in allowed list: ${JSON.stringify(
+            allowedOrigins
+          )}`
+        );
         // In development, allow all origins for easier testing
         if (process.env.NODE_ENV === "development") {
+          logger.info("Allowing origin in development mode");
           callback(null, true);
         } else {
+          logger.error(`CORS blocked origin: ${origin}`);
           callback(new Error("Not allowed by CORS"));
         }
       }
