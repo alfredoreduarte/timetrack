@@ -5,6 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon src/server.ts",
+    "dev:docker": "npm run db:migrate:prod && npm run dev",
     "build": "tsc",
     "start": "node dist/server.js",
     "start:prod": "npm run db:migrate:prod && npm run start",

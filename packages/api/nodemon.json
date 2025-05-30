@@ -1,0 +1,17 @@
+{
+  "watch": ["src", "../shared/src"],
+  "ext": "ts,js,json",
+  "ignore": [
+    "dist/**",
+    "node_modules/**",
+    "logs/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "prisma/migrations/**"
+  ],
+  "exec": "ts-node src/server.ts",
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "delay": 2000
+}

@@ -17,11 +17,17 @@ RUN npm ci --only=production && npm cache clean --force
 
 # Development stage
 FROM base AS development
+# Install all dependencies (including dev dependencies) for development
 RUN npm ci
 COPY . .
+# Build shared package first
 RUN npm run build:shared
-RUN npm run build:api
-CMD ["npm", "run", "dev:api"]
+# Generate Prisma client
+RUN cd packages/api && npx prisma generate
+# Set working directory to API package for development
+WORKDIR /app/packages/api
+# Use the development script that includes migrations
+CMD ["npm", "run", "dev:docker"]
 
 # Production build stage
 FROM base AS build
@@ -63,8 +69,8 @@ RUN echo '#!/bin/sh' > /app/start.sh && \
   echo 'cd /app/packages/api' >> /app/start.sh && \
   echo 'echo "Generating Prisma client..."' >> /app/start.sh && \
   echo 'npx prisma generate' >> /app/start.sh && \
-  echo 'echo "Setting up database schema..."' >> /app/start.sh && \
-  echo 'npx prisma db push --accept-data-loss' >> /app/start.sh && \
+  echo 'echo "Running database migrations..."' >> /app/start.sh && \
+  echo 'npx prisma migrate deploy' >> /app/start.sh && \
   echo 'echo "Starting server..."' >> /app/start.sh && \
   echo 'cd /app' >> /app/start.sh && \
   echo 'exec node packages/api/dist/server.js' >> /app/start.sh && \

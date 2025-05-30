@@ -76,5 +76,5 @@ packages/ui/out/
 yarn.lock
 pnpm-lock.yaml
 
-# Prisma migrations (will be handled in container)
-packages/api/prisma/migrations/
+# NOTE: Prisma migrations are included in the Docker build so they can be deployed when containers start
+# packages/api/prisma/migrations/

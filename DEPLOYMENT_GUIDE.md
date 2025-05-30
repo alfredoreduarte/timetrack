@@ -90,8 +90,17 @@ docker-compose logs -f postgres
 - If not working: `docker-compose restart web`
 
 **Backend changes** (packages/api/):
-- Restart API service: `docker-compose restart api`
-- For major changes: `docker-compose up -d --build api`
+- **Hot reload is now enabled!** Changes to TypeScript/JavaScript files are automatically detected
+- Nodemon watches `src/` and `../shared/src/` directories
+- Changes trigger automatic restart (2-second delay to avoid rapid restarts)
+- View real-time logs: `docker-compose logs -f api`
+- If hot reload isn't working: `docker-compose restart api`
+- For major changes (package.json, Dockerfile): `docker-compose up -d --build api`
+
+**Shared package changes** (packages/shared/):
+- Hot reload detects changes in shared code automatically
+- Both API and UI will reload when shared code changes
+- For TypeScript changes: automatic recompilation and restart
 
 **Database schema changes**:
 ```bash
