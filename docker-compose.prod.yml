@@ -57,8 +57,8 @@ services:
       timeout: 10s
       retries: 3
     # Uncomment to expose API port directly (optional for production - usually use reverse proxy)
-    # ports:
-    #   - "${API_PORT:-3011}:${API_PORT:-3011}"
+    ports:
+      - "${API_PORT:-3011}:${API_PORT:-3011}"
 
   # Web UI Service (includes nginx for serving React app and proxying API)
   web:
