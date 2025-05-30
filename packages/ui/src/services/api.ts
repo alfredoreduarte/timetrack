@@ -4,7 +4,8 @@ import { Project, Task } from "../store/slices/projectsSlice";
 import { TimeEntry } from "../store/slices/timeEntriesSlice";
 
 // Use environment variable or fallback to localhost:3011 for development
-const API_BASE_URL = (import.meta as any).env.VITE_API_URL || "http://localhost:3011/api";
+const API_BASE_URL =
+  (import.meta as any).env.REACT_APP_API_URL || "http://localhost:3011/api";
 
 class APIClient {
   private client: AxiosInstance;
