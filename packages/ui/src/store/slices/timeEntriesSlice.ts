@@ -173,8 +173,15 @@ const timeEntriesSlice = createSlice({
       })
       .addCase(fetchTimeEntries.fulfilled, (state, action) => {
         state.loading = false;
-        state.entries = action.payload.entries;
-        state.pagination = action.payload.pagination;
+        // Safely handle API response structure
+        const response = action.payload || {};
+        state.entries = response.entries || [];
+        state.pagination = response.pagination || {
+          page: 1,
+          limit: 50,
+          total: 0,
+          pages: 0,
+        };
       })
       .addCase(fetchTimeEntries.rejected, (state, action) => {
         state.loading = false;
