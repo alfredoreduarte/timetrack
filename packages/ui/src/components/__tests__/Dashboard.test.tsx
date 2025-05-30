@@ -73,7 +73,7 @@ describe("Dashboard Component", () => {
     it("should handle project selection with API errors gracefully", async () => {
       // Mock API error for tasks
       server.use(
-        http.get("http://localhost:3000/api/tasks", () => {
+        http.get("http://localhost:3000/tasks", () => {
           return HttpResponse.json({ error: "Server error" }, { status: 500 });
         })
       );
@@ -137,7 +137,7 @@ describe("Dashboard Component", () => {
     it("should handle project selection when projects API fails", async () => {
       // Mock API error for projects
       server.use(
-        http.get("http://localhost:3000/api/projects", () => {
+        http.get("http://localhost:3000/projects", () => {
           return HttpResponse.json({ error: "Server error" }, { status: 500 });
         })
       );

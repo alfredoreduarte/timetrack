@@ -5,7 +5,7 @@ import { TimeEntry } from "../store/slices/timeEntriesSlice";
 
 // Use environment variable or fallback to localhost:3011 for development
 const API_BASE_URL =
-  (import.meta as any).env.VITE_API_URL || "http://localhost:3011/api";
+  (import.meta as any).env.VITE_API_URL || "http://localhost:3011";
 
 class APIClient {
   private client: AxiosInstance;

@@ -33,7 +33,7 @@ const updateProjectSchema = z.object({
 
 /**
  * @swagger
- * /api/projects:
+ * /projects:
  *   get:
  *     summary: Get all projects for the authenticated user
  *     tags: [Projects]
@@ -116,7 +116,7 @@ router.get(
 
 /**
  * @swagger
- * /api/projects:
+ * /projects:
  *   post:
  *     summary: Create a new project
  *     tags: [Projects]
@@ -187,7 +187,7 @@ router.post(
 
 /**
  * @swagger
- * /api/projects/{id}:
+ * /projects/{id}:
  *   get:
  *     summary: Get a specific project
  *     tags: [Projects]
@@ -255,7 +255,7 @@ router.get(
 
 /**
  * @swagger
- * /api/projects/{id}:
+ * /projects/{id}:
  *   put:
  *     summary: Update a project
  *     tags: [Projects]
@@ -338,7 +338,7 @@ router.put(
 
 /**
  * @swagger
- * /api/projects/{id}:
+ * /projects/{id}:
  *   delete:
  *     summary: Delete a project
  *     tags: [Projects]

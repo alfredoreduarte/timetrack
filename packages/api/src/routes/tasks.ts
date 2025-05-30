@@ -26,7 +26,7 @@ const updateTaskSchema = z.object({
 
 /**
  * @swagger
- * /api/tasks:
+ * /tasks:
  *   get:
  *     summary: Get all tasks for the authenticated user
  *     tags: [Tasks]
@@ -98,7 +98,7 @@ router.get(
 
 /**
  * @swagger
- * /api/tasks:
+ * /tasks:
  *   post:
  *     summary: Create a new task
  *     tags: [Tasks]
@@ -185,7 +185,7 @@ router.post(
 
 /**
  * @swagger
- * /api/tasks/{id}:
+ * /tasks/{id}:
  *   get:
  *     summary: Get a specific task
  *     tags: [Tasks]
@@ -254,7 +254,7 @@ router.get(
 
 /**
  * @swagger
- * /api/tasks/{id}:
+ * /tasks/{id}:
  *   put:
  *     summary: Update a task
  *     tags: [Tasks]
@@ -340,7 +340,7 @@ router.put(
 
 /**
  * @swagger
- * /api/tasks/{id}:
+ * /tasks/{id}:
  *   delete:
  *     summary: Delete a task
  *     tags: [Tasks]

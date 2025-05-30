@@ -190,12 +190,12 @@ app.get("/health", (req, res) => {
 });
 
 // API Routes
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/projects", projectRoutes);
-app.use("/api/tasks", taskRoutes);
-app.use("/api/time-entries", timeEntryRoutes);
-app.use("/api/reports", reportRoutes);
+app.use("/auth", authRoutes);
+app.use("/users", userRoutes);
+app.use("/projects", projectRoutes);
+app.use("/tasks", taskRoutes);
+app.use("/time-entries", timeEntryRoutes);
+app.use("/reports", reportRoutes);
 
 // Socket.IO for real-time updates
 io.on("connection", (socket) => {

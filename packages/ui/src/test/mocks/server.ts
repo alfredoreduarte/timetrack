@@ -54,7 +54,7 @@ let mockTimeEntries: any[] = [];
 // Define request handlers
 export const handlers = [
   // Auth endpoints
-  http.post("http://localhost:3000/api/auth/login", () => {
+  http.post("http://localhost:3000/auth/login", () => {
     return HttpResponse.json({
       token: "mock-jwt-token",
       user: {
@@ -66,11 +66,11 @@ export const handlers = [
   }),
 
   // Projects endpoints - Fixed to match API service expectations
-  http.get("http://localhost:3000/api/projects", () => {
+  http.get("http://localhost:3000/projects", () => {
     return HttpResponse.json({ projects: mockProjects });
   }),
 
-  http.get("http://localhost:3000/api/projects/:id/tasks", ({ params }) => {
+  http.get("http://localhost:3000/projects/:id/tasks", ({ params }) => {
     const projectId = params.id;
     const projectTasks = mockTasks.filter(
       (task) => task.projectId === projectId
@@ -79,7 +79,7 @@ export const handlers = [
   }),
 
   // Tasks endpoints - Fixed to match API service expectations
-  http.get("http://localhost:3000/api/tasks", ({ request }) => {
+  http.get("http://localhost:3000/tasks", ({ request }) => {
     const url = new URL(request.url);
     const projectId = url.searchParams.get("projectId");
 
@@ -94,7 +94,7 @@ export const handlers = [
   }),
 
   // Time entries endpoints
-  http.get("http://localhost:3000/api/time-entries/current", () => {
+  http.get("http://localhost:3000/time-entries/current", () => {
     if (
       mockCurrentEntry &&
       mockCurrentEntry.startTime &&
@@ -114,7 +114,7 @@ export const handlers = [
   }),
 
   http.post(
-    "http://localhost:3000/api/time-entries/start",
+    "http://localhost:3000/time-entries/start",
     async ({ request }) => {
       const body = (await request.json()) as any;
 
@@ -147,7 +147,7 @@ export const handlers = [
   ),
 
   http.post(
-    "http://localhost:3000/api/time-entries/:id/stop",
+    "http://localhost:3000/time-entries/:id/stop",
     async ({ params }) => {
       const entryId = params.id;
       const entry = mockTimeEntries.find((e) => e.id === entryId);

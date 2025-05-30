@@ -15,7 +15,7 @@ describe("Dashboard-Timer Integration", () => {
     it("should prevent blank screen when API returns malformed project data", async () => {
       // Mock malformed projects response
       server.use(
-        http.get("http://localhost:3000/api/projects", () => {
+        http.get("http://localhost:3000/projects", () => {
           return HttpResponse.json({ invalid: "response" });
         })
       );
@@ -32,7 +32,7 @@ describe("Dashboard-Timer Integration", () => {
     it("should prevent blank screen when API returns null projects", async () => {
       // Mock null projects response
       server.use(
-        http.get("http://localhost:3000/api/projects", () => {
+        http.get("http://localhost:3000/projects", () => {
           return HttpResponse.json({ projects: null });
         })
       );
@@ -49,7 +49,7 @@ describe("Dashboard-Timer Integration", () => {
     it("should prevent blank screen when tasks API returns malformed data", async () => {
       // Mock malformed tasks response
       server.use(
-        http.get("http://localhost:3000/api/tasks", () => {
+        http.get("http://localhost:3000/tasks", () => {
           return HttpResponse.json({ invalid: "tasks response" });
         })
       );
@@ -81,7 +81,7 @@ describe("Dashboard-Timer Integration", () => {
     it("should prevent blank screen when tasks API returns null", async () => {
       // Mock null tasks response
       server.use(
-        http.get("http://localhost:3000/api/tasks", () => {
+        http.get("http://localhost:3000/tasks", () => {
           return HttpResponse.json(null);
         })
       );
@@ -108,10 +108,10 @@ describe("Dashboard-Timer Integration", () => {
     it("should handle complete API failure gracefully", async () => {
       // Mock complete API failure
       server.use(
-        http.get("http://localhost:3000/api/projects", () => {
+        http.get("http://localhost:3000/projects", () => {
           return HttpResponse.error();
         }),
-        http.get("http://localhost:3000/api/tasks", () => {
+        http.get("http://localhost:3000/tasks", () => {
           return HttpResponse.error();
         })
       );
@@ -229,7 +229,7 @@ describe("Dashboard-Timer Integration", () => {
     it("should handle network timeouts gracefully", async () => {
       // Mock slow/timeout responses
       server.use(
-        http.get("http://localhost:3000/api/tasks", async () => {
+        http.get("http://localhost:3000/tasks", async () => {
           await new Promise((resolve) => setTimeout(resolve, 200));
           return HttpResponse.json([]);
         })
@@ -263,7 +263,7 @@ describe("Dashboard-Timer Integration", () => {
     it("should recover from API errors when API becomes available again", async () => {
       // Start with API error
       server.use(
-        http.get("http://localhost:3000/api/tasks", () => {
+        http.get("http://localhost:3000/tasks", () => {
           return HttpResponse.error();
         })
       );
@@ -287,7 +287,7 @@ describe("Dashboard-Timer Integration", () => {
 
       // Fix the API
       server.use(
-        http.get("http://localhost:3000/api/tasks", () => {
+        http.get("http://localhost:3000/tasks", () => {
           return HttpResponse.json([
             {
               id: "task-1",

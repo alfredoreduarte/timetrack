@@ -377,7 +377,7 @@ describe("Timer Component", () => {
   describe("Error Handling", () => {
     it("should display error when API call fails", async () => {
       server.use(
-        http.post("http://localhost:3000/api/time-entries/start", () => {
+        http.post("http://localhost:3000/time-entries/start", () => {
           return HttpResponse.json({ error: "Server error" }, { status: 500 });
         })
       );
@@ -482,7 +482,7 @@ describe("Timer Component", () => {
     it("should handle API timeout scenarios without blank screen", async () => {
       // Mock slow API response
       server.use(
-        http.get("http://localhost:3000/api/tasks", async () => {
+        http.get("http://localhost:3000/tasks", async () => {
           await new Promise((resolve) => setTimeout(resolve, 100));
           return HttpResponse.json([]);
         })
@@ -520,7 +520,7 @@ describe("Timer Component", () => {
     it("should handle network errors during project selection gracefully", async () => {
       // Mock network error
       server.use(
-        http.get("http://localhost:3000/api/tasks", () => {
+        http.get("http://localhost:3000/tasks", () => {
           return HttpResponse.error();
         })
       );
@@ -551,7 +551,7 @@ describe("Timer Component", () => {
     it("should handle malformed API responses without blank screen", async () => {
       // Mock malformed response
       server.use(
-        http.get("http://localhost:3000/api/tasks", () => {
+        http.get("http://localhost:3000/tasks", () => {
           return HttpResponse.json({ invalid: "response" });
         })
       );
