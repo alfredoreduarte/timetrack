@@ -1,0 +1,42 @@
+# Build outputs
+dist/
+build/
+out/
+
+# Vite cache
+.vite/
+
+# Electron builds
+electron-builder-output/
+release/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Environment files (though root .gitignore covers these too)
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Temporary files
+tmp/
+temp/
+
+# Coverage
+coverage/
+
+# Storybook
+storybook-static/
+
+# Test results
+test-results/

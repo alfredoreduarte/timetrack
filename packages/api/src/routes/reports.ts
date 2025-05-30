@@ -19,7 +19,7 @@ const reportQuerySchema = z.object({
 
 /**
  * @swagger
- * /api/reports/summary:
+ * /reports/summary:
  *   get:
  *     summary: Get time tracking summary report
  *     tags: [Reports]
@@ -172,7 +172,7 @@ router.get(
 
 /**
  * @swagger
- * /api/reports/detailed:
+ * /reports/detailed:
  *   get:
  *     summary: Get detailed time tracking report
  *     tags: [Reports]
@@ -276,7 +276,7 @@ router.get(
 
 /**
  * @swagger
- * /api/reports/earnings:
+ * /reports/earnings:
  *   get:
  *     summary: Get earnings report
  *     tags: [Reports]
@@ -426,7 +426,7 @@ router.get(
 
 /**
  * @swagger
- * /api/reports/export:
+ * /reports/export:
  *   get:
  *     summary: Export time tracking data as CSV
  *     tags: [Reports]

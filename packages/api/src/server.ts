@@ -27,11 +27,16 @@ const app = express();
 const httpServer = createServer(app);
 
 // CORS configuration for development - allow frontend origins
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || [
-  "http://localhost:3001",
-  "http://localhost:5173", // Vite dev server (Electron frontend)
-  "http://localhost:3001", // Alternative frontend port
-];
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
+  : [
+      "http://localhost:3010", // Web UI port
+      "http://localhost:5173", // Vite dev server (Electron frontend)
+      "http://localhost:3011", // API port for direct access
+    ];
+
+// Log allowed origins for debugging
+logger.info("Allowed CORS origins:", allowedOrigins);
 
 const io = new Server(httpServer, {
   cors: {
@@ -41,7 +46,7 @@ const io = new Server(httpServer, {
   },
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3011;
 
 // Swagger configuration
 const swaggerOptions = {
@@ -85,16 +90,30 @@ app.use(helmet());
 app.use(
   cors({
     origin: function (origin, callback) {
+      // Log the incoming origin for debugging
+      logger.info(`CORS check for origin: ${origin}`);
+
       // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
+      if (!origin) {
+        logger.info("Allowing request with no origin");
+        return callback(null, true);
+      }
 
       if (allowedOrigins.indexOf(origin) !== -1) {
+        logger.info(`Origin ${origin} is in allowed list`);
         callback(null, true);
       } else {
+        logger.warn(
+          `Origin ${origin} not in allowed list: ${JSON.stringify(
+            allowedOrigins
+          )}`
+        );
         // In development, allow all origins for easier testing
         if (process.env.NODE_ENV === "development") {
+          logger.info("Allowing origin in development mode");
           callback(null, true);
         } else {
+          logger.error(`CORS blocked origin: ${origin}`);
           callback(new Error("Not allowed by CORS"));
         }
       }
@@ -171,12 +190,12 @@ app.get("/health", (req, res) => {
 });
 
 // API Routes
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/projects", projectRoutes);
-app.use("/api/tasks", taskRoutes);
-app.use("/api/time-entries", timeEntryRoutes);
-app.use("/api/reports", reportRoutes);
+app.use("/auth", authRoutes);
+app.use("/users", userRoutes);
+app.use("/projects", projectRoutes);
+app.use("/tasks", taskRoutes);
+app.use("/time-entries", timeEntryRoutes);
+app.use("/reports", reportRoutes);
 
 // Socket.IO for real-time updates
 io.on("connection", (socket) => {

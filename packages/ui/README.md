@@ -28,7 +28,7 @@ A modern Electron desktop application for time tracking built with React, TypeSc
 
 - Node.js 16+ (recommended: Node.js 18+)
 - npm or yarn
-- TimeTrack API server running on `localhost:3000`
+- TimeTrack API server running on `localhost:3011`
 
 ## Installation
 
@@ -87,7 +87,7 @@ timetrack-ui/
 
 ## API Integration
 
-The application connects to a REST API running on `localhost:3000`. Make sure the TimeTrack API server is running before starting the application.
+The application connects to a REST API running on `localhost:3011`. Make sure the TimeTrack API server is running before starting the application.
 
 ### API Endpoints Used
 
@@ -169,7 +169,7 @@ Configuration for packaging is in `package.json` under the `build` section.
 
 1. **API Connection Failed**
 
-   - Ensure the TimeTrack API server is running on `localhost:3000`
+   - Ensure the TimeTrack API server is running on `localhost:3011`
    - Check network connectivity
 
 2. **Electron App Won't Start**

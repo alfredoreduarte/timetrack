@@ -24,7 +24,7 @@ const changePasswordSchema = z.object({
 
 /**
  * @swagger
- * /api/users/profile:
+ * /users/profile:
  *   put:
  *     summary: Update user profile
  *     tags: [Users]
@@ -90,7 +90,7 @@ router.put(
 
 /**
  * @swagger
- * /api/users/change-password:
+ * /users/change-password:
  *   post:
  *     summary: Change user password
  *     tags: [Users]
@@ -160,7 +160,7 @@ router.post(
 
 /**
  * @swagger
- * /api/users/stats:
+ * /users/stats:
  *   get:
  *     summary: Get user statistics
  *     tags: [Users]
@@ -269,7 +269,7 @@ router.get(
 
 /**
  * @swagger
- * /api/users/dashboard-earnings:
+ * /users/dashboard-earnings:
  *   get:
  *     summary: Get dashboard earnings data
  *     tags: [Users]

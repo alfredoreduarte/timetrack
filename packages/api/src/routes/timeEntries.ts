@@ -69,7 +69,7 @@ async function getHourlyRate(
 
 /**
  * @swagger
- * /api/time-entries:
+ * /time-entries:
  *   get:
  *     summary: Get time entries for the authenticated user
  *     tags: [Time Entries]
@@ -165,7 +165,7 @@ router.get(
 
 /**
  * @swagger
- * /api/time-entries/start:
+ * /time-entries/start:
  *   post:
  *     summary: Start a new time entry
  *     tags: [Time Entries]
@@ -286,7 +286,7 @@ router.post(
 
 /**
  * @swagger
- * /api/time-entries/{id}/stop:
+ * /time-entries/{id}/stop:
  *   post:
  *     summary: Stop a running time entry
  *     tags: [Time Entries]
@@ -385,7 +385,7 @@ router.post(
 
 /**
  * @swagger
- * /api/time-entries/current:
+ * /time-entries/current:
  *   get:
  *     summary: Get currently running time entry
  *     tags: [Time Entries]
@@ -441,7 +441,7 @@ router.get(
 
 /**
  * @swagger
- * /api/time-entries:
+ * /time-entries:
  *   post:
  *     summary: Create a manual time entry
  *     tags: [Time Entries]
@@ -563,7 +563,7 @@ router.post(
 
 /**
  * @swagger
- * /api/time-entries/{id}:
+ * /time-entries/{id}:
  *   put:
  *     summary: Update a time entry
  *     tags: [Time Entries]
@@ -664,7 +664,7 @@ router.put(
 
 /**
  * @swagger
- * /api/time-entries/{id}:
+ * /time-entries/{id}:
  *   delete:
  *     summary: Delete a time entry
  *     tags: [Time Entries]

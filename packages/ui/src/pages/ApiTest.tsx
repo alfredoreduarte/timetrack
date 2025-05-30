@@ -109,7 +109,7 @@ const ApiTest: React.FC = () => {
         <h2 className="text-lg font-semibold mb-4">Current Status</h2>
         <div className="space-y-2 text-sm">
           <div>
-            <strong>API Base URL:</strong> http://localhost:3000/api
+            <strong>API Base URL:</strong> http://localhost:3011/api
           </div>
           <div>
             <strong>Token:</strong>{" "}

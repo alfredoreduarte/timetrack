@@ -115,7 +115,6 @@ prisma/migrations/
 ecosystem.config.js
 
 # Docker
-Dockerfile
 docker-compose.yml
 .dockerignore
 

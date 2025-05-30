@@ -10,20 +10,38 @@ const router = express.Router();
 
 // Validation schemas
 const registerSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  defaultHourlyRate: z.number().positive().optional(),
+  name: z
+    .string()
+    .min(2, "Name must be at least 2 characters long")
+    .max(50, "Name must be less than 50 characters")
+    .trim(),
+  email: z
+    .string()
+    .email("Please enter a valid email address")
+    .toLowerCase()
+    .trim(),
+  password: z
+    .string()
+    .min(6, "Password must be at least 6 characters long")
+    .max(100, "Password must be less than 100 characters"),
+  defaultHourlyRate: z
+    .number()
+    .positive("Hourly rate must be a positive number")
+    .optional(),
 });
 
 const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: z
+    .string()
+    .email("Please enter a valid email address")
+    .toLowerCase()
+    .trim(),
   password: z.string().min(1, "Password is required"),
 });
 
 /**
  * @swagger
- * /api/auth/register:
+ * /auth/register:
  *   post:
  *     summary: Register a new user
  *     tags: [Authentication]
@@ -130,7 +148,7 @@ router.post(
 
 /**
  * @swagger
- * /api/auth/login:
+ * /auth/login:
  *   post:
  *     summary: Login user
  *     tags: [Authentication]
@@ -219,7 +237,7 @@ router.post(
 
 /**
  * @swagger
- * /api/auth/me:
+ * /auth/me:
  *   get:
  *     summary: Get current user profile
  *     tags: [Authentication]
@@ -269,7 +287,7 @@ router.get(
 
 /**
  * @swagger
- * /api/auth/refresh:
+ * /auth/refresh:
  *   post:
  *     summary: Refresh JWT token
  *     tags: [Authentication]

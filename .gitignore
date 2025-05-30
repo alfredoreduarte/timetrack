@@ -173,3 +173,17 @@ storage/
 # UI specific (Vite/React)
 # dist already covered above
 .vite/
+
+# Docker specific
+docker.env
+*.sql
+backup_*.sql
+# Allow specific init.sql files needed for container initialization
+!*/init.sql
+!init.sql
+
+# Docker volumes and data
+postgres_data/
+redis_data/
+api_logs/
+nginx_logs/

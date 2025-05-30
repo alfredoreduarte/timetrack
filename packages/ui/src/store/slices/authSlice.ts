@@ -68,7 +68,12 @@ export const loginUser = createAsyncThunk(
       saveUserToStorage(response.user);
       return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Login failed");
+      const errorMessage =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.message ||
+        "Login failed";
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -85,9 +90,12 @@ export const registerUser = createAsyncThunk(
       saveUserToStorage(response.user);
       return response;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || "Registration failed"
-      );
+      const errorMessage =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.message ||
+        "Registration failed";
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -100,9 +108,12 @@ export const getCurrentUser = createAsyncThunk(
       saveUserToStorage(response);
       return response;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || "Failed to get user"
-      );
+      const errorMessage =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.message ||
+        "Failed to get user";
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -122,9 +133,12 @@ export const updateProfile = createAsyncThunk(
       saveUserToStorage(response);
       return response;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || "Failed to update profile"
-      );
+      const errorMessage =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.message ||
+        "Failed to update profile";
+      return rejectWithValue(errorMessage);
     }
   }
 );
