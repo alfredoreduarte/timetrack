@@ -29,6 +29,7 @@ services:
     build:
       context: .
       dockerfile: ./packages/api/Dockerfile
+      target: development
     container_name: timetrack-api
     restart: unless-stopped
     env_file: docker.env
@@ -51,6 +52,11 @@ services:
       - timetrack-network
     volumes:
       - api_logs:/app/logs
+      # Volume mounts for hot reload during development
+      - ./packages/api/src:/app/packages/api/src:ro
+      - ./packages/api/package.json:/app/packages/api/package.json:ro
+      - ./packages/api/tsconfig.json:/app/packages/api/tsconfig.json:ro
+      - ./packages/shared:/app/packages/shared:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${API_PORT:-3011}/health"]
       interval: 30s
