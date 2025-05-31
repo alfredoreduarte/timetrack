@@ -7,11 +7,11 @@
   "homepage": "./",
   "scripts": {
     "dev": "vite",
-    "dev:react": "vite",
+    "dev:web": "vite",
     "dev:electron": "wait-on http://localhost:5173 && electron .",
-    "dev:full": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
-    "dev:build": "npm run build:electron && npm run dev:full",
-    "build": "npm run build:react && npm run build:electron",
+    "dev:full": "concurrently \"npm run dev:web\" \"npm run dev:electron\"",
+    "build": "npm run build:web && npm run build:electron",
+    "build:web": "vite build",
     "build:react": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "package": "npm run build && electron-builder",
@@ -21,7 +21,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist node_modules"
   },
   "keywords": [
     "electron",

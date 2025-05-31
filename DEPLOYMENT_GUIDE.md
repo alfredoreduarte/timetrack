@@ -1,6 +1,6 @@
 # TimeTrack Deployment & Development Guide
 
-> **One guide for everything**: Daily development, first deployment, and production updates.
+> **Streamlined guide**: Simple Docker-based development and production deployment.
 
 ## 📋 Table of Contents
 
@@ -18,7 +18,6 @@
 ### Prerequisites
 - Docker Desktop installed and running
 - Git
-- Text editor
 
 ### 1. Clone & Setup
 ```bash
@@ -41,6 +40,8 @@ REACT_APP_API_URL=http://localhost:3011
 
 ### 3. Start Development Environment
 ```bash
+npm run dev
+# OR
 ./deploy.sh dev
 ```
 
@@ -48,113 +49,66 @@ REACT_APP_API_URL=http://localhost:3011
 - **Web UI**: http://localhost:3010
 - **API**: http://localhost:3011
 - **API Docs**: http://localhost:3011/api-docs
-- **Database**: localhost:3012 (user: `timetrack_user`)
+- **Database**: localhost:3012
 
 ---
 
 ## 💻 Daily Development Workflow
 
-### Start Development
+### 🚀 Start Development
 ```bash
-# Start all services
-./deploy.sh dev
-
-# Or use docker-compose directly
-docker-compose up -d
+npm run dev          # Start all services
+npm run logs         # View logs
+npm run status       # Check service status
 ```
 
-### Check Status
-```bash
-# Quick status check
-./deploy.sh status
+### 🔄 Hot Reloading
+- **Frontend changes** (packages/ui/): Automatic hot reload with Vite
+- **Backend changes** (packages/api/): Automatic restart with nodemon (watches src/ and ../shared/src/)
+- **Shared package changes** (packages/shared/): Automatic reload for both API and UI
 
-# Detailed container info
-docker-compose ps
+### 🗄️ Database Operations
+```bash
+npm run migrate      # Run migrations in development
+npm run backup       # Create database backup
 ```
 
-### View Logs
+For manual database access:
 ```bash
-# All services
-./deploy.sh logs
-
-# Specific service
-docker-compose logs -f api
-docker-compose logs -f web
-docker-compose logs -f postgres
-```
-
-### Make Code Changes
-
-**Frontend changes** (packages/ui/):
-- Changes are automatically reflected (hot reload)
-- If not working: `docker-compose restart web`
-
-**Backend changes** (packages/api/):
-- **Hot reload is now enabled!** Changes to TypeScript/JavaScript files are automatically detected
-- Nodemon watches `src/` and `../shared/src/` directories
-- Changes trigger automatic restart (2-second delay to avoid rapid restarts)
-- View real-time logs: `docker-compose logs -f api`
-- If hot reload isn't working: `docker-compose restart api`
-- For major changes (package.json, Dockerfile): `docker-compose up -d --build api`
-
-**Shared package changes** (packages/shared/):
-- Hot reload detects changes in shared code automatically
-- Both API and UI will reload when shared code changes
-- For TypeScript changes: automatic recompilation and restart
-
-**Database schema changes**:
-```bash
-# Enter API container
 docker exec -it timetrack-api bash
-
-# Run migrations
-npm run db:migrate:dev
-npm run db:generate
+npm run db:studio    # Open Prisma Studio
+npx prisma migrate dev --name "your_migration_name"  # Create new migration
 ```
 
-### Stop Development
+### 🛑 Stop Development
 ```bash
-# Stop all services
-./deploy.sh stop
-
-# Or completely remove (including data)
-docker-compose down -v
+npm run stop         # Stop all services
 ```
 
-### Reset Everything (Nuclear Option)
+### 🔧 Reset Everything (Nuclear Option)
 ```bash
-./deploy.sh stop
+npm run stop
 docker system prune -a
 docker volume prune
-./deploy.sh dev
+npm run dev
 ```
 
 ---
 
 ## 🌐 Production Deployment
 
-### Option A: DigitalOcean (Recommended)
-
-#### 1. Create Droplet
-- Choose "Docker" from Marketplace
-- Minimum: 2GB RAM, 1 vCPU
-- Add your SSH key
-
-#### 2. Server Setup
+### Server Setup
 ```bash
-# Connect to server
-ssh root@your-droplet-ip
-
-# Clone repository
+# On your server
 git clone <your-repo-url>
 cd timetrack-monorepo
 
-# Setup environment
+# Setup production environment
 cp docker.env.example docker.env
 nano docker.env
 ```
 
-#### 3. Production Environment Configuration
+### Production Environment Configuration
 ```env
 # Security - Use strong values!
 POSTGRES_PASSWORD=super_secure_production_password
@@ -169,53 +123,11 @@ LOG_LEVEL=info
 RATE_LIMIT_MAX_REQUESTS=100
 ```
 
-#### 4. Deploy Production
+### Deploy Production
 ```bash
-# Deploy with production config
+npm run prod
+# OR
 ./deploy.sh prod
-
-# Or manually
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-#### 5. SSL Setup (Let's Encrypt)
-```bash
-# Install certbot
-apt update && apt install certbot nginx
-
-# Get certificates
-certbot certonly --standalone -d yourdomain.com -d api.yourdomain.com
-
-# Setup rate limiting (optional but recommended)
-cp nginx-rate-limits.conf /etc/nginx/conf.d/rate-limits.conf
-
-# Copy nginx config template
-cp nginx-host-config.example /etc/nginx/sites-available/timetrack
-ln -s /etc/nginx/sites-available/timetrack /etc/nginx/sites-enabled/
-
-# Edit nginx config with your domain
-nano /etc/nginx/sites-available/timetrack
-
-# If you set up rate limiting, uncomment the limit_req lines in the config
-
-# Test and reload nginx
-nginx -t
-systemctl reload nginx
-```
-
-### Option B: Any Docker Host
-
-```bash
-# Clone and setup
-git clone <your-repo-url>
-cd timetrack-monorepo
-cp docker.env.example docker.env
-
-# Edit docker.env for production
-nano docker.env
-
-# Deploy
-docker-compose -f docker-compose.prod.yml up -d
 ```
 
 ---
@@ -224,147 +136,86 @@ docker-compose -f docker-compose.prod.yml up -d
 
 ### Code Updates
 ```bash
-# On production server
-cd timetrack-monorepo
-
-# Pull latest changes
 git pull origin main
-
-# Rebuild and restart
-./deploy.sh restart
-
-# Or manually
-docker-compose -f docker-compose.prod.yml down
-docker-compose -f docker-compose.prod.yml up -d --build
+npm run restart prod
 ```
 
 ### Database Migrations
 ```bash
-# Enter API container
-docker exec -it timetrack-api-prod bash
-
-# Run migrations
-npm run db:migrate:prod
-npm run db:generate
-
-# Exit container
-exit
-
-# Restart API to ensure changes are loaded
-docker-compose -f docker-compose.prod.yml restart api
+npm run migrate:prod
 ```
 
-### Zero-Downtime Updates (Advanced)
+### Production Logs & Status
 ```bash
-# Scale up API instances
-docker-compose -f docker-compose.prod.yml up -d --scale api=2
-
-# Update one instance at a time
-docker-compose -f docker-compose.prod.yml up -d --no-deps api
-
-# Scale back down
-docker-compose -f docker-compose.prod.yml up -d --scale api=1
+npm run logs prod
+npm run status prod
 ```
 
 ---
 
 ## 🛠️ Maintenance & Troubleshooting
 
-### Backup Database
+### Backup & Restore
 ```bash
-# Create backup
-./deploy.sh backup
+# Create backup (works for both dev and prod)
+npm run backup
 
-# Manual backup
-DATE=$(date +%Y%m%d_%H%M%S)
-docker exec timetrack-postgres-prod pg_dump -U timetrack_user timetrack_db > "backup_${DATE}.sql"
-```
-
-### Restore Database
-```bash
-# Restore from backup
-docker exec -i timetrack-postgres-prod psql -U timetrack_user timetrack_db < backup_file.sql
+# Manual restore
+docker exec -i timetrack-postgres psql -U timetrack_user timetrack_db < backup_file.sql
 ```
 
 ### Monitor Resources
 ```bash
-# Check container resource usage
-docker stats
-
-# Check disk space
-df -h
-
-# Check logs size
-du -sh /var/lib/docker/containers/*/
+docker stats                    # Container resource usage
+npm run logs                    # Application logs
+npm run status                  # Service status
 ```
 
 ### Common Issues & Solutions
 
-#### 🔴 Container Won't Start
+#### 🔴 Services Won't Start
 ```bash
-# Check logs
-./deploy.sh logs
-
-# Check specific service
-docker-compose logs api
-docker-compose logs postgres
+npm run logs                    # Check what's failing
+npm run stop && npm run dev     # Restart everything
 ```
 
-#### 🔴 Database Connection Issues
+#### 🔴 Database Issues
 ```bash
-# Check if postgres is healthy
-docker-compose ps
-
-# Check database connectivity
-docker exec -it timetrack-api-prod bash
-npm run db:status
+npm run logs                    # Check postgres logs
+npm run migrate                 # Run migrations
 ```
 
-#### 🔴 CORS Errors
+#### 🔴 Hot Reload Not Working
 ```bash
-# Update ALLOWED_ORIGINS in docker.env
-nano docker.env
+# Check if volumes are mounted correctly
+docker inspect timetrack-api | grep -A 10 Mounts
 
-# Restart services
-./deploy.sh restart
-```
-
-#### 🔴 Assets Not Loading (404 errors)
-```bash
-# Rebuild web container
-docker-compose up -d --build web
-
-# Check nginx logs
-docker-compose logs web
+# Restart specific service
+docker-compose restart api
+docker-compose restart web
 ```
 
 #### 🔴 Out of Disk Space
 ```bash
-# Clean up Docker
-docker system prune -a
-docker volume prune
-
-# Clean up old images
-docker image prune -a
-```
-
-#### 🔴 Performance Issues
-```bash
-# Check resource usage
-docker stats
-
-# Scale API if needed
-docker-compose up -d --scale api=2
-
-# Check database performance
-docker exec -it timetrack-postgres-prod bash
-psql -U timetrack_user timetrack_db
-\dt+  -- Check table sizes
+docker system prune -a          # Clean up Docker
+docker volume prune             # Clean up volumes
 ```
 
 ---
 
 ## 📚 Reference
+
+### Simplified Command Structure
+
+| Command | Development | Production |
+|---------|-------------|------------|
+| **Start** | `npm run dev` | `npm run prod` |
+| **Stop** | `npm run stop` | `npm run stop prod` |
+| **Logs** | `npm run logs` | `npm run logs prod` |
+| **Status** | `npm run status` | `npm run status prod` |
+| **Restart** | `npm run restart` | `npm run restart prod` |
+| **Migrate** | `npm run migrate` | `npm run migrate:prod` |
+| **Backup** | `npm run backup` | `npm run backup` |
 
 ### Environment Variables
 
@@ -374,33 +225,6 @@ psql -U timetrack_user timetrack_db
 | `JWT_SECRET` | ✅ | - | JWT signing secret (32+ chars) |
 | `ALLOWED_ORIGINS` | ❌ | `http://localhost:3010` | CORS allowed origins |
 | `REACT_APP_API_URL` | ❌ | `http://localhost:3011` | API URL for frontend |
-| `LOG_LEVEL` | ❌ | `info` | Logging level |
-| `RATE_LIMIT_MAX_REQUESTS` | ❌ | `100` | Rate limit per window |
-
-### Useful Commands
-
-```bash
-# Development
-./deploy.sh dev          # Start development environment
-./deploy.sh stop         # Stop all services
-./deploy.sh logs         # View logs
-./deploy.sh status       # Check service status
-./deploy.sh restart      # Restart all services
-
-# Production
-./deploy.sh prod         # Deploy production
-./deploy.sh backup       # Create database backup
-
-# Docker Compose (manual)
-docker-compose up -d                    # Start development
-docker-compose -f docker-compose.prod.yml up -d  # Start production
-docker-compose down                     # Stop and remove containers
-docker-compose down -v                  # Stop and remove volumes
-docker-compose logs -f [service]        # Follow logs
-docker-compose ps                       # List containers
-docker-compose restart [service]        # Restart service
-docker-compose up -d --build [service]  # Rebuild and restart service
-```
 
 ### Port Reference
 
@@ -408,8 +232,8 @@ docker-compose up -d --build [service]  # Rebuild and restart service
 |---------|-------------|------------|
 | Web UI | 3010 | 80/443 |
 | API | 3011 | 3011 |
-| PostgreSQL | 3012 | 5432 |
-| Redis | 3013 | 6379 |
+| PostgreSQL | 3012 | Internal |
+| Redis | 3013 | Internal |
 
 ### File Structure
 ```
@@ -421,8 +245,8 @@ timetrack-monorepo/
 ├── docker-compose.yml    # Development config
 ├── docker-compose.prod.yml # Production config
 ├── docker.env            # Environment variables
-├── deploy.sh             # Deployment script
-└── DEPLOYMENT_GUIDE.md   # This file
+├── deploy.sh             # Unified deployment script
+└── package.json          # Root scripts (npm run dev, etc.)
 ```
 
 ---
@@ -434,29 +258,21 @@ timetrack-monorepo/
 git clone <repo> && cd timetrack-monorepo
 cp docker.env.example docker.env
 # Edit docker.env
-./deploy.sh dev
+npm run dev
 ```
 
 ### Daily Development
 ```bash
-./deploy.sh dev     # Start
-./deploy.sh logs    # Debug
-./deploy.sh stop    # Stop
+npm run dev     # Start
+npm run logs    # Debug
+npm run stop    # Stop
 ```
 
-### Production Deployment
+### Production
 ```bash
-# On server
-git clone <repo> && cd timetrack-monorepo
-cp docker.env.example docker.env
-# Edit docker.env for production
-./deploy.sh prod
+npm run prod              # Deploy
+npm run migrate:prod      # Migrate DB
+npm run logs prod         # Check logs
 ```
 
-### Production Updates
-```bash
-git pull origin main
-./deploy.sh restart
-```
-
-**🚀 That's it! You now have everything you need for both development and production deployment.**
+**🚀 Simple, unified, and streamlined!**
