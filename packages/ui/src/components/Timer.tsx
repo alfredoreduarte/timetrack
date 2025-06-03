@@ -135,6 +135,22 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
     }
   };
 
+  // Handle form submission (for Enter key support)
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isRunning && !loading) {
+      handleStartTimer();
+    }
+  };
+
+  // Handle Enter key in form fields
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !isRunning && !loading) {
+      e.preventDefault();
+      handleStartTimer();
+    }
+  };
+
   const selectedProject = Array.isArray(projects)
     ? projects.find((p) => p.id === selectedProjectId)
     : undefined;
@@ -170,7 +186,7 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
 
       {/* Project Selector (shown when not running or when no project selected) */}
       {(!isRunning || showProjectSelector) && (
-        <div className="space-y-4 mb-6">
+        <form onSubmit={handleFormSubmit} className="space-y-4 mb-6">
           <div>
             <label
               htmlFor="project-select"
@@ -186,6 +202,7 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
                   setSelectedProjectId(e.target.value);
                   setSelectedTaskId(""); // Reset task when project changes
                 }}
+                onKeyDown={handleKeyDown}
                 className="input-field appearance-none pr-10"
                 required
               >
@@ -216,6 +233,7 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
                   id="task-select"
                   value={selectedTaskId}
                   onChange={(e) => setSelectedTaskId(e.target.value)}
+                  onKeyDown={handleKeyDown}
                   className="input-field appearance-none pr-10"
                 >
                   <option value="">No specific task</option>
@@ -242,12 +260,13 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="What are you working on?"
               className="input-field"
               disabled={isRunning}
             />
           </div>
-        </div>
+        </form>
       )}
 
       {/* Error Display */}
@@ -264,6 +283,8 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
             onClick={handleStartTimer}
             disabled={loading}
             className="btn-primary flex-1 flex items-center justify-center gap-2"
+            type="submit"
+            form={!isRunning || showProjectSelector ? undefined : "timer-form"}
           >
             <PlayIcon className="h-4 w-4" />
             {loading ? "Starting..." : "Start Timer"}
