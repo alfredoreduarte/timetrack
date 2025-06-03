@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# TimeTrack Deployment Script for DigitalOcean
+# TimeTrack Deployment Script for Local Development & Production
 # This script automates the deployment process
 
 set -e
@@ -106,186 +106,152 @@ setup_environment() {
     log_info "Environment setup complete"
 }
 
-deploy_development() {
-    log_info "Deploying in development mode..."
+deploy() {
+    local mode="$1"
+    local compose_file="$COMPOSE_FILE"
+    local container_prefix="timetrack"
+
+    if [ "$mode" = "prod" ]; then
+        compose_file="$PROD_COMPOSE_FILE"
+        container_prefix="timetrack-prod"
+        log_info "Deploying in production mode..."
+
+        # Create automatic backup before production deployment
+        if docker ps | grep -q "${container_prefix}-postgres"; then
+            local timestamp=$(date +%Y%m%d_%H%M%S)
+            local backup_file="backup_prod_${timestamp}.sql"
+            docker exec ${container_prefix}-postgres pg_dump -U timetrack_user timetrack_db > "$backup_file"
+            log_info "Pre-deployment backup created: $backup_file"
+        fi
+    else
+        log_info "Deploying in development mode..."
+    fi
 
     # Debug information
     log_info "Current directory: $(pwd)"
-    log_info "Checking required files..."
+    log_info "Using compose file: $compose_file"
 
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        log_error "Development compose file not found: $COMPOSE_FILE"
+    # Check required files
+    if [ ! -f "$compose_file" ]; then
+        log_error "Compose file not found: $compose_file"
         exit 1
     fi
-
-    if [ ! -f "packages/api/Dockerfile" ]; then
-        log_error "API Dockerfile not found: packages/api/Dockerfile"
-        exit 1
-    fi
-
-    if [ ! -f "packages/ui/Dockerfile" ]; then
-        log_error "UI Dockerfile not found: packages/ui/Dockerfile"
-        exit 1
-    fi
-
-    log_info "All required files found"
 
     # Stop existing containers
-    docker_compose down
+    docker_compose -f "$compose_file" down
 
     # Build and start services
-    docker_compose up -d --build
+    docker_compose -f "$compose_file" up -d --build
 
-    log_info "Development deployment complete!"
+    log_info "$mode deployment complete!"
     log_info "Access the application at:"
     log_info "  Web UI: http://localhost:${WEB_PORT:-3010}"
     log_info "  API: http://localhost:${API_PORT:-3011}"
     log_info "  API Docs: http://localhost:${API_PORT:-3011}/api-docs"
-    log_info "  PostgreSQL: localhost:${POSTGRES_PORT:-3012}"
-    log_info "  Redis: localhost:${REDIS_PORT:-3013}"
-}
-
-deploy_production() {
-    log_info "Deploying in production mode..."
-
-    # Debug information
-    log_info "Current directory: $(pwd)"
-    log_info "Checking required files..."
-
-    if [ ! -f "$PROD_COMPOSE_FILE" ]; then
-        log_error "Production compose file not found: $PROD_COMPOSE_FILE"
-        exit 1
-    fi
-
-    if [ ! -f "packages/api/Dockerfile" ]; then
-        log_error "API Dockerfile not found: packages/api/Dockerfile"
-        exit 1
-    fi
-
-    if [ ! -f "packages/ui/Dockerfile" ]; then
-        log_error "UI Dockerfile not found: packages/ui/Dockerfile"
-        exit 1
-    fi
-
-    log_info "All required files found"
-
-    # Create automatic backup before deployment
-    log_info "Creating automatic backup before deployment..."
-    local timestamp=$(date +%Y%m%d_%H%M%S)
-    local backup_file="backup_prod_${timestamp}.sql"
-
-    if docker ps | grep -q "timetrack-postgres-prod"; then
-        docker exec timetrack-postgres-prod pg_dump -U timetrack_user timetrack_db > "$backup_file"
-        log_info "Pre-deployment backup created: $backup_file"
-    else
-        log_warn "PostgreSQL container not running - skipping backup"
-        backup_file="(no backup created - database not running)"
-    fi
-
-    # Stop existing containers (but keep database running)
-    log_info "Stopping application services (keeping database running)..."
-    docker_compose -f "$PROD_COMPOSE_FILE" stop api web redis
-
-    # Pull latest images and build
-    docker_compose -f "$PROD_COMPOSE_FILE" pull
-    docker_compose -f "$PROD_COMPOSE_FILE" up -d --build
-
-    log_info "Production deployment complete!"
-    log_info "Services are starting up. Check status with:"
-    log_info "  $DOCKER_COMPOSE_CMD -f $PROD_COMPOSE_FILE ps"
-    if docker ps | grep -q "timetrack-postgres-prod"; then
-        log_info "Database backup was saved as: $backup_file"
+    if [ "$mode" != "prod" ]; then
+        log_info "  PostgreSQL: localhost:${POSTGRES_PORT:-3012}"
+        log_info "  Redis: localhost:${REDIS_PORT:-3013}"
     fi
 }
 
 show_logs() {
-    local compose_file="$1"
-    if [ -z "$compose_file" ]; then
-        compose_file="$COMPOSE_FILE"
+    local compose_file="$COMPOSE_FILE"
+    if [ "$2" = "prod" ]; then
+        compose_file="$PROD_COMPOSE_FILE"
     fi
-
     log_info "Showing logs..."
     docker_compose -f "$compose_file" logs -f
 }
 
 show_status() {
-    local compose_file="$1"
-    if [ -z "$compose_file" ]; then
-        compose_file="$COMPOSE_FILE"
+    local compose_file="$COMPOSE_FILE"
+    if [ "$2" = "prod" ]; then
+        compose_file="$PROD_COMPOSE_FILE"
     fi
-
     log_info "Service status:"
     docker_compose -f "$compose_file" ps
 }
 
 backup_database() {
     log_info "Creating database backup..."
-
     local timestamp=$(date +%Y%m%d_%H%M%S)
     local backup_file="backup_${timestamp}.sql"
 
     if docker ps | grep -q "timetrack-postgres"; then
         docker exec timetrack-postgres pg_dump -U timetrack_user timetrack_db > "$backup_file"
         log_info "Database backup created: $backup_file"
+    elif docker ps | grep -q "timetrack-postgres-prod"; then
+        docker exec timetrack-postgres-prod pg_dump -U timetrack_user timetrack_db > "$backup_file"
+        log_info "Production database backup created: $backup_file"
     else
-        log_error "PostgreSQL container not found"
+        log_error "No PostgreSQL container found"
         exit 1
     fi
 }
 
 migrate_database() {
     local environment="${1:-dev}"
+    local container_name="timetrack-api"
+    local compose_file="$COMPOSE_FILE"
 
     if [ "$environment" = "prod" ]; then
+        container_name="timetrack-api-prod"
+        compose_file="$PROD_COMPOSE_FILE"
         log_info "Running database migrations in production..."
-        if docker ps | grep -q "timetrack-postgres-prod"; then
-            # Create backup before migration
-            local timestamp=$(date +%Y%m%d_%H%M%S)
-            local backup_file="backup_pre_migration_${timestamp}.sql"
-            docker exec timetrack-postgres-prod pg_dump -U timetrack_user timetrack_db > "$backup_file"
-            log_info "Pre-migration backup created: $backup_file"
-
-            # Run migrations
-            docker_compose -f "$PROD_COMPOSE_FILE" exec api sh -c "cd /app/packages/api && npx prisma migrate deploy"
-            log_info "Production database migrations completed"
-        else
-            log_error "Production PostgreSQL container not found"
-            exit 1
-        fi
     else
         log_info "Running database migrations in development..."
-        if docker ps | grep -q "timetrack-postgres"; then
-            docker_compose exec api sh -c "cd /app/packages/api && npx prisma migrate deploy"
-            log_info "Development database migrations completed"
-        else
-            log_error "Development PostgreSQL container not found"
-            exit 1
-        fi
     fi
+
+    if docker ps | grep -q "$container_name"; then
+        docker_compose -f "$compose_file" exec api npm run migrate:deploy
+        log_info "$environment database migrations completed"
+    else
+        log_error "$container_name container not found"
+        exit 1
+    fi
+}
+
+stop_services() {
+    local compose_file="$COMPOSE_FILE"
+    if [ "$2" = "prod" ]; then
+        compose_file="$PROD_COMPOSE_FILE"
+    fi
+    docker_compose -f "$compose_file" down
+    log_info "Services stopped"
+}
+
+restart_services() {
+    local compose_file="$COMPOSE_FILE"
+    if [ "$2" = "prod" ]; then
+        compose_file="$PROD_COMPOSE_FILE"
+    fi
+    docker_compose -f "$compose_file" restart
+    log_info "Services restarted"
 }
 
 show_help() {
     echo "TimeTrack Deployment Script"
     echo ""
-    echo "Usage: $0 [COMMAND]"
+    echo "Usage: $0 [COMMAND] [OPTIONS]"
     echo ""
     echo "Commands:"
-    echo "  dev         Deploy in development mode"
-    echo "  prod        Deploy in production mode"
-    echo "  logs        Show application logs"
-    echo "  status      Show service status"
-    echo "  backup      Create database backup"
-    echo "  migrate     Run database migrations (usage: migrate [dev|prod])"
-    echo "  stop        Stop all services"
-    echo "  restart     Restart all services"
-    echo "  help        Show this help message"
+    echo "  dev                Deploy in development mode"
+    echo "  prod               Deploy in production mode"
+    echo "  logs [prod]        Show application logs"
+    echo "  status [prod]      Show service status"
+    echo "  backup             Create database backup"
+    echo "  migrate [dev|prod] Run database migrations"
+    echo "  stop [prod]        Stop all services"
+    echo "  restart [prod]     Restart all services"
+    echo "  help               Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0 dev              # Deploy for development"
-    echo "  $0 prod             # Deploy for production"
-    echo "  $0 logs             # Show logs"
-    echo "  $0 backup           # Create database backup"
-    echo "  $0 migrate prod     # Run migrations in production"
+    echo "  $0 dev             # Start development environment"
+    echo "  $0 prod            # Deploy production"
+    echo "  $0 logs            # Show development logs"
+    echo "  $0 logs prod       # Show production logs"
+    echo "  $0 migrate prod    # Run migrations in production"
+    echo "  $0 stop prod       # Stop production services"
 }
 
 # Main script
@@ -293,28 +259,20 @@ case "$1" in
     "dev")
         check_requirements
         setup_environment
-        deploy_development
+        deploy "dev"
         ;;
     "prod")
         check_requirements
         setup_environment
-        deploy_production
+        deploy "prod"
         ;;
     "logs")
         check_requirements
-        if [ "$2" = "prod" ]; then
-            show_logs "$PROD_COMPOSE_FILE"
-        else
-            show_logs
-        fi
+        show_logs "$@"
         ;;
     "status")
         check_requirements
-        if [ "$2" = "prod" ]; then
-            show_status "$PROD_COMPOSE_FILE"
-        else
-            show_status
-        fi
+        show_status "$@"
         ;;
     "backup")
         check_requirements
@@ -326,21 +284,11 @@ case "$1" in
         ;;
     "stop")
         check_requirements
-        if [ "$2" = "prod" ]; then
-            docker_compose -f "$PROD_COMPOSE_FILE" down
-        else
-            docker_compose down
-        fi
-        log_info "Services stopped"
+        stop_services "$@"
         ;;
     "restart")
         check_requirements
-        if [ "$2" = "prod" ]; then
-            docker_compose -f "$PROD_COMPOSE_FILE" restart
-        else
-            docker_compose restart
-        fi
-        log_info "Services restarted"
+        restart_services "$@"
         ;;
     "help"|"--help"|"-h"|"")
         show_help

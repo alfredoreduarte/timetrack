@@ -1,6 +1,19 @@
 # TimeTrack Monorepo
 
-A monorepo containing the TimeTrack application with API, UI, and shared packages.
+A streamlined monorepo for the TimeTrack application with Docker-based development and production deployment.
+
+## 🚀 Quick Start
+
+**3 commands to get started:**
+```bash
+cp docker.env.example docker.env
+# Edit docker.env with your settings
+npm run dev
+```
+
+Access your app at http://localhost:3010
+
+**👉 For complete setup and deployment instructions, see [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)**
 
 ## 📁 Project Structure
 
@@ -12,127 +25,132 @@ timetrack-monorepo/
 │   └── shared/        # Shared types, constants, and utilities
 ├── docker-compose.yml      # Development Docker setup
 ├── docker-compose.prod.yml # Production Docker setup
-├── deploy.sh              # Deployment automation script
+├── deploy.sh              # Unified deployment script
 ├── DEPLOYMENT_GUIDE.md    # 📖 Complete deployment & development guide
-├── package.json           # Root package.json with workspaces
-└── README.md             # This file
+└── package.json           # Root scripts (npm run dev, etc.)
 ```
 
-## 🚀 Quick Start
+## 🛠️ Streamlined Scripts
 
-**👉 For complete setup, development, and deployment instructions, see [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)**
-
-### Super Quick Start (3 commands)
+### Daily Development
 ```bash
-cp docker.env.example docker.env
-# Edit docker.env with your settings
-./deploy.sh dev
+npm run dev          # Start development environment
+npm run logs         # View application logs
+npm run status       # Check service status
+npm run stop         # Stop all services
+npm run restart      # Restart all services
 ```
 
-Access your app at http://localhost:3010
+### Database Operations
+```bash
+npm run migrate      # Run database migrations (dev)
+npm run backup       # Create database backup
+```
+
+### Production
+```bash
+npm run prod         # Deploy production
+npm run migrate:prod # Run production migrations
+npm run logs prod    # View production logs
+npm run stop prod    # Stop production services
+```
+
+### Build & Test (for CI/CD or manual building)
+```bash
+npm run build:all    # Build all packages
+npm run test:all     # Run tests in all packages
+npm run lint:all     # Lint all packages
+npm run clean        # Clean all build artifacts
+```
+
+## 🔥 What's Streamlined
+
+### Before (Confusing)
+- Multiple ways to start development
+- Duplicated migration commands
+- Unclear script purposes
+- Complex deployment chains
+
+### After (Simple)
+- **One way to start dev**: `npm run dev`
+- **Clear naming**: `migrate` for dev, `migrate:prod` for production
+- **Consistent patterns**: All commands work with optional `prod` flag
+- **Docker-first**: Everything runs in containers for consistency
 
 ## 📦 Packages
 
 ### @timetrack/api
+The API server built with Node.js, Express, and Prisma ORM.
+- RESTful API with JWT authentication
+- PostgreSQL database with hot-reload development
+- Comprehensive API documentation
 
-The API server for TimeTrack built with Node.js, Express, and Prisma ORM.
-
-**Location:** `packages/api/`
-
-**Key Features:**
-- RESTful API with Express.js
-- PostgreSQL database with Prisma ORM
-- JWT authentication
-- Real-time updates with Socket.IO
-- Comprehensive API documentation with Swagger
-- Rate limiting and security middleware
-
-### @timetrack/ui
-
-The React web application and Electron desktop application.
-
-**Location:** `packages/ui/`
-
-**Key Features:**
-- React 18 + TypeScript
+### timetrack-ui
+The React web application with Electron desktop support.
+- React 18 + TypeScript + Tailwind CSS
 - Redux Toolkit for state management
-- Tailwind CSS for styling
-- Electron desktop app support
-- Web deployment with nginx
-- Time tracking functionality
+- Hot reload for fast development
 
 ### @timetrack/shared
-
-Shared types, constants, and utilities used by both API and UI packages.
-
-**Location:** `packages/shared/`
-
-**Exports:**
+Shared types, constants, and utilities.
 - TypeScript interfaces and types
 - API endpoint constants
-- Utility functions for date formatting, validation, etc.
-- Common constants and configuration
+- Common utility functions
 
-## 🛠️ Monorepo Development
+## 🐳 Docker-First Development
 
-### Adding Dependencies
+### Hot Reloading Enabled
+- **API**: Nodemon watches `src/` and `../shared/src/` with 2s delay
+- **UI**: Vite hot reload for instant updates
+- **Shared**: Changes trigger reload in both API and UI
 
-#### To a specific package:
-```bash
-# Add to UI package
-npm install <package-name> --workspace=packages/ui
+### Volume Mounts for Development
+- Source code mounted as read-only volumes
+- Database and logs persisted in named volumes
+- Node modules cached for faster rebuilds
 
-# Add to API package
-npm install <package-name> --workspace=packages/api
+## 🔧 Environment Configuration
 
-# Add to shared package
-npm install <package-name> --workspace=packages/shared
+Copy `docker.env.example` to `docker.env` and customize:
+
+```env
+# Required
+POSTGRES_PASSWORD=your_secure_password
+JWT_SECRET=your_long_secret_key
+
+# Optional
+ALLOWED_ORIGINS=http://localhost:3010
+REACT_APP_API_URL=http://localhost:3011
 ```
 
-### Working with Shared Package
+## 🚀 Deployment Options
 
-When you modify the shared package:
+### Development (Local)
 ```bash
-npm run build --workspace=packages/shared
+npm run dev    # Starts all services with hot reload
 ```
 
-The changes will be automatically available to other packages that depend on it.
+### Production (Server)
+```bash
+npm run prod   # Optimized production build
+```
 
-### Available Scripts
+Both use the same Docker Compose setup with different configurations.
 
-| Script               | Description                               |
-| -------------------- | ----------------------------------------- |
-| `npm run dev`        | Start both API and UI in development mode |
-| `npm run dev:api`    | Start API in development mode             |
-| `npm run dev:ui`     | Start UI in development mode              |
-| `npm run build`      | Build all packages                        |
-| `npm run build:api`  | Build API package                         |
-| `npm run build:ui`   | Build UI package                          |
-| `npm run test`       | Run tests in all packages                 |
-| `npm run lint`       | Lint all packages                         |
-| `npm run type-check` | Type check all packages                   |
-| `npm run clean`      | Clean all packages                        |
+## 🎯 Key Benefits
 
-## 🔧 Configuration
-
-- **TypeScript**: Each package has its own `tsconfig.json`
-- **ESLint**: Shared configuration at root level
-- **Workspaces**: npm workspaces for dependency management
-
-## 🤝 Contributing
-
-1. Make changes in the appropriate package
-2. Run tests: `npm run test`
-3. Run linting: `npm run lint`
-4. Build all packages: `npm run build`
-5. Commit your changes
+1. **Simple**: One command for dev, one for prod
+2. **Consistent**: Same environment locally and in production
+3. **Fast**: Hot reload for rapid development
+4. **Safe**: Automatic backups before production deployments
+5. **Clear**: No duplicate or confusing scripts
 
 ## 🆘 Need Help?
 
-- **Deployment & Development**: See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)
-- **Package-specific issues**: Check individual package READMEs
-- **Monorepo issues**: Ensure you're running commands from the root directory
+- **Full Guide**: [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)
+- **Issues**: Check logs with `npm run logs`
+- **Reset**: `npm run stop && docker system prune && npm run dev`
 
-## 📄 License
+---
 
-MIT License - see LICENSE file for details.
+**🚀 Built for simplicity and speed**
