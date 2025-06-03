@@ -2,11 +2,25 @@ import express, { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt, { SignOptions } from "jsonwebtoken";
 import { z } from "zod";
+import svgCaptcha from "svg-captcha";
 import { prisma } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, AuthenticatedRequest } from "../middleware/auth";
 
 const router = express.Router();
+
+// Store captcha sessions in memory (in production, use Redis or database)
+const captchaSessions = new Map<string, { text: string; expiresAt: number }>();
+
+// Clean up expired captcha sessions every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [sessionId, session] of captchaSessions.entries()) {
+    if (session.expiresAt < now) {
+      captchaSessions.delete(sessionId);
+    }
+  }
+}, 5 * 60 * 1000);
 
 // Validation schemas
 const registerSchema = z.object({
@@ -28,6 +42,8 @@ const registerSchema = z.object({
     .number()
     .positive("Hourly rate must be a positive number")
     .optional(),
+  captchaId: z.string().min(1, "Captcha ID is required"),
+  captchaValue: z.string().min(1, "Captcha value is required"),
 });
 
 const loginSchema = z.object({
@@ -38,6 +54,56 @@ const loginSchema = z.object({
     .trim(),
   password: z.string().min(1, "Password is required"),
 });
+
+/**
+ * @swagger
+ * /auth/captcha:
+ *   get:
+ *     summary: Generate a new captcha challenge
+ *     tags: [Authentication]
+ *     responses:
+ *       200:
+ *         description: Captcha generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 captchaId:
+ *                   type: string
+ *                 captchaSvg:
+ *                   type: string
+ */
+router.get(
+  "/captcha",
+  asyncHandler(async (req: Request, res: Response) => {
+    // Generate captcha
+    const captcha = svgCaptcha.create({
+      size: 5, // 5 characters
+      noise: 2, // 2 noise lines
+      color: true, // colorful captcha
+      background: "#f8f9fa", // light background
+      fontSize: 50,
+      width: 150,
+      height: 60,
+    });
+
+    // Generate unique session ID
+    const captchaId =
+      Date.now().toString() + Math.random().toString(36).substr(2, 9);
+
+    // Store captcha with expiration (5 minutes)
+    captchaSessions.set(captchaId, {
+      text: captcha.text.toLowerCase(),
+      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+    });
+
+    res.json({
+      captchaId,
+      captchaSvg: captcha.data,
+    });
+  })
+);
 
 /**
  * @swagger
@@ -55,6 +121,8 @@ const loginSchema = z.object({
  *               - name
  *               - email
  *               - password
+ *               - captchaId
+ *               - captchaValue
  *             properties:
  *               name:
  *                 type: string
@@ -68,6 +136,12 @@ const loginSchema = z.object({
  *               defaultHourlyRate:
  *                 type: number
  *                 minimum: 0
+ *               captchaId:
+ *                 type: string
+ *                 description: Captcha session ID obtained from /auth/captcha
+ *               captchaValue:
+ *                 type: string
+ *                 description: User's answer to the captcha challenge
  *     responses:
  *       201:
  *         description: User registered successfully
@@ -88,14 +162,37 @@ const loginSchema = z.object({
  *                 token:
  *                   type: string
  *       400:
- *         description: Validation error or user already exists
+ *         description: Validation error, user already exists, or invalid captcha
  */
 router.post(
   "/register",
   asyncHandler(async (req: Request, res: Response) => {
-    const { name, email, password, defaultHourlyRate } = registerSchema.parse(
-      req.body
-    );
+    const {
+      name,
+      email,
+      password,
+      defaultHourlyRate,
+      captchaId,
+      captchaValue,
+    } = registerSchema.parse(req.body);
+
+    // Validate captcha
+    const captchaSession = captchaSessions.get(captchaId);
+    if (!captchaSession) {
+      throw createError("Invalid or expired captcha", 400);
+    }
+
+    if (captchaSession.expiresAt < Date.now()) {
+      captchaSessions.delete(captchaId);
+      throw createError("Captcha has expired", 400);
+    }
+
+    if (captchaSession.text !== captchaValue.toLowerCase().trim()) {
+      throw createError("Incorrect captcha value", 400);
+    }
+
+    // Remove used captcha session
+    captchaSessions.delete(captchaId);
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
