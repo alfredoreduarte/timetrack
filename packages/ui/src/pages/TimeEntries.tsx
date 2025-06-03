@@ -6,10 +6,13 @@ import {
   deleteTimeEntry,
   TimeEntry,
 } from "../store/slices/timeEntriesSlice";
+import { stopTimer } from "../store/slices/timerSlice";
 import { fetchProjects } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
+import { ClockIcon } from "@heroicons/react/24/outline";
+import { StopIcon } from "@heroicons/react/24/solid";
 
 const TimeEntries: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -40,7 +43,6 @@ const TimeEntries: React.FC = () => {
     if (selectedProject) params.projectId = selectedProject;
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
-    console.log("Applying filters:", params);
     dispatch(fetchTimeEntries(params));
   };
 
@@ -49,7 +51,6 @@ const TimeEntries: React.FC = () => {
     setSelectedProject("");
     setStartDate("");
     setEndDate("");
-    console.log("Clearing filters, fetching all entries");
     dispatch(fetchTimeEntries({}));
   };
 
@@ -73,6 +74,17 @@ const TimeEntries: React.FC = () => {
     }
   };
 
+  // Handle stop timer for running entries
+  const handleStopTimer = async (entryId: string) => {
+    try {
+      await dispatch(stopTimer(entryId)).unwrap();
+      // Refresh entries after stopping timer
+      dispatch(fetchTimeEntries({}));
+    } catch (error) {
+      console.error("Failed to stop timer:", error);
+    }
+  };
+
   // Load more entries (pagination)
   const loadMore = () => {
     if (!pagination) return;
@@ -85,18 +97,14 @@ const TimeEntries: React.FC = () => {
     dispatch(fetchTimeEntries(params));
   };
 
+  // Check if entry is currently running (no endTime)
+  const isRunningEntry = (entry: TimeEntry): boolean => {
+    return !entry.endTime;
+  };
+
   if (loading && safeEntries.length === 0) {
     return <LoadingSpinner />;
   }
-
-  // Add console log to debug state
-  console.log("TimeEntries state:", {
-    entries: safeEntries,
-    projects: safeProjects,
-    pagination,
-    entriesLength: safeEntries.length,
-    projectsLength: safeProjects.length,
-  });
 
   return (
     <div className="space-y-6">
@@ -208,61 +216,88 @@ const TimeEntries: React.FC = () => {
           </div>
         ) : (
           <div className="divide-y divide-gray-200">
-            {safeEntries.map((entry) => (
-              <div
-                key={entry.id}
-                className="p-6 hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3">
-                      {entry.project && (
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{
-                            backgroundColor: entry.project.color || "#6B7280",
-                          }}
-                        />
+            {safeEntries.map((entry) => {
+              const isRunning = isRunningEntry(entry);
+              return (
+                <div
+                  key={entry.id}
+                  className={`p-6 transition-colors ${
+                    isRunning
+                      ? "bg-green-50 hover:bg-green-100 border-l-4 border-green-500"
+                      : "hover:bg-gray-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3">
+                        {entry.project && (
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{
+                              backgroundColor: entry.project.color || "#6B7280",
+                            }}
+                          />
+                        )}
+                        <h4 className="text-lg font-medium text-gray-900">
+                          {entry.project?.name || "No Project"}
+                        </h4>
+                        {entry.task && (
+                          <span className="text-sm text-gray-500">
+                            • {entry.task.name}
+                          </span>
+                        )}
+                        {isRunning && (
+                          <div className="flex items-center space-x-2">
+                            <ClockIcon className="h-4 w-4 text-green-600 animate-pulse" />
+                            <span className="text-sm font-medium text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                              Running
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {entry.description && (
+                        <p className="text-gray-600 mt-1">
+                          {entry.description}
+                        </p>
                       )}
-                      <h4 className="text-lg font-medium text-gray-900">
-                        {entry.project?.name || "No Project"}
-                      </h4>
-                      {entry.task && (
-                        <span className="text-sm text-gray-500">
-                          • {entry.task.name}
-                        </span>
+                      <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
+                        <span>{formatDateTime(entry.startTime)}</span>
+                        {entry.endTime && (
+                          <>
+                            <span>→</span>
+                            <span>{formatDateTime(entry.endTime)}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-medium text-gray-900">
+                        {formatReportsDuration(entry.duration)}
+                      </div>
+                      <div className="text-sm text-green-600 font-medium">
+                        ${calculateEarnings(entry).toFixed(2)}
+                      </div>
+                      {isRunning ? (
+                        <button
+                          onClick={() => handleStopTimer(entry.id)}
+                          className="flex items-center gap-1 text-red-600 hover:text-red-700 text-sm mt-1 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+                        >
+                          <StopIcon className="h-4 w-4" />
+                          Stop
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleDeleteEntry(entry.id)}
+                          className="text-red-600 hover:text-red-700 text-sm mt-1 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+                        >
+                          Delete
+                        </button>
                       )}
                     </div>
-                    {entry.description && (
-                      <p className="text-gray-600 mt-1">{entry.description}</p>
-                    )}
-                    <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
-                      <span>{formatDateTime(entry.startTime)}</span>
-                      {entry.endTime && (
-                        <>
-                          <span>→</span>
-                          <span>{formatDateTime(entry.endTime)}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-medium text-gray-900">
-                      {formatReportsDuration(entry.duration)}
-                    </div>
-                    <div className="text-sm text-green-600 font-medium">
-                      ${calculateEarnings(entry).toFixed(2)}
-                    </div>
-                    <button
-                      onClick={() => handleDeleteEntry(entry.id)}
-                      className="text-red-600 hover:text-red-700 text-sm mt-1"
-                    >
-                      Delete
-                    </button>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

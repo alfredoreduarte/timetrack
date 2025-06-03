@@ -100,6 +100,8 @@ const Dashboard: React.FC = () => {
           description: entry.description || undefined,
         })
       ).unwrap();
+      // Refresh earnings data after starting timer
+      dispatch(fetchDashboardEarnings());
     } catch (error) {
       console.error("Failed to resume timer:", error);
     }
@@ -129,7 +131,7 @@ const Dashboard: React.FC = () => {
 
           {/* Current Timer Earnings */}
           {isRunning &&
-            earnings?.currentTimer?.hourlyRate &&
+            earnings?.currentTimer?.hourlyRate !== undefined &&
             earnings.currentTimer.hourlyRate > 0 && (
               <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                 <div className="flex items-center gap-2 mb-2">

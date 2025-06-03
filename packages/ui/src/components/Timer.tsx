@@ -11,12 +11,8 @@ import { fetchProjects } from "../store/slices/projectsSlice";
 import { fetchTasks } from "../store/slices/projectsSlice";
 import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
 import { fetchTimeEntries } from "../store/slices/timeEntriesSlice";
-import {
-  PlayIcon,
-  StopIcon,
-  ClockIcon,
-  ChevronDownIcon,
-} from "@heroicons/react/24/outline";
+import { ClockIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
+import { StopIcon, PlayIcon } from "@heroicons/react/24/solid";
 import ResumeLastTimer from "./ResumeLastTimer";
 
 interface TimerProps {
@@ -87,6 +83,11 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
       setDescription(currentEntry.description || "");
       // Sync timer with actual elapsed time when current entry changes
       dispatch(syncTimer());
+    } else {
+      // Clear local state when timer is stopped (currentEntry becomes null)
+      setSelectedProjectId("");
+      setSelectedTaskId("");
+      setDescription("");
     }
   }, [currentEntry, dispatch]);
 
@@ -129,7 +130,6 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
     if (currentEntry) {
       try {
         await dispatch(stopTimer(currentEntry.id)).unwrap();
-        setDescription("");
         // Refresh earnings data after stopping timer
         dispatch(fetchDashboardEarnings());
       } catch (error) {
@@ -141,14 +141,14 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
   // Handle form submission (for Enter key support)
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isRunning && !loading) {
+    if (!isRunning && !loading && selectedProjectId) {
       handleStartTimer();
     }
   };
 
   // Handle Enter key in form fields
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !isRunning && !loading) {
+    if (e.key === "Enter" && !isRunning && !loading && selectedProjectId) {
       e.preventDefault();
       handleStartTimer();
     }
@@ -266,7 +266,7 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
               onKeyDown={handleKeyDown}
               placeholder="What are you working on?"
               className="input-field"
-              disabled={isRunning}
+              disabled={isRunning || !selectedProjectId}
             />
           </div>
         </form>
@@ -284,8 +284,8 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
         {!isRunning ? (
           <button
             onClick={handleStartTimer}
-            disabled={loading}
-            className="btn-primary flex-1 flex items-center justify-center gap-2"
+            disabled={loading || !selectedProjectId}
+            className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             type="submit"
             form={!isRunning || showProjectSelector ? undefined : "timer-form"}
           >

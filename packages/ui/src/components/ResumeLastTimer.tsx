@@ -4,7 +4,8 @@ import { AppDispatch, RootState } from "../store";
 import { startTimer } from "../store/slices/timerSlice";
 import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
 import { fetchTimeEntries } from "../store/slices/timeEntriesSlice";
-import { PlayIcon, ClockIcon } from "@heroicons/react/24/outline";
+import { ClockIcon } from "@heroicons/react/24/outline";
+import { PlayIcon } from "@heroicons/react/24/solid";
 
 const ResumeLastTimer: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -31,12 +32,6 @@ const ResumeLastTimer: React.FC = () => {
   const completedEntries = Array.isArray(entries)
     ? entries.filter((entry) => entry.endTime && entry.projectId)
     : [];
-
-  console.log("ResumeLastTimer - completedEntries:", completedEntries);
-  console.log(
-    "ResumeLastTimer - completedEntries length:",
-    completedEntries.length
-  );
 
   const lastEntry = completedEntries[0]; // Most recent completed entry
 
@@ -94,11 +89,6 @@ const ResumeLastTimer: React.FC = () => {
       console.error("Failed to resume timer:", error);
     }
   };
-
-  console.log("ResumeLastTimer - lastEntry:", lastEntry);
-  console.log("ResumeLastTimer - lastProject:", lastProject);
-  console.log("ResumeLastTimer - isRunning:", isRunning);
-  console.log("ResumeLastTimer - loading:", loading);
 
   // Don't show the component if there's no last entry, no project, timer is running, or currently loading
   if (!lastEntry || !lastProject || isRunning || loading) {

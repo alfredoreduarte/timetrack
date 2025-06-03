@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { AppDispatch, RootState } from "../store";
 import { stopTimer, tick, syncTimer } from "../store/slices/timerSlice";
 import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
-import { PlayIcon, StopIcon, ClockIcon } from "@heroicons/react/24/outline";
+import { ClockIcon } from "@heroicons/react/24/outline";
+import { StopIcon, PlayIcon } from "@heroicons/react/24/solid";
 
 const TimerWidget: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
