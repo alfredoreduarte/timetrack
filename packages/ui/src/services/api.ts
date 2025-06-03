@@ -61,6 +61,13 @@ class APIClient {
 
   // Auth API
   auth = {
+    getCaptcha: async () => {
+      return this.request<{ captchaId: string; captchaSvg: string }>(
+        "GET",
+        "/auth/captcha"
+      );
+    },
+
     login: async (credentials: { email: string; password: string }) => {
       return this.request<{ user: User; token: string }>(
         "POST",
@@ -73,6 +80,8 @@ class APIClient {
       email: string;
       password: string;
       name: string;
+      captchaId: string;
+      captchaValue: string;
     }) => {
       return this.request<{ user: User; token: string }>(
         "POST",

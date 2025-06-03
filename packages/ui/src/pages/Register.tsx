@@ -4,12 +4,15 @@ import { Link, useNavigate } from "react-router-dom";
 import { AppDispatch, RootState } from "../store";
 import { registerUser, clearError } from "../store/slices/authSlice";
 import toast from "react-hot-toast";
+import Captcha from "../components/Captcha";
 
 const Register: React.FC = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [captchaId, setCaptchaId] = useState("");
+  const [captchaValue, setCaptchaValue] = useState("");
   const [validationErrors, setValidationErrors] = useState<{
     [key: string]: string;
   }>({});
@@ -52,8 +55,23 @@ const Register: React.FC = () => {
       errors.confirmPassword = "Passwords do not match";
     }
 
+    // Captcha validation
+    if (!captchaId) {
+      errors.captcha = "Captcha is required";
+    } else if (!captchaValue.trim()) {
+      errors.captcha = "Please enter the captcha characters";
+    }
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
+  };
+
+  const handleCaptchaChange = (id: string, value: string) => {
+    setCaptchaId(id);
+    setCaptchaValue(value);
+    if (validationErrors.captcha) {
+      setValidationErrors((prev) => ({ ...prev, captcha: "" }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,7 +80,6 @@ const Register: React.FC = () => {
     // Clear previous validation errors
     setValidationErrors({});
 
-    // Client-side validation
     if (!validateForm()) {
       return;
     }
@@ -73,6 +90,8 @@ const Register: React.FC = () => {
           name: name.trim(),
           email: email.trim().toLowerCase(),
           password,
+          captchaId,
+          captchaValue: captchaValue.trim(),
         })
       ).unwrap();
       toast.success("Registration successful! Welcome to TimeTrack!");
@@ -244,6 +263,11 @@ const Register: React.FC = () => {
                 </p>
               )}
             </div>
+
+            <Captcha
+              onCaptchaChange={handleCaptchaChange}
+              error={getFieldError("captcha") ?? undefined}
+            />
           </div>
 
           {error && (
