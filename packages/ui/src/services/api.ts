@@ -300,25 +300,26 @@ class APIClient {
 
       const url = `/reports/summary?${queryParams.toString()}`;
       return this.request<{
-        totalDuration: number;
-        totalEarnings: number;
-        projects: Array<{
-          projectId: string;
-          projectName: string;
-          duration: number;
-          earnings: number;
-          tasks: Array<{
-            taskId: string;
-            taskName: string;
-            duration: number;
-            earnings: number;
+        summary: {
+          totalDuration: number;
+          totalEarnings: number;
+          entryCount: number;
+          averageSessionDuration: number;
+          projectBreakdown: Array<{
+            projectId: string;
+            projectName: string;
+            color: string;
+            totalDuration: number;
+            totalEarnings: number;
+            entryCount: number;
           }>;
-        }>;
-        dailyBreakdown: Array<{
-          date: string;
-          duration: number;
-          earnings: number;
-        }>;
+          dailyBreakdown: Array<{
+            date: string;
+            totalDuration: number;
+            totalEarnings: number;
+            entryCount: number;
+          }>;
+        };
       }>("GET", url);
     },
   };

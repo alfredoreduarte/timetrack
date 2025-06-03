@@ -9,6 +9,7 @@ import {
 import { fetchProjects } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
 import LoadingSpinner from "../components/LoadingSpinner";
+import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 
 const TimeEntries: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -17,25 +18,21 @@ const TimeEntries: React.FC = () => {
   );
   const { projects } = useSelector((state: RootState) => state.projects);
 
-  // Safe access with defaults to handle undefined state
+  // Local state for filters
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedProject, setSelectedProject] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  // Safe defaults to prevent undefined errors
   const safeEntries = entries || [];
   const safeProjects = projects || [];
 
-  // Local state for filters
-  const [selectedProject, setSelectedProject] = useState<string>("");
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
-  const [showFilters, setShowFilters] = useState(false);
-
-  // Load data on component mount
+  // Load initial data
   useEffect(() => {
-    console.log("TimeEntries useEffect triggered - fetching data");
     dispatch(fetchTimeEntries({}));
-    if (safeProjects.length === 0) {
-      console.log("Fetching projects...");
-      dispatch(fetchProjects());
-    }
-  }, [dispatch, safeProjects.length]);
+    dispatch(fetchProjects());
+  }, [dispatch]);
 
   // Apply filters
   const applyFilters = () => {
@@ -43,35 +40,17 @@ const TimeEntries: React.FC = () => {
     if (selectedProject) params.projectId = selectedProject;
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
-
     console.log("Applying filters:", params);
     dispatch(fetchTimeEntries(params));
   };
 
-  // Clear filters
+  // Clear all filters
   const clearFilters = () => {
     setSelectedProject("");
     setStartDate("");
     setEndDate("");
     console.log("Clearing filters, fetching all entries");
     dispatch(fetchTimeEntries({}));
-  };
-
-  // Format duration from seconds to readable string
-  const formatDuration = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    return `${hours}h ${minutes}m`;
-  };
-
-  // Format date and time
-  const formatDateTime = (dateString: string): string => {
-    const date = new Date(dateString);
-    return (
-      date.toLocaleDateString("en-US") +
-      " " +
-      date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
-    );
   };
 
   // Calculate earnings for an entry
@@ -258,51 +237,28 @@ const TimeEntries: React.FC = () => {
                       <p className="text-gray-600 mt-1">{entry.description}</p>
                     )}
                     <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
-                      <span>Started: {formatDateTime(entry.startTime)}</span>
+                      <span>{formatDateTime(entry.startTime)}</span>
                       {entry.endTime && (
-                        <span>Ended: {formatDateTime(entry.endTime)}</span>
+                        <>
+                          <span>→</span>
+                          <span>{formatDateTime(entry.endTime)}</span>
+                        </>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                      <div className="text-lg font-semibold text-gray-900">
-                        {formatDuration(entry.duration)}
-                      </div>
-                      {(() => {
-                        const fullProject = safeProjects.find(
-                          (p) => p.id === entry.projectId
-                        );
-                        return (
-                          fullProject?.hourlyRate && (
-                            <div className="text-sm text-green-600">
-                              ${calculateEarnings(entry).toFixed(2)}
-                            </div>
-                          )
-                        );
-                      })()}
+                  <div className="text-right">
+                    <div className="text-lg font-medium text-gray-900">
+                      {formatReportsDuration(entry.duration)}
                     </div>
-                    {entry.endTime && (
-                      <button
-                        onClick={() => handleDeleteEntry(entry.id)}
-                        className="text-red-600 hover:text-red-800 transition-colors"
-                        title="Delete entry"
-                      >
-                        <svg
-                          className="w-5 h-5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          />
-                        </svg>
-                      </button>
-                    )}
+                    <div className="text-sm text-green-600 font-medium">
+                      ${calculateEarnings(entry).toFixed(2)}
+                    </div>
+                    <button
+                      onClick={() => handleDeleteEntry(entry.id)}
+                      className="text-red-600 hover:text-red-700 text-sm mt-1"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
               </div>
@@ -311,15 +267,24 @@ const TimeEntries: React.FC = () => {
         )}
 
         {/* Pagination */}
-        {pagination && pagination.pages > pagination.page && (
+        {pagination && pagination.pages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200">
-            <button
-              onClick={loadMore}
-              disabled={loading}
-              className="w-full btn-secondary"
-            >
-              {loading ? "Loading..." : "Load More"}
-            </button>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-700">
+                Showing {(pagination.page - 1) * pagination.limit + 1} to{" "}
+                {Math.min(pagination.page * pagination.limit, pagination.total)}{" "}
+                of {pagination.total} entries
+              </p>
+              {pagination.page < pagination.pages && (
+                <button
+                  onClick={loadMore}
+                  disabled={loading}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  {loading ? "Loading..." : "Load More"}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
