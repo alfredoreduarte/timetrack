@@ -5,8 +5,13 @@ import {
   fetchDashboardEarnings,
   updateCurrentTimerEarnings,
 } from "../store/slices/dashboardSlice";
+import { fetchTimeEntries, TimeEntry } from "../store/slices/timeEntriesSlice";
+import { fetchProjects } from "../store/slices/projectsSlice";
+import { startTimer } from "../store/slices/timerSlice";
 import Timer from "../components/Timer";
 import { CurrencyDollarIcon, ClockIcon } from "@heroicons/react/24/outline";
+import { PlayIcon } from "@heroicons/react/24/solid";
+import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 
 const Dashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -16,6 +21,10 @@ const Dashboard: React.FC = () => {
   const { isRunning, elapsedTime, currentEntry } = useSelector(
     (state: RootState) => state.timer
   );
+  const { entries: timeEntries } = useSelector(
+    (state: RootState) => state.timeEntries
+  );
+  const { projects } = useSelector((state: RootState) => state.projects);
 
   // Format currency
   const formatCurrency = (amount: number): string => {
@@ -45,6 +54,8 @@ const Dashboard: React.FC = () => {
   // Fetch earnings data on component mount
   useEffect(() => {
     dispatch(fetchDashboardEarnings());
+    dispatch(fetchTimeEntries({ limit: 5 })); // Fetch recent entries for the section
+    dispatch(fetchProjects()); // Fetch projects for the recent entries
   }, [dispatch]);
 
   // Update current timer earnings in real-time
@@ -75,6 +86,31 @@ const Dashboard: React.FC = () => {
   const getCurrentTimerEarnings = (): number => {
     if (!isRunning || !earnings?.currentTimer?.hourlyRate) return 0;
     return (earnings.currentTimer.hourlyRate * elapsedTime) / 3600;
+  };
+
+  // Handle resume timer from entry
+  const handleResumeTimer = async (entry: TimeEntry) => {
+    if (isRunning) return; // Prevent starting if already running
+
+    try {
+      await dispatch(
+        startTimer({
+          projectId: entry.projectId,
+          taskId: entry.taskId || undefined,
+          description: entry.description || undefined,
+        })
+      ).unwrap();
+    } catch (error) {
+      console.error("Failed to resume timer:", error);
+    }
+  };
+
+  // Calculate earnings for an entry
+  const calculateEarnings = (entry: TimeEntry): number => {
+    const project = projects.find((p: any) => p.id === entry.projectId);
+    const hourlyRate = project?.hourlyRate || 0;
+    const hours = entry.duration / 3600;
+    return hours * hourlyRate;
   };
 
   return (
@@ -145,23 +181,78 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
-            Recent Projects
-          </h3>
-          <div className="text-gray-500 text-center py-8">
-            No projects yet. Create your first project to get started.
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
         <div className="card p-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">
             Recent Time Entries
           </h3>
-          <div className="text-gray-500 text-center py-8">
-            No time entries yet. Start tracking time to see your entries here.
-          </div>
+          {loading || !timeEntries || timeEntries.length === 0 ? (
+            <div className="text-gray-500 text-center py-8">
+              {loading
+                ? "Loading recent entries..."
+                : "No time entries yet. Start tracking time to see your entries here."}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {timeEntries.slice(0, 5).map((entry: TimeEntry) => {
+                const project = projects.find(
+                  (p: any) => p.id === entry.projectId
+                );
+                const entryEarnings = calculateEarnings(entry);
+
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-3">
+                        {project && (
+                          <div
+                            className="w-3 h-3 rounded-full flex-shrink-0"
+                            style={{
+                              backgroundColor: project.color || "#6B7280",
+                            }}
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-sm font-medium text-gray-900 truncate">
+                            {project?.name || "No Project"}
+                          </h4>
+                          {entry.description && (
+                            <p className="text-xs text-gray-500 truncate mt-1">
+                              {entry.description}
+                            </p>
+                          )}
+                          <div className="flex items-center space-x-2 mt-1 text-xs text-gray-400">
+                            <span>{formatDateTime(entry.startTime)}</span>
+                            <span>•</span>
+                            <span>{formatReportsDuration(entry.duration)}</span>
+                            {entryEarnings > 0 && (
+                              <>
+                                <span>•</span>
+                                <span className="text-green-600 font-medium">
+                                  ${entryEarnings.toFixed(2)}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleResumeTimer(entry)}
+                      disabled={isRunning}
+                      className="ml-3 p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Resume this timer"
+                    >
+                      <PlayIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
