@@ -10,12 +10,14 @@ import {
 import { fetchProjects } from "../store/slices/projectsSlice";
 import { fetchTasks } from "../store/slices/projectsSlice";
 import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
+import { fetchTimeEntries } from "../store/slices/timeEntriesSlice";
 import {
   PlayIcon,
   StopIcon,
   ClockIcon,
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
+import ResumeLastTimer from "./ResumeLastTimer";
 
 interface TimerProps {
   className?: string;
@@ -66,6 +68,7 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
   // Load initial data
   useEffect(() => {
     dispatch(fetchProjects());
+    dispatch(fetchTimeEntries({ limit: 10 })); // Load recent entries for ResumeLastTimer
     // fetchCurrentEntry is now handled at the app level to avoid race conditions
   }, [dispatch]);
 
@@ -311,21 +314,8 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
         )}
       </div>
 
-      {/* Project requirement notice */}
-      {!selectedProjectId && !isRunning && (
-        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="flex items-start gap-2">
-            <ClockIcon className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-blue-700">
-              <p className="font-medium">Project Required</p>
-              <p>
-                All time tracking must be associated with a project. Please
-                select a project to start timing.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Resume Last Timer Component */}
+      <ResumeLastTimer />
     </div>
   );
 };
