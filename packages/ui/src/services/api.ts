@@ -346,6 +346,42 @@ class APIClient {
         };
       }>("GET", url);
     },
+
+    getDetailedReport: async (params: {
+      startDate: string;
+      endDate: string;
+      projectId?: string;
+      taskId?: string;
+    }) => {
+      const queryParams = new URLSearchParams();
+      queryParams.append("startDate", params.startDate);
+      queryParams.append("endDate", params.endDate);
+      if (params.projectId) queryParams.append("projectId", params.projectId);
+      if (params.taskId) queryParams.append("taskId", params.taskId);
+
+      const url = `/reports/detailed?${queryParams.toString()}`;
+      return this.request<{
+        timeEntries: Array<{
+          id: string;
+          description: string | null;
+          startTime: string;
+          endTime: string;
+          duration: number;
+          hourlyRateSnapshot: number | null;
+          earnings: number;
+          project: {
+            id: string;
+            name: string;
+            color: string;
+          } | null;
+          task: {
+            id: string;
+            name: string;
+          } | null;
+        }>;
+        totalEntries: number;
+      }>("GET", url);
+    },
   };
 
   // Health check

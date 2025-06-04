@@ -1,24 +1,35 @@
 import React, { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState, AppDispatch } from "../store";
-import { fetchWeeklyData } from "../store/slices/reportsSlice";
+import {
+  fetchWeeklyData,
+  fetchDetailedTimeEntries,
+} from "../store/slices/reportsSlice";
 import WeeklyChart from "../components/WeeklyChart";
+import DetailedTimeEntriesTable from "../components/DetailedTimeEntriesTable";
 
 const Reports: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { weeklyData, loading, error, currentWeekOffset } = useSelector(
-    (state: RootState) => state.reports
-  );
+  const {
+    weeklyData,
+    detailedEntries,
+    loading,
+    detailedLoading,
+    error,
+    currentWeekOffset,
+  } = useSelector((state: RootState) => state.reports);
 
   // Load current week data on component mount
   useEffect(() => {
     dispatch(fetchWeeklyData(0));
+    dispatch(fetchDetailedTimeEntries(0));
   }, [dispatch]);
 
   // Navigation handlers
   const handlePreviousWeek = () => {
     const newOffset = currentWeekOffset - 1;
     dispatch(fetchWeeklyData(newOffset));
+    dispatch(fetchDetailedTimeEntries(newOffset));
   };
 
   const handleNextWeek = () => {
@@ -26,6 +37,7 @@ const Reports: React.FC = () => {
     if (currentWeekOffset < 0) {
       const newOffset = currentWeekOffset + 1;
       dispatch(fetchWeeklyData(newOffset));
+      dispatch(fetchDetailedTimeEntries(newOffset));
     }
   };
 
@@ -75,6 +87,12 @@ const Reports: React.FC = () => {
           onNextWeek={handleNextWeek}
         />
       )}
+
+      {/* Detailed Time Entries Table */}
+      <DetailedTimeEntriesTable
+        entries={detailedEntries}
+        loading={detailedLoading}
+      />
 
       {/* Show loading state when no data yet */}
       {!weeklyData && loading && (

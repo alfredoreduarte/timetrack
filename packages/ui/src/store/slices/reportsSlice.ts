@@ -14,16 +14,39 @@ export interface WeeklyChartData {
   weekEndDate: string;
 }
 
+export interface DetailedTimeEntry {
+  id: string;
+  description: string | null;
+  startTime: string;
+  endTime: string;
+  duration: number;
+  hourlyRateSnapshot: number | null;
+  earnings: number;
+  project: {
+    id: string;
+    name: string;
+    color: string;
+  } | null;
+  task: {
+    id: string;
+    name: string;
+  } | null;
+}
+
 interface ReportsState {
   weeklyData: WeeklyChartData | null;
+  detailedEntries: DetailedTimeEntry[];
   loading: boolean;
+  detailedLoading: boolean;
   error: string | null;
   currentWeekOffset: number; // 0 = current week, -1 = previous week, etc.
 }
 
 const initialState: ReportsState = {
   weeklyData: null,
+  detailedEntries: [],
   loading: false,
+  detailedLoading: false,
   error: null,
   currentWeekOffset: 0,
 };
@@ -94,6 +117,21 @@ export const fetchWeeklyData = createAsyncThunk(
   }
 );
 
+// Async thunk to fetch detailed time entries
+export const fetchDetailedTimeEntries = createAsyncThunk(
+  "reports/fetchDetailedTimeEntries",
+  async (weekOffset: number = 0) => {
+    const { startDate, endDate } = getWeekDates(weekOffset);
+
+    const response = await reportsAPI.getDetailedReport({
+      startDate,
+      endDate,
+    });
+
+    return response.timeEntries;
+  }
+);
+
 const reportsSlice = createSlice({
   name: "reports",
   initialState,
@@ -119,6 +157,19 @@ const reportsSlice = createSlice({
       .addCase(fetchWeeklyData.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || "Failed to fetch weekly data";
+      })
+      .addCase(fetchDetailedTimeEntries.pending, (state) => {
+        state.detailedLoading = true;
+        state.error = null;
+      })
+      .addCase(fetchDetailedTimeEntries.fulfilled, (state, action) => {
+        state.detailedLoading = false;
+        state.detailedEntries = action.payload;
+      })
+      .addCase(fetchDetailedTimeEntries.rejected, (state, action) => {
+        state.detailedLoading = false;
+        state.error =
+          action.error.message || "Failed to fetch detailed entries";
       });
   },
 });
