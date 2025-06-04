@@ -9,13 +9,11 @@ import {
   ChartBarIcon,
   CogIcon,
   WrenchScrewdriverIcon,
-  CheckCircleIcon,
 } from "@heroicons/react/24/outline";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: HomeIcon },
   { name: "Projects", href: "/projects", icon: FolderIcon },
-  { name: "Tasks", href: "/tasks", icon: CheckCircleIcon },
   { name: "Time Entries", href: "/time-entries", icon: ClockIcon },
   { name: "Reports", href: "/reports", icon: ChartBarIcon },
   { name: "Settings", href: "/settings", icon: CogIcon },
