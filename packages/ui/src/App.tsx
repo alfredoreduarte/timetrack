@@ -3,13 +3,9 @@ import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState, AppDispatch } from "./store";
 import { getCurrentUser } from "./store/slices/authSlice";
-import {
-  startTimer,
-  stopTimer,
-  syncTimer,
-  fetchCurrentEntry,
-} from "./store/slices/timerSlice";
+import { useTimer } from "./hooks/useTimer";
 import { fetchProjects } from "./store/slices/projectsSlice";
+import { fetchCurrentEntry, syncTimer } from "./store/slices/timerSlice";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -64,10 +60,10 @@ const ElectronEventHandler: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
   const { isAuthenticated } = useSelector((state: RootState) => state.auth);
-  const { isRunning, currentEntry } = useSelector(
-    (state: RootState) => state.timer
-  );
   const { projects } = useSelector((state: RootState) => state.projects);
+
+  // Use centralized timer hook
+  const { isRunning, currentEntry, startTimer, stopTimer } = useTimer();
 
   useEffect(() => {
     // Setup Electron IPC listeners
@@ -91,14 +87,12 @@ const ElectronEventHandler: React.FC = () => {
         const activeProjects = projects.filter((p) => p.isActive);
         if (activeProjects.length > 0) {
           try {
-            await dispatch(
-              startTimer({
-                projectId: activeProjects[0].id,
-                description: "Started from system menu",
-              })
-            ).unwrap();
+            await startTimer({
+              projectId: activeProjects[0].id,
+              description: "Started from system menu",
+            });
           } catch (error) {
-            console.error("Failed to start timer from Electron:", error);
+            // Error is already logged in the hook
           }
         }
         // No projects available, just navigate to dashboard
@@ -109,9 +103,9 @@ const ElectronEventHandler: React.FC = () => {
         // Handle stop timer from system tray or menu
         if (isRunning && currentEntry) {
           try {
-            await dispatch(stopTimer(currentEntry.id)).unwrap();
+            await stopTimer();
           } catch (error) {
-            console.error("Failed to stop timer from Electron:", error);
+            // Error is already logged in the hook
           }
         }
       };
@@ -134,7 +128,16 @@ const ElectronEventHandler: React.FC = () => {
         }
       };
     }
-  }, [dispatch, navigate, isAuthenticated, isRunning, currentEntry, projects]);
+  }, [
+    dispatch,
+    navigate,
+    isAuthenticated,
+    isRunning,
+    currentEntry,
+    projects,
+    startTimer,
+    stopTimer,
+  ]);
 
   return null; // This component doesn't render anything
 };

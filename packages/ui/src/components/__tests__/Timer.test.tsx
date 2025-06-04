@@ -200,6 +200,79 @@ describe("Timer Component", () => {
         ).toBeInTheDocument();
       });
     });
+
+    it("should start timer when Enter key is pressed in any form field", async () => {
+      const user = userEvent.setup();
+      const store = createMockStore();
+      renderWithProviders(<Timer />, { store });
+
+      await waitFor(() => {
+        expect(screen.getByText("Test Project 1")).toBeInTheDocument();
+      });
+
+      // Select project
+      const projectSelect = screen.getByLabelText(/project \*/i);
+      await user.selectOptions(projectSelect, "project-1");
+
+      // Press Enter in description field to start timer
+      const descriptionInput = screen.getByPlaceholderText(
+        /what are you working on/i
+      );
+      await user.type(descriptionInput, "Working on feature X");
+      await user.keyboard("{Enter}");
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: /stop timer/i })
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("should start timer when Enter key is pressed in project selector", async () => {
+      const user = userEvent.setup();
+      const store = createMockStore();
+      renderWithProviders(<Timer />, { store });
+
+      await waitFor(() => {
+        expect(screen.getByText("Test Project 1")).toBeInTheDocument();
+      });
+
+      // Select project and press Enter
+      const projectSelect = screen.getByLabelText(/project \*/i);
+      await user.selectOptions(projectSelect, "project-1");
+      await user.keyboard("{Enter}");
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: /stop timer/i })
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("should not start timer on Enter when no project is selected", async () => {
+      const user = userEvent.setup();
+      const store = createMockStore();
+      renderWithProviders(<Timer />, { store });
+
+      await waitFor(() => {
+        expect(screen.getByText("Test Project 1")).toBeInTheDocument();
+      });
+
+      // Try to press Enter in description field without selecting project
+      const descriptionInput = screen.getByPlaceholderText(
+        /what are you working on/i
+      );
+      await user.type(descriptionInput, "Working on feature X");
+      await user.keyboard("{Enter}");
+
+      // Should not start timer - start button should still be visible
+      expect(
+        screen.getByRole("button", { name: /start timer/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /stop timer/i })
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe("Timer Running State", () => {
