@@ -109,6 +109,11 @@ class APIClient {
     },
 
     getDashboardEarnings: async () => {
+      // Use shared timezone utility
+      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const queryParams = new URLSearchParams();
+      queryParams.append("timezone", userTimezone);
+
       return this.request<{
         earnings: {
           currentTimer: {
@@ -126,7 +131,7 @@ class APIClient {
             duration: number;
           };
         };
-      }>("GET", "/users/dashboard-earnings");
+      }>("GET", `/users/dashboard-earnings?${queryParams.toString()}`);
     },
 
     logout: async () => {

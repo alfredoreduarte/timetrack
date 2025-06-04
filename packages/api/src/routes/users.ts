@@ -10,6 +10,59 @@ const router = express.Router();
 // Apply authentication to all routes
 router.use(authenticate);
 
+// Helper function to validate timezone
+function isValidTimezone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: timezone });
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Helper function to get start of day in a specific timezone
+function getStartOfDayInTimezone(timezone: string): Date {
+  const now = new Date();
+
+  // Create a date object representing "now" in the user's timezone
+  const nowInTimezone = new Date(now.toLocaleString("en-US", { timeZone: timezone }));
+
+  // Get the current UTC time
+  const nowUTC = new Date(now.toISOString());
+
+  // Calculate the timezone offset
+  const timezoneOffset = nowUTC.getTime() - nowInTimezone.getTime();
+
+  // Create start of day in the user's timezone
+  const startOfDayLocal = new Date(nowInTimezone);
+  startOfDayLocal.setHours(0, 0, 0, 0);
+
+  // Convert back to UTC for database queries
+  return new Date(startOfDayLocal.getTime() + timezoneOffset);
+}
+
+// Helper function to get start of week in a specific timezone
+function getStartOfWeekInTimezone(timezone: string): Date {
+  const now = new Date();
+
+  // Create a date object representing "now" in the user's timezone
+  const nowInTimezone = new Date(now.toLocaleString("en-US", { timeZone: timezone }));
+
+  // Get the current UTC time
+  const nowUTC = new Date(now.toISOString());
+
+  // Calculate the timezone offset
+  const timezoneOffset = nowUTC.getTime() - nowInTimezone.getTime();
+
+  // Create start of week in the user's timezone (Sunday = 0)
+  const startOfWeekLocal = new Date(nowInTimezone);
+  startOfWeekLocal.setDate(nowInTimezone.getDate() - nowInTimezone.getDay());
+  startOfWeekLocal.setHours(0, 0, 0, 0);
+
+  // Convert back to UTC for database queries
+  return new Date(startOfWeekLocal.getTime() + timezoneOffset);
+}
+
 // Validation schemas
 const updateProfileSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").optional(),
@@ -166,6 +219,13 @@ router.post(
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: timezone
+ *         schema:
+ *           type: string
+ *         description: User's timezone (e.g., 'America/New_York', 'Europe/London'). Defaults to UTC.
+ *         example: America/New_York
  *     responses:
  *       200:
  *         description: User statistics retrieved successfully
@@ -174,6 +234,17 @@ router.get(
   "/stats",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
+    const timezone = (req.query.timezone as string) || "UTC";
+
+    // Validate timezone
+    let userTimezone = "UTC";
+    if (timezone && isValidTimezone(timezone)) {
+      userTimezone = timezone;
+    } else if (timezone) {
+      console.warn(
+        `Invalid timezone provided: ${timezone}, falling back to UTC`
+      );
+    }
 
     // Get various statistics
     const [
@@ -232,10 +303,8 @@ router.get(
 
     const totalTimeTracked = totalTimeResult._sum.duration || 0;
 
-    // Get time tracked this week
-    const startOfWeek = new Date();
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
+    // Get time tracked this week in user's timezone
+    const startOfWeek = getStartOfWeekInTimezone(userTimezone);
 
     const thisWeekTimeResult = await prisma.timeEntry.aggregate({
       where: {
@@ -275,6 +344,13 @@ router.get(
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: timezone
+ *         schema:
+ *           type: string
+ *         description: User's timezone (e.g., 'America/New_York', 'Europe/London'). Defaults to UTC.
+ *         example: America/New_York
  *     responses:
  *       200:
  *         description: Dashboard earnings retrieved successfully
@@ -283,6 +359,17 @@ router.get(
   "/dashboard-earnings",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
+    const timezone = (req.query.timezone as string) || "UTC";
+
+    // Validate timezone
+    let userTimezone = "UTC";
+    if (timezone && isValidTimezone(timezone)) {
+      userTimezone = timezone;
+    } else if (timezone) {
+      console.warn(
+        `Invalid timezone provided: ${timezone}, falling back to UTC`
+      );
+    }
 
     // Get current running timer
     const runningEntry = await prisma.timeEntry.findFirst({
@@ -317,9 +404,8 @@ router.get(
       currentTimerEarnings = (hourlyRate * currentTimerDuration) / 3600; // convert seconds to hours
     }
 
-    // Get today's earnings (start of day to now)
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    // Get today's earnings (start of day to now in user's timezone)
+    const startOfToday = getStartOfDayInTimezone(userTimezone);
 
     const todayTimeEntries = await prisma.timeEntry.findMany({
       where: {
@@ -349,10 +435,8 @@ router.get(
       0
     );
 
-    // Get this week's earnings (start of week to now)
-    const startOfWeek = new Date();
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
+    // Get this week's earnings (start of week to now in user's timezone)
+    const startOfWeek = getStartOfWeekInTimezone(userTimezone);
 
     const thisWeekTimeEntries = await prisma.timeEntry.findMany({
       where: {
