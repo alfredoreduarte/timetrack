@@ -180,13 +180,24 @@ class APIClient {
 
   // Tasks API (updated to match your API structure)
   tasks = {
-    getTasks: async (projectId?: string) => {
-      const params = projectId ? `?projectId=${projectId}` : "";
-      return this.request<Task[]>("GET", `/tasks${params}`);
+    getTasks: async (projectId?: string, isCompleted?: boolean) => {
+      const params = new URLSearchParams();
+      if (projectId) params.append("projectId", projectId);
+      if (isCompleted !== undefined)
+        params.append("isCompleted", isCompleted.toString());
+
+      const queryString = params.toString();
+      const url = `/tasks${queryString ? `?${queryString}` : ""}`;
+      const response = await this.request<{ tasks: Task[] }>("GET", url);
+      return response.tasks;
     },
 
     getTask: async (id: string) => {
-      return this.request<Task>("GET", `/tasks/${id}`);
+      const response = await this.request<{ task: Task }>(
+        "GET",
+        `/tasks/${id}`
+      );
+      return response.task;
     },
 
     createTask: async (taskData: {
@@ -195,15 +206,23 @@ class APIClient {
       projectId: string;
       hourlyRate?: number;
     }) => {
-      return this.request<Task>("POST", "/tasks", taskData);
+      const response = await this.request<{
+        message: string;
+        task: Task;
+      }>("POST", "/tasks", taskData);
+      return response.task;
     },
 
     updateTask: async (id: string, taskData: Partial<Task>) => {
-      return this.request<Task>("PUT", `/tasks/${id}`, taskData);
+      const response = await this.request<{
+        message: string;
+        task: Task;
+      }>("PUT", `/tasks/${id}`, taskData);
+      return response.task;
     },
 
     deleteTask: async (id: string) => {
-      return this.request<void>("DELETE", `/tasks/${id}`);
+      return this.request<{ message: string }>("DELETE", `/tasks/${id}`);
     },
   };
 

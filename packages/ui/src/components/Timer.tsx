@@ -45,7 +45,7 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
   // Load tasks when project is selected
   useEffect(() => {
     if (selectedProjectId) {
-      dispatch(fetchTasks(selectedProjectId));
+      dispatch(fetchTasks({ projectId: selectedProjectId }));
     }
   }, [selectedProjectId, dispatch]);
 
@@ -108,9 +108,10 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
   const selectedProject = Array.isArray(projects)
     ? projects.find((p) => p.id === selectedProjectId)
     : undefined;
-  const availableTasks = Array.isArray(tasks)
-    ? tasks.filter((t) => t.projectId === selectedProjectId)
-    : [];
+
+  // Since we fetch tasks with a specific projectId, all tasks in the store
+  // should already be for the selected project, no need to filter again
+  const availableTasks = Array.isArray(tasks) ? tasks : [];
 
   return (
     <div className={`${className}`}>

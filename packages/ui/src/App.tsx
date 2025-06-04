@@ -11,6 +11,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/Projects";
+import Tasks from "./pages/Tasks";
 import TimeEntries from "./pages/TimeEntries";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
@@ -227,6 +228,7 @@ function AppContent() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="projects" element={<Projects />} />
+          <Route path="tasks" element={<Tasks />} />
           <Route path="time-entries" element={<TimeEntries />} />
           <Route path="reports" element={<Reports />} />
           <Route path="settings" element={<Settings />} />

@@ -401,28 +401,33 @@ Authorization: Bearer <your-jwt-token>
 - **Headers:** `Authorization: Bearer <token>`
 - **Query Parameters:**
   - `projectId` (optional): Filter by project ID
-  - `isCompleted` (optional): Filter by completion status
+  - `isCompleted` (optional): Filter by completion status (true/false)
 - **Example Request:** `GET /api/tasks?projectId=770e8400-e29b-41d4-a716-446655440002&isCompleted=false`
 - **Success Response (200):**
   ```json
-  [
-    {
-      "id": "990e8400-e29b-41d4-a716-446655440004",
-      "name": "Homepage Layout",
-      "description": "Design and implement the new homepage layout",
-      "projectId": "770e8400-e29b-41d4-a716-446655440002",
-      "userId": "550e8400-e29b-41d4-a716-446655440000",
-      "hourlyRate": 90.0,
-      "isCompleted": false,
-      "createdAt": "2024-01-15T12:00:00.000Z",
-      "updatedAt": "2024-01-15T12:00:00.000Z",
-      "project": {
-        "id": "770e8400-e29b-41d4-a716-446655440002",
-        "name": "Website Redesign",
-        "color": "#3B82F6"
+  {
+    "tasks": [
+      {
+        "id": "990e8400-e29b-41d4-a716-446655440004",
+        "name": "Homepage Layout",
+        "description": "Design and implement the new homepage layout",
+        "projectId": "770e8400-e29b-41d4-a716-446655440002",
+        "userId": "550e8400-e29b-41d4-a716-446655440000",
+        "hourlyRate": 90.0,
+        "isCompleted": false,
+        "createdAt": "2024-01-15T12:00:00.000Z",
+        "updatedAt": "2024-01-15T12:00:00.000Z",
+        "project": {
+          "id": "770e8400-e29b-41d4-a716-446655440002",
+          "name": "Website Redesign",
+          "color": "#3B82F6"
+        },
+        "_count": {
+          "timeEntries": 5
+        }
       }
-    }
-  ]
+    ]
+  }
   ```
 
 ### Get Task by ID
@@ -1039,7 +1044,14 @@ interface Task {
   isCompleted: boolean; // Whether task is completed
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
-  project?: Project; // Populated project data
+  project?: {                    // Populated project data (when included)
+    id: string;
+    name: string;
+    color?: string;
+  };
+  _count?: {                     // Count of related records (when included)
+    timeEntries: number;
+  };
 }
 ```
 
