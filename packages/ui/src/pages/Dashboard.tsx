@@ -29,7 +29,6 @@ const Dashboard: React.FC = () => {
 
   // Safe defaults to prevent undefined errors
   const safeTimeEntries = Array.isArray(timeEntries) ? timeEntries : [];
-  const safeProjects = Array.isArray(projects) ? projects : [];
 
   // Fetch earnings data on component mount
   useEffect(() => {
@@ -211,11 +210,22 @@ const Dashboard: React.FC = () => {
                         <h4 className="font-medium text-gray-900">
                           {project?.name || "No Project"}
                         </h4>
+                        {entry.task && (
+                          <p className="text-sm text-gray-500">
+                            {entry.task.name}
+                          </p>
+                        )}
                         {entry.description && (
                           <p className="text-sm text-gray-600">
                             {entry.description}
                           </p>
                         )}
+                        {entry.task == undefined &&
+                          entry.description == undefined && (
+                            <p className="text-sm text-gray-500">
+                              <i>No associated task or description</i>
+                            </p>
+                          )}
                         <p className="text-xs text-gray-500">
                           {formatDateTime(entry.startTime)}
                           {entry.endTime &&
