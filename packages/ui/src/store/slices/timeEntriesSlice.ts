@@ -131,26 +131,6 @@ export const deleteTimeEntry = createAsyncThunk(
   }
 );
 
-export const startTimer = createAsyncThunk(
-  "timeEntries/startTimer",
-  async (data: {
-    projectId?: string;
-    taskId?: string;
-    description?: string;
-  }) => {
-    const response = await timeEntriesAPI.startTimer(data);
-    return response;
-  }
-);
-
-export const stopTimer = createAsyncThunk(
-  "timeEntries/stopTimer",
-  async (id: string) => {
-    const response = await timeEntriesAPI.stopTimer(id);
-    return response;
-  }
-);
-
 const timeEntriesSlice = createSlice({
   name: "timeEntries",
   initialState,
@@ -213,21 +193,6 @@ const timeEntriesSlice = createSlice({
         if (state.currentEntry?.id === action.payload) {
           state.currentEntry = null;
         }
-      })
-      // Start timer
-      .addCase(startTimer.fulfilled, (state, action) => {
-        state.currentEntry = action.payload;
-        state.entries.unshift(action.payload);
-      })
-      // Stop timer
-      .addCase(stopTimer.fulfilled, (state, action) => {
-        const index = state.entries.findIndex(
-          (e) => e.id === action.payload.id
-        );
-        if (index !== -1) {
-          state.entries[index] = action.payload;
-        }
-        state.currentEntry = null;
       });
   },
 });

@@ -6,7 +6,7 @@ import {
   deleteTimeEntry,
   TimeEntry,
 } from "../store/slices/timeEntriesSlice";
-import { stopTimer } from "../store/slices/timerSlice";
+import { useTimer } from "../hooks/useTimer";
 import { fetchProjects } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -20,6 +20,9 @@ const TimeEntries: React.FC = () => {
     (state: RootState) => state.timeEntries
   );
   const { projects } = useSelector((state: RootState) => state.projects);
+
+  // Use centralized timer hook
+  const { stopTimer } = useTimer();
 
   // Local state for filters
   const [showFilters, setShowFilters] = useState(false);
@@ -75,13 +78,13 @@ const TimeEntries: React.FC = () => {
   };
 
   // Handle stop timer for running entries
-  const handleStopTimer = async (entryId: string) => {
+  const handleStopTimer = async () => {
     try {
-      await dispatch(stopTimer(entryId)).unwrap();
+      await stopTimer();
       // Refresh entries after stopping timer
       dispatch(fetchTimeEntries({}));
     } catch (error) {
-      console.error("Failed to stop timer:", error);
+      // Error is already logged in the hook
     }
   };
 
@@ -279,7 +282,7 @@ const TimeEntries: React.FC = () => {
                       </div>
                       {isRunning ? (
                         <button
-                          onClick={() => handleStopTimer(entry.id)}
+                          onClick={handleStopTimer}
                           className="flex items-center gap-1 text-red-600 hover:text-red-700 text-sm mt-1 hover:bg-red-50 px-2 py-1 rounded transition-colors"
                         >
                           <StopIcon className="h-4 w-4" />

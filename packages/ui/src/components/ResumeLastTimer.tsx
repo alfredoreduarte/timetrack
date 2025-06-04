@@ -1,8 +1,7 @@
 import React, { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch, RootState } from "../store";
-import { startTimer } from "../store/slices/timerSlice";
-import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
+import { useTimer } from "../hooks/useTimer";
 import { fetchTimeEntries } from "../store/slices/timeEntriesSlice";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import { PlayIcon } from "@heroicons/react/24/solid";
@@ -11,9 +10,9 @@ const ResumeLastTimer: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { entries } = useSelector((state: RootState) => state.timeEntries);
   const { projects, tasks } = useSelector((state: RootState) => state.projects);
-  const { isRunning, loading, currentEntry } = useSelector(
-    (state: RootState) => state.timer
-  );
+
+  // Use centralized timer hook
+  const { isRunning, currentEntry, loading, startTimer } = useTimer();
 
   // Refresh time entries when timer stops (currentEntry becomes null and isRunning becomes false)
   useEffect(() => {
@@ -76,17 +75,13 @@ const ResumeLastTimer: React.FC = () => {
     if (!lastEntry || !lastProject) return;
 
     try {
-      await dispatch(
-        startTimer({
-          projectId: lastEntry.projectId,
-          taskId: lastEntry.taskId || undefined,
-          description: lastEntry.description || undefined,
-        })
-      ).unwrap();
-      // Refresh earnings data after starting timer
-      dispatch(fetchDashboardEarnings());
+      await startTimer({
+        projectId: lastEntry.projectId,
+        taskId: lastEntry.taskId || undefined,
+        description: lastEntry.description || undefined,
+      });
     } catch (error) {
-      console.error("Failed to resume timer:", error);
+      // Error is already logged in the hook
     }
   };
 

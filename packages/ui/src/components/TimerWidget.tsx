@@ -1,83 +1,30 @@
-import React, { useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import React from "react";
+import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { AppDispatch, RootState } from "../store";
-import { stopTimer, tick, syncTimer } from "../store/slices/timerSlice";
-import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
+import { RootState } from "../store";
+import { useTimer } from "../hooks/useTimer";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import { StopIcon, PlayIcon } from "@heroicons/react/24/solid";
 
 const TimerWidget: React.FC = () => {
-  const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
-  const { isRunning, currentEntry, elapsedTime, loading } = useSelector(
-    (state: RootState) => state.timer
-  );
   const { projects } = useSelector((state: RootState) => state.projects);
 
-  // Format time display (compact version)
-  const formatTime = (seconds: number): string => {
-    // Validate input to prevent NaN display
-    if (!Number.isFinite(seconds) || seconds < 0) {
-      return "0:00";
-    }
-
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, "0")}:${secs
-        .toString()
-        .padStart(2, "0")}`;
-    }
-    return `${minutes}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  // Timer tick effect
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isRunning) {
-      interval = setInterval(() => {
-        dispatch(tick());
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isRunning, dispatch]);
-
-  // Timer initialization is now handled at the app level to avoid race conditions
-
-  // Sync timer when current entry changes or component mounts
-  useEffect(() => {
-    if (isRunning && currentEntry) {
-      dispatch(syncTimer());
-    }
-  }, [isRunning, currentEntry, dispatch]);
-
-  // Sync timer with server time periodically (every 30 seconds)
-  useEffect(() => {
-    let syncInterval: NodeJS.Timeout;
-    if (isRunning) {
-      syncInterval = setInterval(() => {
-        dispatch(syncTimer());
-      }, 30000); // Sync every 30 seconds
-    }
-    return () => {
-      if (syncInterval) clearInterval(syncInterval);
-    };
-  }, [isRunning, dispatch]);
+  // Use centralized timer hook
+  const {
+    isRunning,
+    currentEntry,
+    elapsedTime,
+    loading,
+    stopTimer,
+    formatTimeCompact,
+  } = useTimer();
 
   const handleStopTimer = async () => {
-    if (currentEntry) {
-      try {
-        await dispatch(stopTimer(currentEntry.id)).unwrap();
-        // Refresh earnings data after stopping timer
-        dispatch(fetchDashboardEarnings());
-      } catch (error) {
-        console.error("Failed to stop timer:", error);
-      }
+    try {
+      await stopTimer();
+    } catch (error) {
+      // Error is already logged in the hook
     }
   };
 
@@ -119,7 +66,9 @@ const TimerWidget: React.FC = () => {
         }`}
       >
         <ClockIcon className="h-4 w-4 animate-pulse" />
-        <span className="font-mono font-medium">{formatTime(elapsedTime)}</span>
+        <span className="font-mono font-medium">
+          {formatTimeCompact(elapsedTime)}
+        </span>
         {currentProject && (
           <span className="hidden md:inline text-xs">
             - {currentProject.name}

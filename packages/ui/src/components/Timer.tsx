@@ -1,15 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch, RootState } from "../store";
-import {
-  startTimer,
-  stopTimer,
-  tick,
-  syncTimer,
-} from "../store/slices/timerSlice";
+import { useTimer } from "../hooks/useTimer";
 import { fetchProjects } from "../store/slices/projectsSlice";
 import { fetchTasks } from "../store/slices/projectsSlice";
-import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
 import { fetchTimeEntries } from "../store/slices/timeEntriesSlice";
 import { ClockIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import { StopIcon, PlayIcon } from "@heroicons/react/24/solid";
@@ -21,51 +15,31 @@ interface TimerProps {
 
 const Timer: React.FC<TimerProps> = ({ className = "" }) => {
   const dispatch = useDispatch<AppDispatch>();
-  const { isRunning, currentEntry, elapsedTime, loading, error } = useSelector(
-    (state: RootState) => state.timer
-  );
   const { projects = [], tasks = [] } = useSelector(
     (state: RootState) => state.projects
   );
+
+  // Use centralized timer hook
+  const {
+    isRunning,
+    currentEntry,
+    elapsedTime,
+    loading,
+    error,
+    startTimer,
+    stopTimer,
+    formatTime,
+  } = useTimer();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [selectedTaskId, setSelectedTaskId] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [showProjectSelector, setShowProjectSelector] = useState(false);
 
-  // Format time display
-  const formatTime = (seconds: number): string => {
-    // Validate input to prevent NaN display
-    if (!Number.isFinite(seconds) || seconds < 0) {
-      return "00:00:00";
-    }
-
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${hours.toString().padStart(2, "0")}:${minutes
-      .toString()
-      .padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  // Timer tick effect
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isRunning) {
-      interval = setInterval(() => {
-        dispatch(tick());
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isRunning, dispatch]);
-
   // Load initial data
   useEffect(() => {
     dispatch(fetchProjects());
     dispatch(fetchTimeEntries({ limit: 10 })); // Load recent entries for ResumeLastTimer
-    // fetchCurrentEntry is now handled at the app level to avoid race conditions
   }, [dispatch]);
 
   // Load tasks when project is selected
@@ -81,28 +55,13 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
       setSelectedProjectId(currentEntry.projectId || "");
       setSelectedTaskId(currentEntry.taskId || "");
       setDescription(currentEntry.description || "");
-      // Sync timer with actual elapsed time when current entry changes
-      dispatch(syncTimer());
     } else {
       // Clear local state when timer is stopped (currentEntry becomes null)
       setSelectedProjectId("");
       setSelectedTaskId("");
       setDescription("");
     }
-  }, [currentEntry, dispatch]);
-
-  // Sync timer with server time periodically (every 30 seconds)
-  useEffect(() => {
-    let syncInterval: NodeJS.Timeout;
-    if (isRunning) {
-      syncInterval = setInterval(() => {
-        dispatch(syncTimer());
-      }, 30000); // Sync every 30 seconds
-    }
-    return () => {
-      if (syncInterval) clearInterval(syncInterval);
-    };
-  }, [isRunning, dispatch]);
+  }, [currentEntry]);
 
   const handleStartTimer = async () => {
     if (!selectedProjectId) {
@@ -111,30 +70,22 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
     }
 
     try {
-      await dispatch(
-        startTimer({
-          projectId: selectedProjectId,
-          taskId: selectedTaskId || undefined,
-          description: description || undefined,
-        })
-      ).unwrap();
+      await startTimer({
+        projectId: selectedProjectId,
+        taskId: selectedTaskId || undefined,
+        description: description || undefined,
+      });
       setShowProjectSelector(false);
-      // Refresh earnings data after starting timer
-      dispatch(fetchDashboardEarnings());
     } catch (error) {
-      console.error("Failed to start timer:", error);
+      // Error is already logged in the hook
     }
   };
 
   const handleStopTimer = async () => {
-    if (currentEntry) {
-      try {
-        await dispatch(stopTimer(currentEntry.id)).unwrap();
-        // Refresh earnings data after stopping timer
-        dispatch(fetchDashboardEarnings());
-      } catch (error) {
-        console.error("Failed to stop timer:", error);
-      }
+    try {
+      await stopTimer();
+    } catch (error) {
+      // Error is already logged in the hook
     }
   };
 
@@ -192,54 +143,50 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
         <form onSubmit={handleFormSubmit} className="space-y-4 mb-6">
           <div>
             <label
-              htmlFor="project-select"
+              htmlFor="project"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
               Project *
             </label>
             <div className="relative">
               <select
-                id="project-select"
+                id="project"
                 value={selectedProjectId}
-                onChange={(e) => {
-                  setSelectedProjectId(e.target.value);
-                  setSelectedTaskId(""); // Reset task when project changes
-                }}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="input-field appearance-none pr-10"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
                 required
               >
-                <option value="">Select a project...</option>
-                {Array.isArray(projects) &&
-                  projects
-                    .filter((p) => p.isActive)
-                    .map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
+                <option value="">Select a project</option>
+                {projects
+                  .filter((p) => p.isActive)
+                  .map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
               </select>
               <ChevronDownIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
             </div>
           </div>
 
-          {selectedProjectId && availableTasks.length > 0 && (
+          {selectedProjectId && (
             <div>
               <label
-                htmlFor="task-select"
+                htmlFor="task"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Task (optional)
+                Task (Optional)
               </label>
               <div className="relative">
                 <select
-                  id="task-select"
+                  id="task"
                   value={selectedTaskId}
                   onChange={(e) => setSelectedTaskId(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  className="input-field appearance-none pr-10"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
                 >
-                  <option value="">No specific task</option>
+                  <option value="">No task</option>
                   {availableTasks.map((task) => (
                     <option key={task.id} value={task.id}>
                       {task.name}
@@ -253,33 +200,32 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
 
           <div>
             <label
-              htmlFor="description-input"
+              htmlFor="description"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
-              Description (optional)
+              Description (Optional)
             </label>
             <input
-              id="description-input"
               type="text"
+              id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="What are you working on?"
-              className="input-field"
-              disabled={isRunning || !selectedProjectId}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </form>
       )}
 
-      {/* Error Display */}
+      {/* Error Message */}
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
+          <p className="text-red-700">{error}</p>
         </div>
       )}
 
-      {/* Control Buttons */}
+      {/* Timer Controls */}
       <div className="flex gap-3">
         {!isRunning ? (
           <button
