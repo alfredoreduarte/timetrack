@@ -6,6 +6,7 @@ import { getCurrentUser } from "./store/slices/authSlice";
 import { useTimer } from "./hooks/useTimer";
 import { fetchProjects } from "./store/slices/projectsSlice";
 import { fetchCurrentEntry, syncTimer } from "./store/slices/timerSlice";
+import { isElectron } from "./utils/platform";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -16,6 +17,7 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import ApiTest from "./pages/ApiTest";
 import LoadingSpinner from "./components/LoadingSpinner";
+import ElectronApp from "./components/electron/ElectronApp";
 import "./types/electron.d.ts"; // Import electron types
 
 // Protected Route component
@@ -242,6 +244,12 @@ function AppContent() {
 }
 
 function App() {
+  // If running in Electron, render the dedicated electron interface
+  if (isElectron()) {
+    return <ElectronApp />;
+  }
+
+  // Otherwise, render the browser interface
   return (
     <div className="min-h-screen bg-gray-50">
       <AppContent />

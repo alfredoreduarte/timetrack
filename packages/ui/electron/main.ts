@@ -6,6 +6,7 @@ import {
   nativeImage,
   ipcMain,
   shell,
+  screen,
 } from "electron";
 import * as path from "path";
 import { isDev } from "./utils";
@@ -51,25 +52,29 @@ class TimeTrackApp {
 
   private createWindow(): void {
     this.mainWindow = new BrowserWindow({
-      width: 1200,
-      height: 800,
-      minWidth: 800,
-      minHeight: 600,
+      width: 350,
+      height: 700,
+      minWidth: 300,
+      minHeight: 500,
+      maxWidth: 400,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        preload: path.join(__dirname, "preload.js"),
+        preload: path.join(__dirname, "preload.cjs"),
         webSecurity: false, // TEMPORARY: Disable for development only
       },
       titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
       show: false,
       icon: this.getAppIcon(),
+      alwaysOnTop: false,
+      resizable: true,
     });
 
     // Load the app
     if (isDev()) {
-      this.mainWindow.loadURL("http://localhost:5173");
-      this.mainWindow.webContents.openDevTools();
+      this.mainWindow.loadURL("http://localhost:3010");
+      // Don't open dev tools by default for the compact electron interface
+      // this.mainWindow.webContents.openDevTools();
     } else {
       this.mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
     }
@@ -77,6 +82,26 @@ class TimeTrackApp {
     // Show window when ready
     this.mainWindow.once("ready-to-show", () => {
       this.mainWindow?.show();
+
+      // Position window to the right side of the screen
+      if (this.mainWindow) {
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const { width: screenWidth, height: screenHeight } =
+          primaryDisplay.workAreaSize;
+
+        // Position on the right side with some margin
+        const windowWidth = 350;
+        const windowHeight = 700;
+        const x = screenWidth - windowWidth - 20; // 20px margin from right edge
+        const y = Math.floor((screenHeight - windowHeight) / 2); // Center vertically
+
+        this.mainWindow.setBounds({
+          x,
+          y,
+          width: windowWidth,
+          height: windowHeight,
+        });
+      }
     });
 
     // Handle window closed
