@@ -227,6 +227,7 @@ function AppContent() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="projects" element={<Projects />} />
+          <Route path="projects/:projectId" element={<Projects />} />
           <Route path="time-entries" element={<TimeEntries />} />
           <Route path="reports" element={<Reports />} />
           <Route path="settings" element={<Settings />} />

@@ -19,8 +19,17 @@ export interface Task {
   description?: string;
   projectId: string;
   hourlyRate?: number;
+  isCompleted: boolean;
   createdAt: string;
   updatedAt: string;
+  project?: {
+    id: string;
+    name: string;
+    color?: string;
+  };
+  _count?: {
+    timeEntries: number;
+  };
 }
 
 interface ProjectsState {
@@ -80,8 +89,14 @@ export const deleteProject = createAsyncThunk(
 // Async thunks for tasks
 export const fetchTasks = createAsyncThunk(
   "projects/fetchTasks",
-  async (projectId?: string) => {
-    const response = await tasksAPI.getTasks(projectId);
+  async ({
+    projectId,
+    isCompleted,
+  }: {
+    projectId?: string;
+    isCompleted?: boolean;
+  } = {}) => {
+    const response = await tasksAPI.getTasks(projectId, isCompleted);
     return response;
   }
 );
