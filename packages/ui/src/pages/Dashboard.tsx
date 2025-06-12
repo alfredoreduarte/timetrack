@@ -86,7 +86,7 @@ const Dashboard: React.FC = () => {
   const calculateEarnings = (entry: TimeEntry): number => {
     const project = projects.find((p: any) => p.id === entry.projectId);
     const hourlyRate = project?.hourlyRate || 0;
-    const hours = entry.duration / 3600;
+    const hours = (entry.duration || 0) / 3600;
     return hours * hourlyRate;
   };
 
@@ -236,7 +236,7 @@ const Dashboard: React.FC = () => {
                     <div className="flex items-center space-x-3">
                       <div className="text-right">
                         <p className="font-medium text-gray-900">
-                          {formatReportsDuration(entry.duration)}
+                          {formatReportsDuration(entry.duration || 0)}
                         </p>
                         <p className="text-sm text-green-600">
                           ${calculateEarnings(entry).toFixed(2)}
