@@ -202,4 +202,25 @@ private func startTimer() {
 - Network entitlements for API access
 - Code signing for distribution
 
+## UI/UX Development Tips
+- **Preview-driven development**: Use #Preview for rapid UI iteration
+- **Semantic colors**: Prefer `.primary`, `.secondary` over hardcoded colors
+- **Accessibility**: Test with VoiceOver and keyboard navigation
+- **Window sizing**: Respect user's window preferences, set reasonable minimums
+- **Loading states**: Always show progress for network operations
+- **Error recovery**: Provide clear next steps, not just error messages
+
+## Performance & Debugging
+- **@Published optimization**: Only mark truly reactive properties as @Published
+- **Task lifecycle**: Cancel tasks in deinit when appropriate
+- **Memory leaks**: Watch for retain cycles with closures and delegates
+- **API rate limiting**: Consider request debouncing for frequent operations
+- **Xcode debugging**: Use View Hierarchy debugger for layout issues
+
+## Code Organization
+- **One feature per view**: Keep views focused and composable
+- **Extract constants**: Colors, spacing, strings should be centralized
+- **Environment consistency**: Use same APIClient instance throughout app
+- **Testable ViewModels**: Keep business logic in ViewModels, not Views
+
 Remember: Keep the app simple and focused on core time tracking functionality. Prioritize reliability and user experience over complex features.
