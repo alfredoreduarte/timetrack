@@ -148,9 +148,11 @@ struct TimeEntryRow: View {
                     Spacer()
 
                     // Duration display
-                    Text(entry.formattedDurationShort)
-                        .font(.headline)
-                        .fontWeight(.medium)
+                    if !entry.isRunning {
+                        Text(entry.formattedDurationShort)
+                            .font(.headline)
+                            .fontWeight(.medium)
+                    }
                 }
 
                 if let description = entry.description, !description.isEmpty {
@@ -165,7 +167,8 @@ struct TimeEntryRow: View {
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                    .stroke(entry.isRunning ? AppTheme.success.opacity(0.5) : Color.primary.opacity(0.1), lineWidth: 0.5)
+//                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
             )
 
             // Restart button
