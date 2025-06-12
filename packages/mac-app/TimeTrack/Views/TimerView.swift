@@ -10,78 +10,79 @@ struct TimerView: View {
         VStack(spacing: 16) {
             // Timer Display or Form
             if timerViewModel.isRunning, let entry = timerViewModel.currentEntry {
-                // Active timer view
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 4) {
+                // Active timer view - redesigned to match screenshot
+                VStack(spacing: 20) {
+                    // Top section with project and task names
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Project name
                         HStack {
-                            Text(entry.description ?? "No description")
-                                .font(.headline)
-                                .lineLimit(1)
-
-                            Spacer()
-                        }
-
-                        HStack(spacing: 6) {
-                            // Project indicator
-                            if let project = entry.project {
-                                Circle()
-                                    .fill(Color(hex: project.color ?? "#6366F1") ?? .gray)
-                                    .frame(width: 8, height: 8)
-                                Text(project.name)
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-
-                            // Task name if available
-                            if let task = entry.task {
-                                Text("•")
-                                    .foregroundColor(.secondary)
-                                Text(task.name)
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-
-                            Spacer()
-                        }
-                    }
-
-                    Spacer()
-
-                    // Timer and earnings stacked vertically
-                    VStack(alignment: .center, spacing: 4) {
-                        Text(timerViewModel.formattedElapsedTime)
-                            .font(.system(size: 32, weight: .bold, design: .monospaced))
-                            .foregroundColor(.red)
-                        if let rate = entry.hourlyRateSnapshot, rate > 0 {
-                            let earned = rate * Double(timerViewModel.elapsedTime) / 3600.0
-                            Text(String(format: "$%.2f", earned))
+                            Text(entry.project?.name ?? "No Project")
                                 .font(.title2)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.green)
+                                .fontWeight(.bold)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Spacer()
                         }
-                    }
-                    .frame(minWidth: 90)
-                    .padding(.trailing, 8)
 
-                    // Stop button
-                    Button(action: {
-                        Task {
-                            await timerViewModel.stopTimer()
-                            selectedProjectId = ""
-                            selectedTaskId = ""
-                            description = ""
+                        // Task name
+                        HStack {
+                            Text(entry.task?.name ?? "No Task")
+                                .font(.title3)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Spacer()
                         }
-                    }) {
-                        Image(systemName: "stop.circle.fill")
-                            .font(.title)
-                            .foregroundColor(.red)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(timerViewModel.isLoading)
+
+                    // Timer and earnings section with stop button
+                    HStack {
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Large timer display
+                            Text(timerViewModel.formattedElapsedTime)
+                                .font(.system(size: 48, weight: .bold, design: .monospaced))
+                                .foregroundColor(.primary)
+
+                            // Earnings display
+                            if let rate = entry.hourlyRateSnapshot, rate > 0 {
+                                let earned = rate * Double(timerViewModel.elapsedTime) / 3600.0
+                                Text(String(format: "$%.2f", earned))
+                                    .font(.title)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.green)
+                            }
+                        }
+
+                        Spacer()
+
+                                                // Stop button - red circle with white square inside
+                        Button(action: {
+                            Task {
+                                await timerViewModel.stopTimer()
+                                selectedProjectId = ""
+                                selectedTaskId = ""
+                                description = ""
+                            }
+                        }) {
+                            ZStack {
+                                // Red circle background
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 60, height: 60)
+
+                                // White square inside
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.white)
+                                    .frame(width: 18, height: 18)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(timerViewModel.isLoading)
+                    }
                 }
-                .padding()
+                .padding(24)
                 .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(8)
+                .cornerRadius(12)
             } else {
                 // Timer form to start a new timer
                 VStack(spacing: 12) {
