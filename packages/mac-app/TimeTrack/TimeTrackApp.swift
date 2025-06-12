@@ -10,7 +10,6 @@ struct TimeTrackApp: App {
             ContentView()
                 .environmentObject(authViewModel)
                 .environmentObject(timerViewModel)
-                .frame(minWidth: 600, minHeight: 500)
         }
         .windowResizability(.contentSize)
     }

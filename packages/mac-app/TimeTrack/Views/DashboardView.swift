@@ -5,85 +5,70 @@ struct DashboardView: View {
     @EnvironmentObject var timerViewModel: TimerViewModel
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // Header with user info and logout
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text("TimeTrack Dashboard")
-                            .font(.title)
-                            .fontWeight(.bold)
+        VStack(spacing: 0) {
+            // Header with app name and logout
+            HStack {
+                Text("Chronow")
+                    .font(.title)
+                    .fontWeight(.bold)
 
-                        if let user = authViewModel.currentUser {
-                            Text("Welcome back, \(user.name)")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                    }
+                Spacer()
 
-                    Spacer()
-
-                    Button("Logout") {
-                        authViewModel.logout()
-                    }
-                    .foregroundColor(.red)
+                Button(action: {}) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.title3)
                 }
-                .padding()
-                .background(Color(NSColor.controlBackgroundColor))
+                .buttonStyle(.plain)
+                .padding(.horizontal, 4)
 
-                Divider()
+                Button(action: {
+                    authViewModel.logout()
+                }) {
+                    Image(systemName: "gearshape")
+                        .font(.title3)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding()
 
-                // Main content
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Timer Section
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Time Tracker")
-                                .font(.title2)
-                                .fontWeight(.semibold)
+            Divider()
 
-                            TimerView()
-                        }
+            // Main content in a scrollable view
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Timer Section (always visible at top)
+                    TimerView()
                         .padding()
                         .background(Color(NSColor.controlBackgroundColor))
                         .cornerRadius(12)
 
-                        // Recent Entries Section
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Recent Time Entries")
-                                .font(.title2)
-                                .fontWeight(.semibold)
+                    // Recent Time Entries Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Today")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                            if timerViewModel.recentEntries.isEmpty {
-                                VStack(spacing: 12) {
-                                    Image(systemName: "clock.badge.questionmark")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(.secondary)
-
-                                    Text("No time entries yet")
-                                        .font(.headline)
-                                        .foregroundColor(.secondary)
-
-                                    Text("Start tracking to see your entries here")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 40)
-                            } else {
-                                LazyVStack(spacing: 12) {
-                                    ForEach(timerViewModel.recentEntries.prefix(10)) { entry in
-                                        TimeEntryRow(entry: entry)
-                                    }
+                        // Time entries list
+                        if timerViewModel.recentEntries.isEmpty {
+                            VStack(spacing: 12) {
+                                Text("No time entries yet")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
+                        } else {
+                            LazyVStack(spacing: 12) {
+                                ForEach(timerViewModel.recentEntries) { entry in
+                                    TimeEntryRow(entry: entry)
                                 }
                             }
                         }
-                        .padding()
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(12)
                     }
                     .padding()
                 }
+                .padding()
             }
         }
         .navigationTitle("")
@@ -101,45 +86,43 @@ struct TimeEntryRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Project color indicator
-            Circle()
-                .fill(timerViewModel.getProjectColor(for: entry))
-                .frame(width: 12, height: 12)
-
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
+                    // Project indicator and name
+                    Circle()
+                        .fill(timerViewModel.getProjectColor(for: entry))
+                        .frame(width: 8, height: 8)
+
                     Text(timerViewModel.getProjectName(for: entry))
                         .font(.headline)
-                        .foregroundColor(.primary)
+                        .lineLimit(1)
 
-                    Spacer()
-
-                    Text(entry.formattedDuration)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                }
-
-                HStack {
-                    if let description = entry.description, !description.isEmpty {
-                        Text(description)
+                    if let task = entry.task {
+                        Text(task.name)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
-                            .lineLimit(2)
-                    } else {
-                        Text("No description")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .italic()
+                            .lineLimit(1)
                     }
 
                     Spacer()
 
-                    Text(entry.formattedStartTime)
-                        .font(.caption)
+                    // Duration display
+                    Text(entry.formattedDuration)
+                        .font(.headline)
+                        .fontWeight(.medium)
+                }
+
+                if let description = entry.description, !description.isEmpty {
+                    Text(description)
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
             }
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(Color(NSColor.windowBackgroundColor))
+            .cornerRadius(8)
 
             // Restart button
             if !timerViewModel.isRunning {
@@ -156,13 +139,6 @@ struct TimeEntryRow: View {
                 .help("Restart this timer")
             }
         }
-        .padding()
-        .background(Color(NSColor.windowBackgroundColor))
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-        )
     }
 }
 
