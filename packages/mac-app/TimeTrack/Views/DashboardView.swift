@@ -40,7 +40,7 @@ struct DashboardView: View {
                     .padding(.horizontal)
                 } else if let errorMessage = dashboardViewModel.errorMessage {
                     Text("Failed to load earnings: \(errorMessage)")
-                        .foregroundColor(.red)
+                        .foregroundColor(AppTheme.error)
                         .font(.caption)
                         .padding()
                 } else {
@@ -88,7 +88,7 @@ struct DashboardView: View {
             }
             .padding()
         }
-        .background(Color(hex: "#161516"))
+        .background(AppTheme.background)
         .navigationTitle("")
         .onAppear {
             Task {

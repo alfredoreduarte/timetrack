@@ -339,6 +339,18 @@ class TimerViewModel: ObservableObject {
     }
 }
 
+// MARK: - App Theme
+struct AppTheme {
+    static let primary = Color(hex: "#FFFFFF") ?? .white
+    static let secondary = Color(hex: "#9CA3AF") ?? .secondary
+    static let accent = Color(hex: "#3B82F6") ?? .blue
+    static let background = Color(hex: "#161516") ?? .black
+    static let cardBackground = Color(hex: "#1F1F1F") ?? .gray
+    static let success = Color(hex: "#10B981") ?? .green
+    static let error = Color(hex: "#EF4444") ?? .red
+    static let warning = Color(hex: "#F59E0B") ?? .orange
+}
+
 // MARK: - Color Extension
 extension Color {
     init?(hex: String) {

@@ -77,7 +77,7 @@ struct TimerView: View {
                                 Text(String(format: "$%.2f", earned))
                                     .font(.title)
                                     .fontWeight(.bold)
-                                    .foregroundColor(.green)
+                                    .foregroundColor(AppTheme.success)
                             }
                         }
 
@@ -229,7 +229,7 @@ struct TimerView: View {
             // Error message
             if let errorMessage = timerViewModel.errorMessage {
                 Text(errorMessage)
-                    .foregroundColor(.red)
+                    .foregroundColor(AppTheme.error)
                     .font(.caption)
                     .multilineTextAlignment(.center)
             }
