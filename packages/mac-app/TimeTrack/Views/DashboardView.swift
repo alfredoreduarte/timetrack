@@ -6,84 +6,58 @@ struct DashboardView: View {
     @State private var rotationDegrees = 0.0
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header with app name and logout
-            HStack {
-                Text("Chronow")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                Spacer()
-
-                Button(action: {
-                    Task {
-                        withAnimation(.linear(duration: 1)) {
-                            rotationDegrees = 360
-                        }
-                        await timerViewModel.loadInitialData()
-                        // Reset without animation
-                        rotationDegrees = 0
-                    }
-                }) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.title3)
-                        .rotationEffect(.degrees(rotationDegrees))
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 4)
-                .keyboardShortcut("r", modifiers: .command)
-                .help("Refresh data (⌘R)")
-                .disabled(timerViewModel.isRefreshing)
-
-                Button(action: {
-                    authViewModel.logout()
-                }) {
-                    Image(systemName: "gearshape")
-                        .font(.title3)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding()
-
-            Divider()
-
-            // Main content in a scrollable view
-            ScrollView {
-                VStack(spacing: 16) {
-                    // Timer Section (always visible at top)
-                    TimerView()
-                        .padding()
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(12)
-
-                    // Recent Time Entries Section
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Today")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        // Time entries list
-                        if timerViewModel.recentEntries.isEmpty {
-                            VStack(spacing: 12) {
-                                Text("No time entries yet")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
+        // Main content in a scrollable view
+        ScrollView {
+            VStack(spacing: 16) {
+                // Timer Section (always visible at top)
+                TimerView(
+                    onRefresh: {
+                        Task {
+                            withAnimation(.linear(duration: 1)) {
+                                rotationDegrees = 360
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 20)
-                        } else {
-                            LazyVStack(spacing: 12) {
-                                ForEach(timerViewModel.recentEntries) { entry in
-                                    TimeEntryRow(entry: entry)
-                                }
+                            await timerViewModel.loadInitialData()
+                            // Reset without animation
+                            rotationDegrees = 0
+                        }
+                    },
+                    onSettings: {
+                        authViewModel.logout()
+                    },
+                    rotationDegrees: rotationDegrees,
+                    isRefreshing: timerViewModel.isRefreshing
+                )
+                .padding()
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(12)
+
+                // Recent Time Entries Section
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Today")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    // Time entries list
+                    if timerViewModel.recentEntries.isEmpty {
+                        VStack(spacing: 12) {
+                            Text("No time entries yet")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
+                    } else {
+                        LazyVStack(spacing: 12) {
+                            ForEach(timerViewModel.recentEntries) { entry in
+                                TimeEntryRow(entry: entry)
                             }
                         }
                     }
-                    .padding()
                 }
                 .padding()
             }
+            .padding()
         }
         .navigationTitle("")
         .onAppear {

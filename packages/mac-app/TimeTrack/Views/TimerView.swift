@@ -6,32 +6,60 @@ struct TimerView: View {
     @State private var selectedTaskId: String = ""
     @State private var description: String = ""
 
+    // Callback functions and state for refresh/settings buttons
+    let onRefresh: () -> Void
+    let onSettings: () -> Void
+    let rotationDegrees: Double
+    let isRefreshing: Bool
+
+    init(onRefresh: @escaping () -> Void = {}, onSettings: @escaping () -> Void = {}, rotationDegrees: Double = 0.0, isRefreshing: Bool = false) {
+        self.onRefresh = onRefresh
+        self.onSettings = onSettings
+        self.rotationDegrees = rotationDegrees
+        self.isRefreshing = isRefreshing
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             // Timer Display or Form
             if timerViewModel.isRunning, let entry = timerViewModel.currentEntry {
                 // Active timer view - redesigned to match screenshot
                 VStack(spacing: 20) {
-                    // Top section with project and task names
-                    VStack(alignment: .leading, spacing: 8) {
-                        // Project name
-                        HStack {
+                    // Top section with project/task names and action buttons
+                    HStack {
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Project name
                             Text(entry.project?.name ?? "No Project")
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
-                            Spacer()
-                        }
 
-                        // Task name
-                        HStack {
+                            // Task name
                             Text(entry.task?.name ?? "No Task")
                                 .font(.title3)
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
-                            Spacer()
+                        }
+
+                        Spacer()
+
+                        // Action buttons (settings and refresh) - smaller and vertically aligned
+                        VStack(spacing: 8) {
+                            Button(action: onSettings) {
+                                Image(systemName: "gearshape")
+                                    .font(.title3)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button(action: onRefresh) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.title3)
+                                    .rotationEffect(.degrees(rotationDegrees))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isRefreshing)
                         }
                     }
 
@@ -55,7 +83,7 @@ struct TimerView: View {
 
                         Spacer()
 
-                                                // Stop button - red circle with white square inside
+                        // Stop button - red circle with white square inside
                         Button(action: {
                             Task {
                                 await timerViewModel.stopTimer()
