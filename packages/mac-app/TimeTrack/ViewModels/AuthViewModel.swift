@@ -73,19 +73,41 @@ class AuthViewModel: ObservableObject {
         errorMessage = nil
     }
 
-    func checkAuthStatus() async {
+    func refreshToken() async -> Bool {
+        do {
+            let newToken = try await apiClient.refreshToken()
+            // Token is automatically saved by the API client
+            return true
+        } catch {
+            // If refresh fails, logout the user
+            logout()
+            return false
+        }
+    }
+
+    // MARK: - Helper Methods
+    private func checkAuthStatus() async {
         guard apiClient.authToken != nil else {
             isAuthenticated = false
             return
         }
 
         do {
-            let user = try await apiClient.getCurrentUser()
-            currentUser = user
+            currentUser = try await apiClient.getCurrentUser()
             isAuthenticated = true
         } catch {
-            // Token is invalid, clear it
-            logout()
+            // If getting current user fails, try to refresh the token
+            let refreshSucceeded = await refreshToken()
+            if refreshSucceeded {
+                // Try getting user again after refresh
+                do {
+                    currentUser = try await apiClient.getCurrentUser()
+                    isAuthenticated = true
+                } catch {
+                    // If it still fails, logout
+                    logout()
+                }
+            }
         }
     }
 

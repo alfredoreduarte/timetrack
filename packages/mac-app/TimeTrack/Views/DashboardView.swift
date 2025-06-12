@@ -50,20 +50,9 @@ struct DashboardView: View {
 
                         // Recent Entries Section
                         VStack(alignment: .leading, spacing: 16) {
-                            HStack {
-                                Text("Recent Time Entries")
-                                    .font(.title2)
-                                    .fontWeight(.semibold)
-
-                                Spacer()
-
-                                Button("Refresh") {
-                                    Task {
-                                        await timerViewModel.loadRecentEntries()
-                                    }
-                                }
-                                .foregroundColor(.blue)
-                            }
+                            Text("Recent Time Entries")
+                                .font(.title2)
+                                .fontWeight(.semibold)
 
                             if timerViewModel.recentEntries.isEmpty {
                                 VStack(spacing: 12) {
@@ -114,12 +103,12 @@ struct TimeEntryRow: View {
         HStack(spacing: 12) {
             // Project color indicator
             Circle()
-                .fill(timerViewModel.getProjectColor(for: entry.projectId))
+                .fill(timerViewModel.getProjectColor(for: entry))
                 .frame(width: 12, height: 12)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(timerViewModel.getProjectName(for: entry.projectId))
+                    Text(timerViewModel.getProjectName(for: entry))
                         .font(.headline)
                         .foregroundColor(.primary)
 

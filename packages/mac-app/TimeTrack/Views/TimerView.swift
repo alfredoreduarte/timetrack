@@ -19,16 +19,22 @@ struct TimerView: View {
                     VStack(spacing: 4) {
                         HStack {
                             Circle()
-                                .fill(timerViewModel.getProjectColor(for: entry.projectId))
+                                .fill(timerViewModel.getProjectColor(for: entry))
                                 .frame(width: 8, height: 8)
 
-                            Text("Project: \(timerViewModel.getProjectName(for: entry.projectId))")
+                            Text("Project: \(timerViewModel.getProjectName(for: entry))")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                         }
 
-                        if let taskId = entry.taskId {
-                            Text("Task: \(timerViewModel.getTaskName(for: taskId))")
+                        if entry.taskId != nil {
+                            Text("Task: \(timerViewModel.getTaskName(for: entry))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        if let description = entry.description {
+                            Text("Description: \(description)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }

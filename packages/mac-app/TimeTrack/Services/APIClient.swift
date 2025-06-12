@@ -112,11 +112,12 @@ class APIClient: ObservableObject {
         )
     }
 
-    func register(name: String, email: String, password: String, captchaId: String? = nil, captchaValue: String? = nil) async throws -> AuthResponse {
+    func register(name: String, email: String, password: String, defaultHourlyRate: Double? = nil, captchaId: String? = nil, captchaValue: String? = nil) async throws -> AuthResponse {
         let registerRequest = RegisterRequest(
             email: email,
             password: password,
             name: name,
+            defaultHourlyRate: defaultHourlyRate,
             captchaId: captchaId,
             captchaValue: captchaValue
         )
@@ -149,6 +150,23 @@ class APIClient: ObservableObject {
             method: .GET,
             responseType: CaptchaResponse.self
         )
+    }
+
+    func refreshToken() async throws -> String {
+        struct RefreshResponse: Codable {
+            let message: String
+            let token: String
+        }
+
+        let response = try await makeRequest(
+            endpoint: "/auth/refresh",
+            method: .POST,
+            responseType: RefreshResponse.self
+        )
+
+        // Save the new token
+        saveToken(response.token)
+        return response.token
     }
 
     // MARK: - Projects API
@@ -249,16 +267,63 @@ class APIClient: ObservableObject {
 
     // MARK: - Time Entries API
     func getCurrentEntry() async throws -> TimeEntry? {
-        return try await makeRequest(
-            endpoint: "/time-entries/current",
-            method: .GET,
-            responseType: TimeEntry?.self
-        )
+        // Handle the special case where the API returns null for no running entry
+        do {
+            let response = try await makeRequest(
+                endpoint: "/time-entries/current",
+                method: .GET,
+                responseType: CurrentTimeEntryResponse.self
+            )
+            return response.timeEntry
+        } catch APIClientError.decodingError {
+            // If decoding fails, it might be because the response is null (no running entry)
+            return nil
+        }
     }
 
-    func getTimeEntries(limit: Int = 10) async throws -> [TimeEntry] {
+    func getTimeEntries(
+        projectId: String? = nil,
+        isRunning: Bool? = nil,
+        startDate: String? = nil,
+        endDate: String? = nil,
+        page: Int? = nil,
+        limit: Int = 50
+    ) async throws -> [TimeEntry] {
+        var queryItems: [URLQueryItem] = []
+
+        if let projectId = projectId {
+            queryItems.append(URLQueryItem(name: "projectId", value: projectId))
+        }
+
+        if let isRunning = isRunning {
+            queryItems.append(URLQueryItem(name: "isRunning", value: String(isRunning)))
+        }
+
+        if let startDate = startDate {
+            queryItems.append(URLQueryItem(name: "startDate", value: startDate))
+        }
+
+        if let endDate = endDate {
+            queryItems.append(URLQueryItem(name: "endDate", value: endDate))
+        }
+
+        if let page = page {
+            queryItems.append(URLQueryItem(name: "page", value: String(page)))
+        }
+
+        queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
+
+        var endpoint = "/time-entries"
+        if !queryItems.isEmpty {
+            var components = URLComponents()
+            components.queryItems = queryItems
+            if let queryString = components.percentEncodedQuery {
+                endpoint += "?" + queryString
+            }
+        }
+
         let response = try await makeRequest(
-            endpoint: "/time-entries?limit=\(limit)",
+            endpoint: endpoint,
             method: .GET,
             responseType: TimeEntriesResponse.self
         )

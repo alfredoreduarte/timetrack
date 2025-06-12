@@ -7,8 +7,22 @@ class TimerService: ObservableObject {
         return try await apiClient.getCurrentEntry()
     }
 
-    func getTimeEntries(limit: Int = 10) async throws -> [TimeEntry] {
-        return try await apiClient.getTimeEntries(limit: limit)
+    func getTimeEntries(
+        projectId: String? = nil,
+        isRunning: Bool? = nil,
+        startDate: String? = nil,
+        endDate: String? = nil,
+        page: Int? = nil,
+        limit: Int = 10
+    ) async throws -> [TimeEntry] {
+        return try await apiClient.getTimeEntries(
+            projectId: projectId,
+            isRunning: isRunning,
+            startDate: startDate,
+            endDate: endDate,
+            page: page,
+            limit: limit
+        )
     }
 
     func getProjects() async throws -> [Project] {

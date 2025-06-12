@@ -623,21 +623,23 @@ Authorization: Bearer <your-jwt-token>
 - **Success Response (200) - With running entry:**
   ```json
   {
-    "id": "aa0e8400-e29b-41d4-a716-446655440005",
-    "description": "Working on homepage layout",
-    "startTime": "2024-01-15T14:00:00.000Z",
-    "endTime": null,
-    "duration": 0,
-    "isRunning": true,
-    "hourlyRateSnapshot": 90.00,
-    "project": {
-      "id": "770e8400-e29b-41d4-a716-446655440002",
-      "name": "Website Redesign",
-      "color": "#3B82F6"
-    },
-    "task": {
-      "id": "990e8400-e29b-41d4-a716-446655440004",
-      "name": "Homepage Layout"
+    "timeEntry": {
+      "id": "aa0e8400-e29b-41d4-a716-446655440005",
+      "description": "Working on homepage layout",
+      "startTime": "2024-01-15T14:00:00.000Z",
+      "endTime": null,
+      "duration": null,
+      "isRunning": true,
+      "hourlyRateSnapshot": 90.00,
+      "project": {
+        "id": "770e8400-e29b-41d4-a716-446655440002",
+        "name": "Website Redesign",
+        "color": "#3B82F6"
+      },
+      "task": {
+        "id": "990e8400-e29b-41d4-a716-446655440004",
+        "name": "Homepage Layout"
+      }
     }
   }
   ```

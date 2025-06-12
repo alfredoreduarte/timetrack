@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 
 @MainActor
 class TimerViewModel: ObservableObject {
@@ -38,12 +39,18 @@ class TimerViewModel: ObservableObject {
         Task {
             await loadInitialData()
         }
+
+        // Set up automatic refresh on app focus
+        setupAutoRefresh()
     }
 
     deinit {
         // Cleanup timer directly - no need for Task since timer invalidation is safe
         timer?.invalidate()
         timer = nil
+
+        // Remove notification observers
+        NotificationCenter.default.removeObserver(self)
     }
 
     // MARK: - Data Loading
@@ -52,6 +59,8 @@ class TimerViewModel: ObservableObject {
         await loadRecentEntries()
         await loadProjects()
     }
+
+
 
     func loadCurrentEntry() async {
         do {
@@ -65,7 +74,7 @@ class TimerViewModel: ObservableObject {
                 elapsedTime = 0
             }
         } catch {
-            print("Error loading current entry: \(error)")
+            print("❌ Error loading current entry: \(error)")
         }
     }
 
@@ -73,7 +82,8 @@ class TimerViewModel: ObservableObject {
         do {
             recentEntries = try await apiClient.getTimeEntries(limit: 10)
         } catch {
-            print("Error loading recent entries: \(error)")
+            print("❌ Error loading recent entries: \(error)")
+            // Don't clear existing entries on error, just log it
         }
     }
 
@@ -164,11 +174,27 @@ class TimerViewModel: ObservableObject {
 
     // MARK: - Elapsed Time Management
     private func calculateElapsedTime(from startTimeString: String) {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-        formatter.timeZone = TimeZone(identifier: "UTC")
+        let formatters = [
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'"
+        ]
 
-        guard let startTime = formatter.date(from: startTimeString) else {
+        var startTime: Date?
+
+        for format in formatters {
+            let formatter = DateFormatter()
+            formatter.dateFormat = format
+            formatter.timeZone = TimeZone(identifier: "UTC")
+
+            if let date = formatter.date(from: startTimeString) {
+                startTime = date
+                break
+            }
+        }
+
+        guard let startTime = startTime else {
+            print("❌ Failed to parse start time: \(startTimeString)")
             elapsedTime = 0
             return
         }
@@ -201,6 +227,14 @@ class TimerViewModel: ObservableObject {
         return project.name
     }
 
+    func getProjectName(for entry: TimeEntry) -> String {
+        // Use populated project data if available, otherwise fall back to lookup
+        if let project = entry.project {
+            return project.name
+        }
+        return getProjectName(for: entry.projectId)
+    }
+
     func getProjectColor(for projectId: String?) -> Color {
         guard let projectId = projectId,
               let project = projects.first(where: { $0.id == projectId }),
@@ -212,12 +246,28 @@ class TimerViewModel: ObservableObject {
         return Color(hex: colorString) ?? .gray
     }
 
+    func getProjectColor(for entry: TimeEntry) -> Color {
+        // Use populated project data if available, otherwise fall back to lookup
+        if let project = entry.project, let colorString = project.color {
+            return Color(hex: colorString) ?? .gray
+        }
+        return getProjectColor(for: entry.projectId)
+    }
+
     func getTaskName(for taskId: String?) -> String {
         guard let taskId = taskId,
               let task = tasks.first(where: { $0.id == taskId }) else {
             return "No Task"
         }
         return task.name
+    }
+
+    func getTaskName(for entry: TimeEntry) -> String {
+        // Use populated task data if available, otherwise fall back to lookup
+        if let task = entry.task {
+            return task.name
+        }
+        return getTaskName(for: entry.taskId)
     }
 
     func getTaskFromAllProjects(taskId: String?) async -> String {
@@ -242,6 +292,36 @@ class TimerViewModel: ObservableObject {
 
     func clearError() {
         errorMessage = nil
+    }
+
+    // MARK: - Auto Refresh Setup
+    private func setupAutoRefresh() {
+        // Listen for app becoming active (window focus, app switching back)
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.refreshTimerState()
+            }
+        }
+
+        // Listen for app windows gaining focus
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.refreshTimerState()
+            }
+        }
+    }
+
+    private func refreshTimerState() async {
+        // Lightweight refresh focused on timer state
+        await loadCurrentEntry()
     }
 }
 

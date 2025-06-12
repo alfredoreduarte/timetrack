@@ -19,6 +19,7 @@ struct RegisterRequest: Codable {
     let email: String
     let password: String
     let name: String
+    let defaultHourlyRate: Double?
     let captchaId: String?
     let captchaValue: String?
 }
@@ -97,24 +98,85 @@ struct TimeEntry: Codable, Identifiable {
     let description: String?
     let startTime: String
     let endTime: String?
-    let duration: Int
+    let duration: Int?
+    let isRunning: Bool
+    let hourlyRateSnapshot: Double?
     let projectId: String?
     let taskId: String?
-    let hourlyRateSnapshot: Double?
-    let earnings: Double?
-    let userId: String
+    let userId: String?
     let createdAt: String?
     let updatedAt: String?
+    let project: TimeEntryProject?
+    let task: TimeEntryTask?
 
-    // Computed properties for UI
-    var isRunning: Bool {
-        endTime == nil
+    struct TimeEntryProject: Codable {
+        let id: String
+        let name: String
+        let color: String?
+    }
+
+    struct TimeEntryTask: Codable {
+        let id: String
+        let name: String
+    }
+
+    // Safe access to duration with fallback
+    var safeDuration: Int {
+        if let duration = duration {
+            return duration
+        }
+
+        // For running timers, calculate elapsed time from startTime to now
+        if isRunning {
+            return calculateElapsedTime()
+        }
+
+        return 0
+    }
+
+    // Calculate elapsed time for running timers
+    private func calculateElapsedTime() -> Int {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        // Try multiple date formats for robust parsing
+        let formatters = [
+            formatter,
+            {
+                let f = ISO8601DateFormatter()
+                f.formatOptions = [.withInternetDateTime]
+                return f
+            }(),
+            {
+                let f = DateFormatter()
+                f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+                f.timeZone = TimeZone(identifier: "UTC")
+                return f
+            }(),
+            {
+                let f = DateFormatter()
+                f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+                f.timeZone = TimeZone(identifier: "UTC")
+                return f
+            }()
+        ]
+
+        for formatter in formatters {
+            if let startDate = (formatter as? ISO8601DateFormatter)?.date(from: startTime) ??
+                              (formatter as? DateFormatter)?.date(from: startTime) {
+                let elapsed = Date().timeIntervalSince(startDate)
+                return max(0, Int(elapsed))
+            }
+        }
+
+        return 0
     }
 
     var formattedDuration: String {
-        let hours = duration / 3600
-        let minutes = (duration % 3600) / 60
-        let seconds = duration % 60
+        let durationValue = safeDuration
+        let hours = durationValue / 3600
+        let minutes = (durationValue % 3600) / 60
+        let seconds = durationValue % 60
 
         if hours > 0 {
             return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
@@ -158,6 +220,10 @@ struct StartTimerRequest: Codable {
 
 struct TimerResponse: Codable {
     let message: String
+    let timeEntry: TimeEntry
+}
+
+struct CurrentTimeEntryResponse: Codable {
     let timeEntry: TimeEntry
 }
 
