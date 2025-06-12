@@ -9,6 +9,7 @@ class TimerViewModel: ObservableObject {
     @Published var projects: [Project] = []
     @Published var tasks: [TimeTrackTask] = []
     @Published var isLoading = false
+    @Published var isRefreshing = false
     @Published var errorMessage: String?
     @Published var elapsedTime: Int = 0
 
@@ -55,21 +56,32 @@ class TimerViewModel: ObservableObject {
 
     // MARK: - Data Loading
     func loadInitialData() async {
+        print("🔄 Starting full data refresh...")
+        isRefreshing = true
+        defer { isRefreshing = false }
+
+        print("📊 Loading current entry...")
         await loadCurrentEntry()
+
+        print("📋 Loading recent entries...")
         await loadRecentEntries()
+
+        print("📁 Loading projects...")
         await loadProjects()
+
+        print("✅ Data refresh completed")
     }
-
-
 
     func loadCurrentEntry() async {
         do {
             currentEntry = try await apiClient.getCurrentEntry()
 
             if let entry = currentEntry, entry.isRunning {
+                print("⏱️ Found running timer, starting elapsed time counter")
                 calculateElapsedTime(from: entry.startTime)
                 startElapsedTimer()
             } else {
+                print("⏹️ No running timer found")
                 stopElapsedTimer()
                 elapsedTime = 0
             }
@@ -81,6 +93,7 @@ class TimerViewModel: ObservableObject {
     func loadRecentEntries() async {
         do {
             recentEntries = try await apiClient.getTimeEntries(limit: 10)
+            print("📝 Loaded \(recentEntries.count) recent entries")
         } catch {
             print("❌ Error loading recent entries: \(error)")
             // Don't clear existing entries on error, just log it
@@ -90,8 +103,9 @@ class TimerViewModel: ObservableObject {
     func loadProjects() async {
         do {
             projects = try await apiClient.getProjects()
+            print("📂 Loaded \(projects.count) projects")
         } catch {
-            print("Error loading projects: \(error)")
+            print("❌ Error loading projects: \(error)")
         }
     }
 

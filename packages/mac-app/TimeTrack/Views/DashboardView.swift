@@ -14,12 +14,21 @@ struct DashboardView: View {
 
                 Spacer()
 
-                Button(action: {}) {
+                Button(action: {
+                    Task {
+                        await timerViewModel.loadInitialData()
+                    }
+                }) {
                     Image(systemName: "arrow.clockwise")
                         .font(.title3)
+                        .rotationEffect(.degrees(timerViewModel.isRefreshing ? 360 : 0))
+                        .animation(timerViewModel.isRefreshing ? Animation.linear(duration: 1).repeatForever(autoreverses: false) : .default, value: timerViewModel.isRefreshing)
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 4)
+                .keyboardShortcut("r", modifiers: .command)
+                .help("Refresh data (⌘R)")
+                .disabled(timerViewModel.isRefreshing)
 
                 Button(action: {
                     authViewModel.logout()
