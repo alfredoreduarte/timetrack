@@ -186,4 +186,4 @@ backup_*.sql
 postgres_data/
 redis_data/
 api_logs/
-nginx_logs/
+nginx_logs/*.xcuserstate

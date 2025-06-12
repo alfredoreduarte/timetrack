@@ -6,9 +6,14 @@ class TimerViewModel: ObservableObject {
     @Published var currentEntry: TimeEntry?
     @Published var recentEntries: [TimeEntry] = []
     @Published var projects: [Project] = []
+    @Published var tasks: [TimeTrackTask] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var elapsedTime: Int = 0
+
+    // Selected project and task for starting new timers
+    @Published var selectedProjectId: String?
+    @Published var selectedTaskId: String?
 
     private let apiClient = APIClient.shared
     private var timer: Timer?
@@ -80,14 +85,36 @@ class TimerViewModel: ObservableObject {
         }
     }
 
+    func loadTasks(for projectId: String? = nil) async {
+        do {
+            // Only load non-completed tasks for the dropdown selection
+            tasks = try await apiClient.getTasks(projectId: projectId, isCompleted: false)
+        } catch {
+            print("Error loading tasks: \(error)")
+        }
+    }
+
+    // Method to handle project selection and automatically load tasks
+    func selectProject(_ projectId: String?) async {
+        selectedProjectId = projectId
+        selectedTaskId = nil // Reset task selection when project changes
+
+        if let projectId = projectId {
+            await loadTasks(for: projectId)
+        } else {
+            tasks = [] // Clear tasks if no project selected
+        }
+    }
+
     // MARK: - Timer Operations
-    func startTimer(projectId: String?, description: String? = nil) async {
+    func startTimer(projectId: String?, taskId: String? = nil, description: String? = nil) async {
         isLoading = true
         errorMessage = nil
 
         do {
             let entry = try await apiClient.startTimer(
                 projectId: projectId,
+                taskId: taskId,
                 description: description
             )
 
@@ -130,6 +157,7 @@ class TimerViewModel: ObservableObject {
     func restartTimer(fromEntry entry: TimeEntry) async {
         await startTimer(
             projectId: entry.projectId,
+            taskId: entry.taskId,
             description: entry.description
         )
     }
@@ -182,6 +210,34 @@ class TimerViewModel: ObservableObject {
 
         // Convert hex color string to Color
         return Color(hex: colorString) ?? .gray
+    }
+
+    func getTaskName(for taskId: String?) -> String {
+        guard let taskId = taskId,
+              let task = tasks.first(where: { $0.id == taskId }) else {
+            return "No Task"
+        }
+        return task.name
+    }
+
+    func getTaskFromAllProjects(taskId: String?) async -> String {
+        // This method can be used to get task name even if it's not in the current project's tasks
+        // Useful for displaying task names in recent entries that might be from different projects
+        guard let taskId = taskId else { return "No Task" }
+
+        // First check if it's in the currently loaded tasks
+        if let task = tasks.first(where: { $0.id == taskId }) {
+            return task.name
+        }
+
+        // If not found, try to fetch it from the API
+        do {
+            let task = try await apiClient.getTask(id: taskId)
+            return task.name
+        } catch {
+            print("Error fetching task: \(error)")
+            return "Unknown Task"
+        }
     }
 
     func clearError() {

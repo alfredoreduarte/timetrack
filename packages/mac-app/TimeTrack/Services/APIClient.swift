@@ -161,6 +161,92 @@ class APIClient: ObservableObject {
         return response.projects
     }
 
+    // MARK: - Tasks API
+    func getTasks(projectId: String? = nil, isCompleted: Bool? = nil) async throws -> [TimeTrackTask] {
+        var queryItems: [URLQueryItem] = []
+
+        if let projectId = projectId {
+            queryItems.append(URLQueryItem(name: "projectId", value: projectId))
+        }
+
+        if let isCompleted = isCompleted {
+            queryItems.append(URLQueryItem(name: "isCompleted", value: String(isCompleted)))
+        }
+
+        var endpoint = "/tasks"
+        if !queryItems.isEmpty {
+            var components = URLComponents()
+            components.queryItems = queryItems
+            if let queryString = components.percentEncodedQuery {
+                endpoint += "?" + queryString
+            }
+        }
+
+        let response = try await makeRequest(
+            endpoint: endpoint,
+            method: .GET,
+            responseType: TasksResponse.self
+        )
+        return response.tasks
+    }
+
+    func getTask(id: String) async throws -> TimeTrackTask {
+        let response = try await makeRequest(
+            endpoint: "/tasks/\(id)",
+            method: .GET,
+            responseType: TaskResponse.self
+        )
+        return response.task
+    }
+
+    func createTask(name: String, description: String? = nil, projectId: String, hourlyRate: Double? = nil) async throws -> TimeTrackTask {
+        let createRequest = CreateTaskRequest(
+            name: name,
+            description: description,
+            projectId: projectId,
+            hourlyRate: hourlyRate
+        )
+        let body = try JSONEncoder().encode(createRequest)
+
+        let response = try await makeRequest(
+            endpoint: "/tasks",
+            method: .POST,
+            body: body,
+            responseType: TaskResponse.self
+        )
+        return response.task
+    }
+
+    func updateTask(id: String, name: String? = nil, description: String? = nil, isCompleted: Bool? = nil, hourlyRate: Double? = nil) async throws -> TimeTrackTask {
+        let updateRequest = UpdateTaskRequest(
+            name: name,
+            description: description,
+            isCompleted: isCompleted,
+            hourlyRate: hourlyRate
+        )
+        let body = try JSONEncoder().encode(updateRequest)
+
+        let response = try await makeRequest(
+            endpoint: "/tasks/\(id)",
+            method: .PUT,
+            body: body,
+            responseType: TaskResponse.self
+        )
+        return response.task
+    }
+
+    func deleteTask(id: String) async throws {
+        struct DeleteResponse: Codable {
+            let message: String
+        }
+
+        _ = try await makeRequest(
+            endpoint: "/tasks/\(id)",
+            method: .DELETE,
+            responseType: DeleteResponse.self
+        )
+    }
+
     // MARK: - Time Entries API
     func getCurrentEntry() async throws -> TimeEntry? {
         return try await makeRequest(

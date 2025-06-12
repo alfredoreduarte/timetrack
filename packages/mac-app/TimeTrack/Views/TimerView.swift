@@ -3,6 +3,7 @@ import SwiftUI
 struct TimerView: View {
     @EnvironmentObject var timerViewModel: TimerViewModel
     @State private var selectedProjectId: String = ""
+    @State private var selectedTaskId: String = ""
     @State private var description: String = ""
     @State private var showingProjectPicker = false
 
@@ -15,19 +16,27 @@ struct TimerView: View {
                     .foregroundColor(timerViewModel.isRunning ? .green : .primary)
 
                 if timerViewModel.isRunning, let entry = timerViewModel.currentEntry {
-                    HStack {
-                        Circle()
-                            .fill(timerViewModel.getProjectColor(for: entry.projectId))
-                            .frame(width: 8, height: 8)
+                    VStack(spacing: 4) {
+                        HStack {
+                            Circle()
+                                .fill(timerViewModel.getProjectColor(for: entry.projectId))
+                                .frame(width: 8, height: 8)
 
-                        Text("Tracking: \(timerViewModel.getProjectName(for: entry.projectId))")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            Text("Project: \(timerViewModel.getProjectName(for: entry.projectId))")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+
+                        if let taskId = entry.taskId {
+                            Text("Task: \(timerViewModel.getTaskName(for: taskId))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
             }
 
-            // Project Selection (when not running)
+            // Project and Task Selection (when not running)
             if !timerViewModel.isRunning {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Select Project")
@@ -36,11 +45,19 @@ struct TimerView: View {
                     Menu {
                         Button("No Project") {
                             selectedProjectId = ""
+                            selectedTaskId = ""
+                            Task {
+                                await timerViewModel.selectProject(nil)
+                            }
                         }
 
                         ForEach(timerViewModel.projects.filter { $0.isActive }) { project in
                             Button(project.name) {
                                 selectedProjectId = project.id
+                                selectedTaskId = ""
+                                Task {
+                                    await timerViewModel.selectProject(project.id)
+                                }
                             }
                         }
                     } label: {
@@ -74,6 +91,49 @@ struct TimerView: View {
                         )
                     }
 
+                    // Task Selection (only show if project is selected and has tasks)
+                    if !selectedProjectId.isEmpty && !timerViewModel.tasks.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Select Task (optional)")
+                                .font(.headline)
+
+                            Menu {
+                                Button("No Task") {
+                                    selectedTaskId = ""
+                                }
+
+                                ForEach(timerViewModel.tasks) { task in
+                                    Button(task.name) {
+                                        selectedTaskId = task.id
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    if selectedTaskId.isEmpty {
+                                        Text("Select a task...")
+                                            .foregroundColor(.secondary)
+                                    } else {
+                                        Text(timerViewModel.getTaskName(for: selectedTaskId))
+                                            .foregroundColor(.primary)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                                .background(Color(NSColor.controlBackgroundColor))
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                                )
+                            }
+                        }
+                    }
+
                     // Description input
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Description (optional)")
@@ -93,6 +153,7 @@ struct TimerView: View {
                             await timerViewModel.stopTimer()
                             // Clear form after stopping
                             selectedProjectId = ""
+                            selectedTaskId = ""
                             description = ""
                         }
                     }) {
@@ -118,6 +179,7 @@ struct TimerView: View {
                         Task {
                             await timerViewModel.startTimer(
                                 projectId: selectedProjectId.isEmpty ? nil : selectedProjectId,
+                                taskId: selectedTaskId.isEmpty ? nil : selectedTaskId,
                                 description: description.isEmpty ? nil : description
                             )
                         }
@@ -177,6 +239,9 @@ struct TimerView: View {
             // Pre-select the first active project if available
             if selectedProjectId.isEmpty, let firstProject = timerViewModel.projects.first(where: { $0.isActive }) {
                 selectedProjectId = firstProject.id
+                Task {
+                    await timerViewModel.selectProject(firstProject.id)
+                }
             }
         }
     }

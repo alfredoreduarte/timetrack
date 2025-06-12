@@ -45,6 +45,52 @@ struct ProjectsResponse: Codable {
     let projects: [Project]
 }
 
+// MARK: - Task Models
+struct TimeTrackTask: Codable, Identifiable {
+    let id: String
+    let name: String
+    let description: String?
+    let isCompleted: Bool
+    let hourlyRate: Double?
+    let createdAt: String?
+    let updatedAt: String?
+    let project: TaskProject?
+    let _count: TaskCount?
+
+    struct TaskProject: Codable {
+        let id: String
+        let name: String
+        let color: String?
+    }
+
+    struct TaskCount: Codable {
+        let timeEntries: Int
+    }
+}
+
+struct TasksResponse: Codable {
+    let tasks: [TimeTrackTask]
+}
+
+struct CreateTaskRequest: Codable {
+    let name: String
+    let description: String?
+    let projectId: String
+    let hourlyRate: Double?
+}
+
+struct UpdateTaskRequest: Codable {
+    let name: String?
+    let description: String?
+    let isCompleted: Bool?
+    let hourlyRate: Double?
+}
+
+struct TaskResponse: Codable {
+    let message: String
+    let task: TimeTrackTask
+}
+
 // MARK: - Time Entry Models
 struct TimeEntry: Codable, Identifiable {
     let id: String
