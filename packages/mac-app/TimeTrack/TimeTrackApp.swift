@@ -11,6 +11,7 @@ struct TimeTrackApp: App {
                 .environmentObject(authViewModel)
                 .environmentObject(timerViewModel)
         }
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
     }
 }
