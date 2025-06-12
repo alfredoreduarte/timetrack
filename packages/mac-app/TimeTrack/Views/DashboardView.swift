@@ -3,6 +3,7 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @EnvironmentObject var timerViewModel: TimerViewModel
+    @State private var rotationDegrees = 0.0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,13 +17,17 @@ struct DashboardView: View {
 
                 Button(action: {
                     Task {
+                        withAnimation(.linear(duration: 1)) {
+                            rotationDegrees = 360
+                        }
                         await timerViewModel.loadInitialData()
+                        // Reset without animation
+                        rotationDegrees = 0
                     }
                 }) {
                     Image(systemName: "arrow.clockwise")
                         .font(.title3)
-                        .rotationEffect(.degrees(timerViewModel.isRefreshing ? 360 : 0))
-                        .animation(timerViewModel.isRefreshing ? Animation.linear(duration: 1).repeatForever(autoreverses: false) : .default, value: timerViewModel.isRefreshing)
+                        .rotationEffect(.degrees(rotationDegrees))
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 4)
