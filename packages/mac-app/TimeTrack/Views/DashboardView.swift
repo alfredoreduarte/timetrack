@@ -123,6 +123,7 @@ struct DashboardView: View {
 struct TimeEntryRow: View {
     @EnvironmentObject var timerViewModel: TimerViewModel
     let entry: TimeEntry
+    @State private var isBlinking = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -132,7 +133,25 @@ struct TimeEntryRow: View {
                     Circle()
                         .fill(timerViewModel.getProjectColor(for: entry))
                         .frame(width: 8, height: 8)
-                        .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: entry.isRunning)
+                        .opacity(entry.isRunning ? (isBlinking ? 0.3 : 1.0) : 1.0)
+                        .onAppear {
+                            if entry.isRunning {
+                                withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
+                                    isBlinking = true
+                                }
+                            }
+                        }
+                        .onChange(of: entry.isRunning) { oldValue, newValue in
+                            if newValue {
+                                withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
+                                    isBlinking = true
+                                }
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    isBlinking = false
+                                }
+                            }
+                        }
 
                     Text(timerViewModel.getProjectName(for: entry))
                         .font(.headline)
