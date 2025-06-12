@@ -217,7 +217,7 @@ struct TimerView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(Color.green)
+                            .background(AppTheme.success)
                             .foregroundColor(.white)
                             .cornerRadius(6)
                         }

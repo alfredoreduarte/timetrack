@@ -148,7 +148,7 @@ struct TimeEntryRow: View {
                     Spacer()
 
                     // Duration display
-                    Text(entry.formattedDuration)
+                    Text(entry.formattedDurationShort)
                         .font(.headline)
                         .fontWeight(.medium)
                 }
@@ -162,8 +162,11 @@ struct TimeEntryRow: View {
             }
             .padding()
             .frame(maxWidth: .infinity)
-            .background(Color(NSColor.windowBackgroundColor))
             .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+            )
 
             // Restart button
             if !timerViewModel.isRunning {
@@ -174,7 +177,7 @@ struct TimeEntryRow: View {
                 }) {
                     Image(systemName: "play.circle.fill")
                         .font(.title2)
-                        .foregroundColor(.blue)
+                        .foregroundColor(AppTheme.success)
                 }
                 .buttonStyle(PlainButtonStyle())
                 .help("Restart this timer")
@@ -255,4 +258,5 @@ struct LoadingEarningsCard: View {
     DashboardView()
         .environmentObject(AuthViewModel())
         .environmentObject(TimerViewModel())
+        .frame(width: 400, height: 600)
 }

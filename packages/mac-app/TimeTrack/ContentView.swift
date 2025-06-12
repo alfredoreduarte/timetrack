@@ -25,4 +25,6 @@ struct ContentView: View {
     ContentView()
         .environmentObject(AuthViewModel())
         .environmentObject(TimerViewModel())
+        .frame(width: 400, height: 600)
+        .preferredColorScheme(.dark)
 }

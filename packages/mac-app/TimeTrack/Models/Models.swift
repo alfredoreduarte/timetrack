@@ -184,6 +184,21 @@ struct TimeEntry: Codable, Identifiable {
             return String(format: "%02d:%02d", minutes, seconds)
         }
     }
+    
+    var formattedDurationShort: String {
+        let durationValue = safeDuration
+        let hours = durationValue / 3600
+        let minutes = (durationValue % 3600) / 60
+        let seconds = durationValue % 60
+        
+        let onlySeconds = hours == 0 && minutes == 0
+
+        if onlySeconds {
+            return String(format: "%2d sec", minutes, seconds)
+        } else {
+            return String(format: "%02d:%02d", hours, minutes)
+        }
+    }
 
     var formattedStartTime: String {
         let formatter = DateFormatter()
