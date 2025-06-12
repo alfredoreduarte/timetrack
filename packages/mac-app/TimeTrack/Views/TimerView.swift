@@ -111,64 +111,56 @@ struct TimerView: View {
             } else {
                 // Timer form to start a new timer
                 VStack(spacing: 12) {
-                    // Description input
-                    TextField("What are you working on?", text: $description)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-
-                    // Stack pickers and button vertically
-                    VStack(spacing: 10) {
-                        // Project picker
-                        Menu {
-                            Button("No Project") {
-                                selectedProjectId = ""
-                                selectedTaskId = ""
-                                Task {
-                                    await timerViewModel.selectProject(nil)
-                                }
-                            }
-
-                            ForEach(timerViewModel.projects.filter { $0.isActive }) { project in
-                                Button(action: {
-                                    selectedProjectId = project.id
+                    HStack(spacing: 12){
+                        // Stack pickers and button vertically
+                        VStack(spacing: 10) {
+                            // Project picker
+                            Menu {
+                                Button("No Project") {
+                                    selectedProjectId = ""
                                     selectedTaskId = ""
                                     Task {
-                                        await timerViewModel.selectProject(project.id)
-                                    }
-                                }) {
-                                    HStack {
-                                        Circle()
-                                            .fill(timerViewModel.getProjectColor(for: project.id))
-                                            .frame(width: 8, height: 8)
-                                        Text(project.name)
+                                        await timerViewModel.selectProject(nil)
                                     }
                                 }
-                            }
-                        } label: {
-                            HStack {
-                                if selectedProjectId.isEmpty {
-                                    Text("Project")
-                                        .foregroundColor(.secondary)
-                                } else {
-                                    Circle()
-                                        .fill(timerViewModel.getProjectColor(for: selectedProjectId))
-                                        .frame(width: 8, height: 8)
-                                    Text(timerViewModel.getProjectName(for: selectedProjectId))
-                                        .lineLimit(1)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.down")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                            .background(Color(NSColor.controlBackgroundColor))
-                            .cornerRadius(6)
-                        }
-                        .frame(maxWidth: .infinity)
 
-                        // Task picker (only if project is selected)
-                        if !selectedProjectId.isEmpty && !timerViewModel.tasks.isEmpty {
+                                ForEach(timerViewModel.projects.filter { $0.isActive }) { project in
+                                    Button(action: {
+                                        selectedProjectId = project.id
+                                        selectedTaskId = ""
+                                        Task {
+                                            await timerViewModel.selectProject(project.id)
+                                        }
+                                    }) {
+                                        HStack {
+                                            Circle()
+                                                .fill(timerViewModel.getProjectColor(for: project.id))
+                                                .frame(width: 8, height: 8)
+                                            Text(project.name)
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    if selectedProjectId.isEmpty {
+                                        Text("Project")
+                                            .foregroundColor(.secondary)
+                                    } else {
+                                        Circle()
+                                            .fill(timerViewModel.getProjectColor(for: selectedProjectId))
+                                            .frame(width: 8, height: 8)
+                                        Text(timerViewModel.getProjectName(for: selectedProjectId))
+                                            .lineLimit(1)
+                                    }
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(Color(NSColor.controlBackgroundColor))
+                                .cornerRadius(6)
+                            }
+                            .frame(maxWidth: .infinity)
+
+                            // Task picker (only if project is selected)
                             Menu {
                                 Button("No Task") {
                                     selectedTaskId = ""
@@ -188,10 +180,6 @@ struct TimerView: View {
                                         Text(timerViewModel.getTaskName(for: selectedTaskId))
                                             .lineLimit(1)
                                     }
-                                    Spacer()
-                                    Image(systemName: "chevron.down")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
                                 }
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 6)
@@ -199,9 +187,15 @@ struct TimerView: View {
                                 .cornerRadius(6)
                             }
                             .frame(maxWidth: .infinity)
+                            .disabled(selectedProjectId.isEmpty || timerViewModel.tasks.isEmpty)
+
+                            // Description input
+                            TextField("What are you working on?", text: $description)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .disabled(selectedProjectId.isEmpty || selectedTaskId.isEmpty)
                         }
 
-                        // Start button
+                        // Play button - green circle with play icon inside
                         Button(action: {
                             Task {
                                 await timerViewModel.startTimer(
@@ -211,17 +205,20 @@ struct TimerView: View {
                                 )
                             }
                         }) {
-                            HStack {
+                            ZStack {
+                                // Green circle background
+                                Circle()
+                                    .fill(AppTheme.success)
+                                    .frame(width: 60, height: 60)
+
+                                // White Play icon inside
                                 Image(systemName: "play.fill")
-                                Text("Start")
+                                    .font(.title)
+                                    .foregroundColor(.white)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(AppTheme.success)
-                            .foregroundColor(.white)
-                            .cornerRadius(6)
                         }
-                        .disabled(timerViewModel.isLoading)
+                        .buttonStyle(.plain)
+                        .disabled(selectedProjectId.isEmpty)
                     }
                 }
             }

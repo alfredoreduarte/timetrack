@@ -49,9 +49,6 @@ struct DashboardView: View {
             // Scrollable content below TimerView
             ScrollView {
                 VStack(spacing: 16) {
-                    // Add some top padding to account for the gradient overlay
-                    Color.clear.frame(height: 4)
-
                     // Earnings Cards Section
                     if dashboardViewModel.isLoading {
                         HStack(spacing: 16) {
@@ -109,6 +106,8 @@ struct DashboardView: View {
                 .padding()
             }
             .offset(y: -20) // Offset to overlap with the gradient
+            // negative bottom margin to compensate for the negative offset
+            .padding(.bottom, -20)
         }
         .background(AppTheme.background)
         .navigationTitle("")
@@ -133,6 +132,7 @@ struct TimeEntryRow: View {
                     Circle()
                         .fill(timerViewModel.getProjectColor(for: entry))
                         .frame(width: 8, height: 8)
+                        .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: entry.isRunning)
 
                     Text(timerViewModel.getProjectName(for: entry))
                         .font(.headline)
