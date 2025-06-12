@@ -7,86 +7,108 @@ struct DashboardView: View {
     @State private var rotationDegrees = 0.0
 
     var body: some View {
-        // Main content in a scrollable view
-        ScrollView {
-            VStack(spacing: 16) {
-                // Timer Section (always visible at top)
-                TimerView(
-                    onRefresh: {
-                        Task {
-                            withAnimation(.linear(duration: 1)) {
-                                rotationDegrees = 360
-                            }
-                            await timerViewModel.loadInitialData()
-                            await dashboardViewModel.loadDashboardEarnings()
-                            // Reset without animation
-                            rotationDegrees = 0
+        VStack(spacing: 0) {
+            // Fixed Timer Section at the top
+            TimerView(
+                onRefresh: {
+                    Task {
+                        withAnimation(.linear(duration: 1)) {
+                            rotationDegrees = 360
                         }
-                    },
-                    onSettings: {
-                        authViewModel.logout()
-                    },
-                    rotationDegrees: rotationDegrees,
-                    isRefreshing: timerViewModel.isRefreshing
-                )
-                .cornerRadius(12)
-
-                                // Earnings Cards Section
-                if dashboardViewModel.isLoading {
-                    HStack(spacing: 16) {
-                        LoadingEarningsCard(title: "Today", icon: "💰")
-                        LoadingEarningsCard(title: "This Week", icon: "📊")
+                        await timerViewModel.loadInitialData()
+                        await dashboardViewModel.loadDashboardEarnings()
+                        // Reset without animation
+                        rotationDegrees = 0
                     }
-                    .padding(.horizontal)
-                } else if let errorMessage = dashboardViewModel.errorMessage {
-                    Text("Failed to load earnings: \(errorMessage)")
-                        .foregroundColor(AppTheme.error)
-                        .font(.caption)
-                        .padding()
-                } else {
-                    HStack(spacing: 16) {
-                        // Today's Earnings Card
-                        EarningsCard(
-                            title: "Today",
-                            earnings: dashboardViewModel.todayEarningsFormatted,
-                            duration: dashboardViewModel.todayDurationFormatted
-                        )
-
-                        // This Week's Earnings Card
-                        EarningsCard(
-                            title: "This Week",
-                            earnings: dashboardViewModel.thisWeekEarningsFormatted,
-                            duration: dashboardViewModel.thisWeekDurationFormatted
-                        )
-                    }
-                }
-
-                // Recent Time Entries Section
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Today")
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    // Time entries list
-                    if timerViewModel.recentEntries.isEmpty {
-                        VStack(spacing: 12) {
-                            Text("No time entries yet")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 20)
-                    } else {
-                        LazyVStack(spacing: 12) {
-                            ForEach(timerViewModel.recentEntries) { entry in
-                                TimeEntryRow(entry: entry)
-                            }
-                        }
-                    }
-                }
-            }
+                },
+                onSettings: {
+                    authViewModel.logout()
+                },
+                rotationDegrees: rotationDegrees,
+                isRefreshing: timerViewModel.isRefreshing
+            )
             .padding()
+            .background(AppTheme.background)
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
+            .zIndex(1) // Ensure the shadow appears above the scrollable content
+
+            // Gradient overlay to soften the transition
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    AppTheme.background.opacity(0.8),
+                    AppTheme.background.opacity(0.4),
+                    Color.clear
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 20)
+            .zIndex(1)
+
+            // Scrollable content below TimerView
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Add some top padding to account for the gradient overlay
+                    Color.clear.frame(height: 4)
+
+                    // Earnings Cards Section
+                    if dashboardViewModel.isLoading {
+                        HStack(spacing: 16) {
+                            LoadingEarningsCard(title: "Today")
+                            LoadingEarningsCard(title: "This Week")
+                        }
+                    } else if let errorMessage = dashboardViewModel.errorMessage {
+                        Text("Failed to load earnings: \(errorMessage)")
+                            .foregroundColor(AppTheme.error)
+                            .font(.caption)
+                            .padding()
+                    } else {
+                        HStack(spacing: 16) {
+                            // Today's Earnings Card
+                            EarningsCard(
+                                title: "Today",
+                                earnings: dashboardViewModel.todayEarningsFormatted,
+                                duration: dashboardViewModel.todayDurationFormatted
+                            )
+
+                            // This Week's Earnings Card
+                            EarningsCard(
+                                title: "This Week",
+                                earnings: dashboardViewModel.thisWeekEarningsFormatted,
+                                duration: dashboardViewModel.thisWeekDurationFormatted
+                            )
+                        }
+                    }
+
+                    // Recent Time Entries Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Today")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // Time entries list
+                        if timerViewModel.recentEntries.isEmpty {
+                            VStack(spacing: 12) {
+                                Text("No time entries yet")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
+                        } else {
+                            LazyVStack(spacing: 12) {
+                                ForEach(timerViewModel.recentEntries) { entry in
+                                    TimeEntryRow(entry: entry)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding()
+            }
+            .offset(y: -20) // Offset to overlap with the gradient
         }
         .background(AppTheme.background)
         .navigationTitle("")
@@ -198,7 +220,6 @@ struct EarningsCard: View {
 
 struct LoadingEarningsCard: View {
     let title: String
-    let icon: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -207,11 +228,6 @@ struct LoadingEarningsCard: View {
                     .font(.headline)
                     .fontWeight(.semibold)
                     .foregroundColor(.primary)
-
-                Spacer()
-
-                Text(icon)
-                    .font(.title2)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -227,7 +243,6 @@ struct LoadingEarningsCard: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.gray.opacity(0.1))
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
