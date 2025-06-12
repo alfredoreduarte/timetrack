@@ -68,7 +68,7 @@ struct TimerView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             // Large timer display
                             Text(timerViewModel.formattedElapsedTime)
-                                .font(.system(size: 48, weight: .bold, design: .monospaced))
+                                .font(.system(size: 36, weight: .bold, design: .monospaced))
                                 .foregroundColor(.primary)
 
                             // Earnings display
