@@ -108,9 +108,6 @@ struct TimerView: View {
                         .disabled(timerViewModel.isLoading)
                     }
                 }
-                .padding(24)
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(12)
             } else {
                 // Timer form to start a new timer
                 VStack(spacing: 12) {

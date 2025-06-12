@@ -1,5 +1,11 @@
 # TimeTrack Mac App - Cursor Rules
 
+## ⚠️ CRITICAL: NO COMMITS WITHOUT EXPLICIT COMMAND
+**DO NOT commit and push changes without the user's explicit command to do so.**
+- Always wait for user's approval before running `git commit` or `git push`
+- When changes are ready, inform the user and wait for their command
+- Only commit/push when the user explicitly asks for it
+
 ## ⚠️ CRITICAL: This is a macOS App ONLY
 **This is NOT an iOS app!** This is specifically packages/mac-app - a native macOS application.
 - Do NOT use iOS-specific modifiers, patterns, or thinking

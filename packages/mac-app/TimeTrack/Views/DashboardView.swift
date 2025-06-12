@@ -29,8 +29,6 @@ struct DashboardView: View {
                     rotationDegrees: rotationDegrees,
                     isRefreshing: timerViewModel.isRefreshing
                 )
-                .padding()
-                .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(12)
 
                                 // Earnings Cards Section
@@ -51,21 +49,16 @@ struct DashboardView: View {
                         EarningsCard(
                             title: "Today",
                             earnings: dashboardViewModel.todayEarningsFormatted,
-                            duration: dashboardViewModel.todayDurationFormatted,
-                            icon: "💰",
-                            backgroundColor: Color.blue.opacity(0.1)
+                            duration: dashboardViewModel.todayDurationFormatted
                         )
 
                         // This Week's Earnings Card
                         EarningsCard(
                             title: "This Week",
                             earnings: dashboardViewModel.thisWeekEarningsFormatted,
-                            duration: dashboardViewModel.thisWeekDurationFormatted,
-                            icon: "📊",
-                            backgroundColor: Color.green.opacity(0.1)
+                            duration: dashboardViewModel.thisWeekDurationFormatted
                         )
                     }
-                    .padding(.horizontal)
                 }
 
                 // Recent Time Entries Section
@@ -92,10 +85,10 @@ struct DashboardView: View {
                         }
                     }
                 }
-                .padding()
             }
             .padding()
         }
+        .background(Color(hex: "#161516"))
         .navigationTitle("")
         .onAppear {
             Task {
@@ -172,8 +165,6 @@ struct EarningsCard: View {
     let title: String
     let earnings: String
     let duration: String
-    let icon: String
-    let backgroundColor: Color
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -182,11 +173,6 @@ struct EarningsCard: View {
                     .font(.headline)
                     .fontWeight(.semibold)
                     .foregroundColor(.primary)
-
-                Spacer()
-
-                Text(icon)
-                    .font(.title2)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -202,7 +188,6 @@ struct EarningsCard: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(backgroundColor)
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
