@@ -355,6 +355,26 @@ class APIClient: ObservableObject {
         )
         return response.timeEntry
     }
+
+    // MARK: - Dashboard API
+    func getDashboardEarnings(timezone: String? = nil) async throws -> DashboardEarnings {
+        var endpoint = "/users/dashboard-earnings"
+
+        if let timezone = timezone {
+            var components = URLComponents()
+            components.queryItems = [URLQueryItem(name: "timezone", value: timezone)]
+            if let queryString = components.percentEncodedQuery {
+                endpoint += "?" + queryString
+            }
+        }
+
+        let response = try await makeRequest(
+            endpoint: endpoint,
+            method: .GET,
+            responseType: DashboardEarningsResponse.self
+        )
+        return response.earnings
+    }
 }
 
 // MARK: - HTTP Methods

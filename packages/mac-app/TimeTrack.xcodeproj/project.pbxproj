@@ -19,6 +19,7 @@
 		D0000019000000000 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000020000000000 /* Models.swift */; };
 		D0000021000000000 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000022000000000 /* AuthViewModel.swift */; };
 		D0000023000000000 /* TimerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000024000000000 /* TimerViewModel.swift */; };
+		D0000029000000000 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000030000000001 /* DashboardViewModel.swift */; };
 		D0000025000000000 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0000026000000000 /* Assets.xcassets */; };
 		D0000027000000000 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0000028000000000 /* Preview Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -37,6 +38,7 @@
 		D0000020000000000 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		D0000022000000000 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		D0000024000000000 /* TimerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerViewModel.swift; sourceTree = "<group>"; };
+		D0000030000000001 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
 		D0000026000000000 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D0000028000000000 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		D0000030000000000 /* TimeTrack.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TimeTrack.entitlements; sourceTree = "<group>"; };
@@ -101,6 +103,7 @@
 			children = (
 				D0000022000000000 /* AuthViewModel.swift */,
 				D0000024000000000 /* TimerViewModel.swift */,
+				D0000030000000001 /* DashboardViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -212,6 +215,7 @@
 				D0000019000000000 /* Models.swift in Sources */,
 				D0000021000000000 /* AuthViewModel.swift in Sources */,
 				D0000023000000000 /* TimerViewModel.swift in Sources */,
+				D0000029000000000 /* DashboardViewModel.swift in Sources */,
 				D0000001000000000 /* TimeTrackApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

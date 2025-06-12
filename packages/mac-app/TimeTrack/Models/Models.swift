@@ -243,3 +243,26 @@ struct CaptchaResponse: Codable {
     let captchaId: String
     let captchaSvg: String
 }
+
+// MARK: - Dashboard Earnings Models
+struct DashboardEarnings: Codable {
+    let currentTimer: CurrentTimerEarnings
+    let today: PeriodEarnings
+    let thisWeek: PeriodEarnings
+}
+
+struct CurrentTimerEarnings: Codable {
+    let earnings: Double
+    let duration: Int
+    let isRunning: Bool
+    let hourlyRate: Double
+}
+
+struct PeriodEarnings: Codable {
+    let earnings: Double
+    let duration: Int
+}
+
+struct DashboardEarningsResponse: Codable {
+    let earnings: DashboardEarnings
+}

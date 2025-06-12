@@ -3,6 +3,7 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @EnvironmentObject var timerViewModel: TimerViewModel
+    @StateObject private var dashboardViewModel = DashboardViewModel()
     @State private var rotationDegrees = 0.0
 
     var body: some View {
@@ -17,6 +18,7 @@ struct DashboardView: View {
                                 rotationDegrees = 360
                             }
                             await timerViewModel.loadInitialData()
+                            await dashboardViewModel.loadDashboardEarnings()
                             // Reset without animation
                             rotationDegrees = 0
                         }
@@ -30,6 +32,41 @@ struct DashboardView: View {
                 .padding()
                 .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(12)
+
+                                // Earnings Cards Section
+                if dashboardViewModel.isLoading {
+                    HStack(spacing: 16) {
+                        LoadingEarningsCard(title: "Today", icon: "💰")
+                        LoadingEarningsCard(title: "This Week", icon: "📊")
+                    }
+                    .padding(.horizontal)
+                } else if let errorMessage = dashboardViewModel.errorMessage {
+                    Text("Failed to load earnings: \(errorMessage)")
+                        .foregroundColor(.red)
+                        .font(.caption)
+                        .padding()
+                } else {
+                    HStack(spacing: 16) {
+                        // Today's Earnings Card
+                        EarningsCard(
+                            title: "Today",
+                            earnings: dashboardViewModel.todayEarningsFormatted,
+                            duration: dashboardViewModel.todayDurationFormatted,
+                            icon: "💰",
+                            backgroundColor: Color.blue.opacity(0.1)
+                        )
+
+                        // This Week's Earnings Card
+                        EarningsCard(
+                            title: "This Week",
+                            earnings: dashboardViewModel.thisWeekEarningsFormatted,
+                            duration: dashboardViewModel.thisWeekDurationFormatted,
+                            icon: "📊",
+                            backgroundColor: Color.green.opacity(0.1)
+                        )
+                    }
+                    .padding(.horizontal)
+                }
 
                 // Recent Time Entries Section
                 VStack(alignment: .leading, spacing: 16) {
@@ -63,6 +100,7 @@ struct DashboardView: View {
         .onAppear {
             Task {
                 await timerViewModel.loadInitialData()
+                await dashboardViewModel.loadDashboardEarnings()
             }
         }
     }
@@ -127,6 +165,89 @@ struct TimeEntryRow: View {
                 .help("Restart this timer")
             }
         }
+    }
+}
+
+struct EarningsCard: View {
+    let title: String
+    let earnings: String
+    let duration: String
+    let icon: String
+    let backgroundColor: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                Text(icon)
+                    .font(.title2)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(earnings)
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
+
+                Text(duration)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(backgroundColor)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+        )
+    }
+}
+
+struct LoadingEarningsCard: View {
+    let title: String
+    let icon: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                Text(icon)
+                    .font(.title2)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("...")
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .foregroundColor(.secondary)
+
+                Text("Loading...")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+        )
     }
 }
 
