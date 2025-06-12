@@ -36,10 +36,9 @@ class TimerViewModel: ObservableObject {
     }
 
     deinit {
-        // Safely cleanup timer from non-isolated context
-        Task { @MainActor in
-            self.stopElapsedTimer()
-        }
+        // Cleanup timer directly - no need for Task since timer invalidation is safe
+        timer?.invalidate()
+        timer = nil
     }
 
     // MARK: - Data Loading
@@ -153,9 +152,9 @@ class TimerViewModel: ObservableObject {
     private func startElapsedTimer() {
         stopElapsedTimer() // Stop any existing timer
 
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self.elapsedTime += 1
+                self?.elapsedTime += 1
             }
         }
     }
