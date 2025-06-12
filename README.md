@@ -22,6 +22,7 @@ timetrack-monorepo/
 ├── packages/
 │   ├── api/           # TimeTrack API server (Node.js/Express + Prisma)
 │   ├── ui/            # React web application + Electron desktop app
+│   ├── mac-app/       # Native macOS SwiftUI application
 │   └── shared/        # Shared types, constants, and utilities
 ├── docker-compose.yml      # Development Docker setup
 ├── docker-compose.prod.yml # Production Docker setup
@@ -90,6 +91,13 @@ The React web application with Electron desktop support.
 - React 18 + TypeScript + Tailwind CSS
 - Redux Toolkit for state management
 - Hot reload for fast development
+
+### timetrack-mac-app
+Native macOS SwiftUI application for time tracking.
+- SwiftUI with MVVM architecture
+- Real-time timer with project selection
+- Native macOS design and performance
+- Direct API integration
 
 ### @timetrack/shared
 Shared types, constants, and utilities.

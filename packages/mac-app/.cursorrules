@@ -1,0 +1,205 @@
+# TimeTrack Mac App - Cursor Rules
+
+## ⚠️ CRITICAL: This is a macOS App ONLY
+**This is NOT an iOS app!** This is specifically packages/mac-app - a native macOS application.
+- Do NOT use iOS-specific modifiers, patterns, or thinking
+- Think Mac desktop app, not mobile app
+- Use macOS Human Interface Guidelines, not iOS
+
+## Project Overview
+This is a native macOS SwiftUI application for TimeTrack, a time tracking system. The app integrates with an existing API and provides core time tracking functionality.
+
+## Architecture Guidelines
+
+### MVVM Pattern
+- Use Model-View-ViewModel architecture with SwiftUI
+- ViewModels should be `@MainActor` and `ObservableObject`
+- Models should be Codable structs matching API schema
+- Views should be stateless and reactive to ViewModel changes
+
+### API Integration
+- Base API URL: `https://api.track.alfredo.re` (configurable via environment)
+- Authentication: JWT tokens stored in UserDefaults
+- Use async/await for all network operations
+- Handle errors gracefully with user-friendly messages
+
+## Code Style
+
+### Swift Conventions
+- Use Swift 5.0+ features and modern syntax
+- Follow Apple's Swift API Design Guidelines
+- Use meaningful variable and function names
+- Add MARK comments to organize code sections
+
+### SwiftUI Best Practices
+- Prefer `@StateObject` for ViewModels in root views
+- Use `@EnvironmentObject` to pass ViewModels down the hierarchy
+- Keep Views focused and break into smaller components when needed
+- Use `Task` for async operations in button actions
+
+### macOS-ONLY SwiftUI Patterns
+- **NO keyboardType**: Virtual keyboards don't exist on Mac
+- **NO autocapitalization**: Mac keyboards handle this differently
+- **NO disableAutocorrection**: Use system behavior on Mac
+- **NO navigationBarHidden**: Not applicable on macOS NavigationView
+- **NO touch-based modifiers**: onTapGesture is fine, but think mouse/trackpad
+- **Use NSColor**: Instead of UIColor for color customization
+- **Window-based thinking**: Not screen-based like iOS
+- **Menu bar integration**: Consider native Mac patterns
+
+### Forbidden iOS Modifiers (DO NOT USE)
+```swift
+// ❌ NEVER use these in macOS app:
+.keyboardType()
+.autocapitalization()
+.disableAutocorrection()
+.navigationBarHidden()
+.ignoresSafeArea() // Different on Mac
+.statusBarHidden()
+```
+
+### Error Handling
+- Create custom error types that conform to LocalizedError
+- Display errors to users via alerts or inline text
+- Log detailed errors to console for debugging
+- Clear errors when appropriate (e.g., on view appear)
+
+### Swift Concurrency & Actor Isolation
+- **Think holistically**: When fixing concurrency errors, analyze the entire actor isolation context
+- **Avoid line-by-line fixes**: One concurrency fix often reveals related issues elsewhere
+- **@MainActor classes**: All properties/methods are main actor-isolated by default
+- **deinit considerations**: Runs in non-isolated context, use `Task { @MainActor in }` for cleanup
+- **Timer patterns**: Timers should be created/invalidated on main actor, use Task for deinit cleanup
+- **nonisolated limitations**: Cannot be applied to mutable stored properties
+
+### Debugging Best Practices
+- **Understand the root cause**: Don't patch symptoms, fix the underlying issue
+- **Consider side effects**: One fix may create new errors in related code
+- **Test incrementally**: After major fixes, rebuild to catch cascade issues early
+- **Actor isolation flow**: Map out which contexts need access to shared state
+
+## File Organization
+
+```
+TimeTrack/
+├── Models/           # Data models (User, Project, TimeEntry)
+├── Views/           # SwiftUI views (Login, Dashboard, Timer)
+├── ViewModels/      # Observable view models
+├── Services/        # API clients and business logic
+├── Assets.xcassets  # App icons and colors
+└── Supporting Files # Entitlements, Info.plist
+```
+
+## API Endpoints Used
+
+### Authentication
+- `POST /auth/login` - User login
+- `POST /auth/register` - User registration
+- `GET /auth/me` - Get current user
+
+### Timer Management
+- `GET /time-entries/current` - Get running timer
+- `POST /time-entries/start` - Start timer
+- `POST /time-entries/{id}/stop` - Stop timer
+- `GET /time-entries` - Get recent entries
+
+### Projects
+- `GET /projects` - Get user's projects
+
+## Key Features
+
+1. **Authentication Flow**
+   - Login with email/password
+   - Registration with basic validation
+   - Persistent login via JWT token
+   - Logout functionality
+
+2. **Timer Management**
+   - Start/stop timers with real-time updates
+   - Project selection for timer entries
+   - Optional description for time entries
+   - Visual feedback for running state
+
+3. **Recent Entries**
+   - Display last 10 time entries
+   - Show project names with color indicators
+   - Restart functionality for previous entries
+   - Duration and timestamp display
+
+## Development Guidelines
+
+### State Management
+- Keep authentication state in AuthViewModel
+- Keep timer state in TimerViewModel
+- Share ViewModels via environment objects
+- Use Published properties for reactive updates
+
+### UI/UX Principles
+- Follow macOS Human Interface Guidelines
+- Use system colors and fonts when possible
+- Provide loading indicators for async operations
+- Show meaningful error messages
+- Keep forms simple and focused
+
+### Testing Considerations
+- Structure code to be testable (dependency injection)
+- Mock API client for unit tests
+- Test ViewModel logic separately from Views
+- Verify error handling scenarios
+
+## Common Patterns
+
+### API Calls
+```swift
+Task {
+    await viewModel.performAction()
+}
+```
+
+### Error Display
+```swift
+if let errorMessage = viewModel.errorMessage {
+    Text(errorMessage)
+        .foregroundColor(.red)
+}
+```
+
+### Loading States
+```swift
+Button("Action") {
+    // action
+}
+.disabled(viewModel.isLoading)
+```
+
+### Concurrency Patterns
+```swift
+// Proper deinit cleanup for @MainActor classes
+deinit {
+    Task { @MainActor in
+        self.cleanup()
+    }
+}
+
+// Timer management in @MainActor context
+private func startTimer() {
+    timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        Task { @MainActor in
+            // Update UI
+        }
+    }
+}
+```
+
+## Environment Variables
+- `TIMETRACK_API_URL` - Override default API URL
+- Production default: `https://api.track.alfredo.re`
+- Development override: `http://localhost:3011`
+
+## Build Requirements
+- macOS 14.0+ deployment target
+- Xcode 15.4+ for development
+- Network entitlements for API access
+- Code signing for distribution
+
+Remember: Keep the app simple and focused on core time tracking functionality. Prioritize reliability and user experience over complex features.
