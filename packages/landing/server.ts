@@ -7,7 +7,12 @@ import { createServer as createViteServer } from "vite";
 
 async function start() {
   const isProd = process.env.NODE_ENV === "production";
-  const root = path.dirname(new URL(import.meta.url).pathname);
+  const fileDir = path.dirname(new URL(import.meta.url).pathname);
+  // In production the compiled file lives in /dist/server, so go two levels up to project root.
+  const root =
+    process.env.NODE_ENV === "production"
+      ? path.resolve(fileDir, "../..")
+      : process.cwd();
 
   const app = express();
 
