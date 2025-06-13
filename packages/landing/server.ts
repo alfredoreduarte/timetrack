@@ -82,7 +82,7 @@ async function start() {
     app.use(vite.middlewares);
   }
 
-  const port = Number(process.env.PORT ?? 8080);
+  const port = Number(process.env.PORT ?? 5174);
   app.listen(port, () => {
     // eslint-disable-next-line no-console
     console.log(`SSR server running at http://localhost:${port}`);

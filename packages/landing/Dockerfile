@@ -34,7 +34,7 @@ RUN npm ci
 
 COPY . .
 
-EXPOSE 8080
+EXPOSE 5174
 WORKDIR /app/packages/landing
 CMD ["npm", "run", "dev:ssr"]
 
@@ -46,9 +46,12 @@ FROM node:18-alpine AS production
 WORKDIR /app
 
 COPY --from=build /app/packages/landing/dist ./dist
+# Bring in production dependencies (installed during build stage)
+COPY --from=build /app/node_modules ./node_modules
 
 ENV NODE_ENV=production
+ENV PORT=80
 
-EXPOSE 8080
+EXPOSE 80
 
 CMD ["node", "dist/server/server.mjs"]
