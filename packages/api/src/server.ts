@@ -34,6 +34,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
       "http://localhost:3010", // Web UI port
       "http://localhost:5173", // Vite dev server (Electron frontend)
       "http://localhost:3011", // API port for direct access
+      "file://", // Electron apps
     ];
 
 // Log allowed origins for debugging
@@ -157,9 +158,18 @@ app.use(
 // Enhanced CORS configuration
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
+    origin: function (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void
+    ) {
+      // Allow requests with no origin (like mobile apps, Electron apps, or curl requests)
       if (!origin) {
+        return callback(null, true);
+      }
+
+      // Allow file:// protocol (Electron apps)
+      if (origin.startsWith("file://")) {
+        logger.info(`Allowing Electron app origin: ${origin}`);
         return callback(null, true);
       }
 
