@@ -1,4 +1,3 @@
-root@docker-1:/etc/nginx# cat sites-available/timetrack
 # /etc/nginx/sites-available/timetrack
 # Replace yourdomain.com with your actual domain
 
@@ -7,8 +6,11 @@ root@docker-1:/etc/nginx# cat sites-available/timetrack
 # limit_req_zone $binary_remote_addr zone=timetrack_api:10m rate=10r/s;
 # limit_req_zone $binary_remote_addr zone=timetrack_web:10m rate=30r/s;
 
+###############################################################################
+# 1) Marketing landing  (yourdomain.com  -> container port 3014)
+###############################################################################
 server {
-    server_name track.alfredo.re;
+    server_name yourdomain.com;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -16,35 +18,16 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
 
-    # API endpoints - proxy to API service
-    location /api/ {
-        # Uncomment if you've added rate limiting zones to nginx.conf
-        # limit_req zone=timetrack_api burst=10 nodelay;
-
-        proxy_pass http://localhost:3011;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-
-        # Timeouts
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-    }
-
     # Health check endpoint - proxy to API service
     location /health {
+        limit_req zone=timetrack_api burst=10 nodelay;
         proxy_pass http://localhost:3011/health;
         access_log off;
     }
 
     # API docs - proxy to API service
     location /api-docs {
+        limit_req zone=timetrack_web burst=30 nodelay;
         proxy_pass http://localhost:3011/api-docs;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -53,10 +36,45 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Frontend static files and React app - proxy to Web service
+    # Static marketing site
+    location / {
+        limit_req zone=timetrack_web burst=30 nodelay;
+        proxy_pass http://localhost:3014;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout    60s;
+        proxy_read_timeout    60s;
+    }
+
+    listen 443 ssl;                                  # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;      # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;    # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf;                           # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;                             # managed by Certbot
+}
+
+###############################################################################
+# 2) Dashboard app  (app.yourdomain.com  -> container port 3010)
+###############################################################################
+server {
+    server_name app.yourdomain.com;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+
+    # React app served by dashboard container (nginx)
     location / {
         # Uncomment if you've added rate limiting zones to nginx.conf
-        # limit_req zone=timetrack_web burst=20 nodelay;
+        limit_req zone=timetrack_web burst=20 nodelay;
 
         proxy_pass http://localhost:3010;
         proxy_http_version 1.1;
@@ -75,16 +93,19 @@ server {
     }
 
     listen 443 ssl; # managed by Certbot
-    ssl_certificate /etc/letsencrypt/live/track.alfredo.re/fullchain.pem; # managed by Certbot
-    ssl_certificate_key /etc/letsencrypt/live/track.alfredo.re/privkey.pem; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/app.yourdomain.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/app.yourdomain.com/privkey.pem; # managed by Certbot
     include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
 
+
 }
 
-# Optional: Separate subdomain for API
+###############################################################################
+# 3) Dedicated API sub-domain  (unchanged)
+###############################################################################
 server {
-    server_name api.track.alfredo.re;
+    server_name api.yourdomain.com;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -94,7 +115,7 @@ server {
 
     location / {
         # Uncomment if you've added rate limiting zones to nginx.conf
-        # limit_req zone=timetrack_api burst=10 nodelay;
+        limit_req zone=timetrack_api burst=10 nodelay;
 
         proxy_pass http://localhost:3011;
         proxy_http_version 1.1;
@@ -107,35 +128,33 @@ server {
     }
 
     listen 443 ssl; # managed by Certbot
-    ssl_certificate /etc/letsencrypt/live/track.alfredo.re/fullchain.pem; # managed by Certbot
-    ssl_certificate_key /etc/letsencrypt/live/track.alfredo.re/privkey.pem; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem; # managed by Certbot
     include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
 
 }
 
-
+###############################################################################
+# HTTP-to-HTTPS redirects
+###############################################################################
 server {
-    if ($host = track.alfredo.re) {
-        return 301 https://$host$request_uri;
-    } # managed by Certbot
-
-
+    if ($host = yourdomain.com)     { return 301 https://$host$request_uri; } # managed by Certbot
     listen 80;
-    server_name track.alfredo.re;
-    return 404; # managed by Certbot
-
-
+    server_name yourdomain.com;
+    return 404;                                                             # managed by Certbot
 }
+
 server {
-    if ($host = api.track.alfredo.re) {
-        return 301 https://$host$request_uri;
-    } # managed by Certbot
-
-
+    if ($host = app.yourdomain.com) { return 301 https://$host$request_uri; } # managed by Certbot
     listen 80;
-    server_name api.track.alfredo.re;
-    return 404; # managed by Certbot
+    server_name app.yourdomain.com;
+    return 404;                                                             # managed by Certbot
+}
 
-
-}root@docker-1:/etc/nginx#
+server {
+    if ($host = api.yourdomain.com) { return 301 https://$host$request_uri; } # managed by Certbot
+    listen 80;
+    server_name api.yourdomain.com;
+    return 404;                                                             # managed by Certbot
+}
