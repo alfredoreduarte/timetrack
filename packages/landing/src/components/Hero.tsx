@@ -8,7 +8,7 @@ const { data } = matter(heroMd);
 const title = (data.title as string) || "Trackr";
 const subtitle = (data.subtitle as string) || "";
 const downloadLabel = (data.downloadLabel as string) || "Download";
-const learnMoreLabel = (data.learnMoreLabel as string) || "Learn More";
+const signUpLabel = (data.signUpLabel as string) || "Sign up";
 
 const Hero: React.FC = () => {
   return (
@@ -38,16 +38,17 @@ const Hero: React.FC = () => {
       </div>
       <div className="mt-10 flex gap-6">
         <a
-          href="#download"
+          href="/TimeTrack.zip"
+          download
           className="inline-block bg-neon-purple px-8 py-3 rounded-md font-semibold shadow-neon text-white hover:scale-105 transition-transform"
         >
           {downloadLabel}
         </a>
         <a
-          href="#features"
+          href="https://app.track.alfredo.re"
           className="inline-block border border-neon-purple px-8 py-3 rounded-md font-semibold text-neon-purple hover:bg-neon-purple hover:text-white transition-colors"
         >
-          {learnMoreLabel}
+          {signUpLabel}
         </a>
       </div>
     </header>
