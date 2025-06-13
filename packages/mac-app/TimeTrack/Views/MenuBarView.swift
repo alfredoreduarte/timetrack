@@ -6,6 +6,7 @@ struct MenuBarView: View {
     @EnvironmentObject var menuBarManager: MenuBarManager
     @State private var earnings: DashboardEarnings?
     @State private var isLoadingEarnings = false
+    @State private var refreshTimer: Timer?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,6 +22,10 @@ struct MenuBarView: View {
             Task {
                 await loadEarnings()
             }
+            startRefreshTimer()
+        }
+        .onDisappear {
+            stopRefreshTimer()
         }
     }
 
@@ -216,7 +221,21 @@ struct MenuBarView: View {
                 }
             } else if let earnings = earnings {
                 VStack(spacing: 6) {
-                    if earnings.currentTimer.isRunning {
+                    // Show live current timer earnings if timer is running
+                    if timerViewModel.isRunning, let currentEntry = timerViewModel.currentEntry, let rate = currentEntry.hourlyRateSnapshot {
+                        HStack {
+                            Text("Current Timer:")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            // Calculate live earnings based on elapsed time
+                            let liveEarnings = rate * Double(timerViewModel.elapsedTime) / 3600.0
+                            Text("$\(liveEarnings, specifier: "%.2f")")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.green)
+                        }
+                    } else if earnings.currentTimer.isRunning {
+                        // Fallback to API data if we don't have current entry data
                         HStack {
                             Text("Current Timer:")
                                 .font(.system(size: 11))
@@ -296,6 +315,20 @@ struct MenuBarView: View {
         } catch {
             print("Error loading earnings: \(error)")
         }
+    }
+
+    private func startRefreshTimer() {
+        // Refresh earnings data every 30 seconds to keep today/week totals updated
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
+            Task { @MainActor in
+                await loadEarnings()
+            }
+        }
+    }
+
+    private func stopRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
     }
 }
 
