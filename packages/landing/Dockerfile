@@ -16,7 +16,7 @@ COPY packages/shared/package*.json ./packages/shared/
 
 RUN npm ci
 
-# Bring in full monorepo source and build the landing site
+# Bring in full monorepo source and build the SSR landing site (client + server bundles)
 COPY . .
 RUN npm run build --workspace=timetrack-landing
 
@@ -36,21 +36,22 @@ COPY . .
 
 EXPOSE 5174
 WORKDIR /app/packages/landing
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5174"]
+CMD ["npm", "run", "dev:ssr"]
 
 ###############################
 # Production stage
 ###############################
-FROM nginx:alpine AS production
+FROM node:18-alpine AS production
 
-RUN apk add --no-cache curl
+WORKDIR /app
 
-COPY --from=build /app/packages/landing/dist/ /usr/share/nginx/html/
-COPY packages/landing/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/packages/landing/dist ./dist
+# Bring in production dependencies (installed during build stage)
+COPY --from=build /app/node_modules ./node_modules
+
+ENV NODE_ENV=production
+ENV PORT=80
 
 EXPOSE 80
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost/health || exit 1
-
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["node", "dist/server/server.mjs"]
