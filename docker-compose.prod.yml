@@ -106,6 +106,25 @@ services:
     # ports:
     #   - "${REDIS_PORT:-3013}:6379"
 
+  # Marketing Landing Service (static nginx)
+  landing:
+    build:
+      context: .
+      dockerfile: ./packages/landing/Dockerfile
+      target: production
+      args:
+        PUBLIC_URL: "/"
+    container_name: timetrack-landing-prod
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: "/"
+    ports:
+      - "${LANDING_PORT:-3014}:80"
+    depends_on:
+      - api
+    networks:
+      - timetrack-network
+
 networks:
   timetrack-network:
     driver: bridge

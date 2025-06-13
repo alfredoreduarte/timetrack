@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Deep grid background */
+body {
+  background-color: #071327;
+  background-image:
+    linear-gradient(rgba(81, 0, 235, 0.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(81, 0, 235, 0.15) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: -1px -1px;
+  /* Slight rotation to mimic perspective */
+  transform: perspective(800px) rotateX(1deg);
+}
+
+/* Hide scrollbars visually for cleaner look (Webkit only) */
+body::-webkit-scrollbar {
+  width: 8px;
+}
+
+body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body::-webkit-scrollbar-thumb {
+  background-color: rgba(147, 27, 255, 0.4);
+  border-radius: 4px;
+}

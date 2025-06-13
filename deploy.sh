@@ -148,6 +148,7 @@ deploy() {
     log_info "  Web UI: http://localhost:${WEB_PORT:-3010}"
     log_info "  API: http://localhost:${API_PORT:-3011}"
     log_info "  API Docs: http://localhost:${API_PORT:-3011}/api-docs"
+    log_info "  Landing: http://localhost:${LANDING_PORT:-3014}"
     if [ "$mode" != "prod" ]; then
         log_info "  PostgreSQL: localhost:${POSTGRES_PORT:-3012}"
         log_info "  Redis: localhost:${REDIS_PORT:-3013}"

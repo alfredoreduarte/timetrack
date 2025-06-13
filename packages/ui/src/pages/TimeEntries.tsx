@@ -62,7 +62,7 @@ const TimeEntries: React.FC = () => {
     // Try to get hourly rate from the full project object in the store first
     const fullProject = safeProjects.find((p) => p.id === entry.projectId);
     const hourlyRate = fullProject?.hourlyRate || 0;
-    const hours = entry.duration / 3600;
+    const hours = (entry.duration || 0) / 3600;
     return hours * hourlyRate;
   };
 
@@ -275,7 +275,7 @@ const TimeEntries: React.FC = () => {
                     </div>
                     <div className="text-right">
                       <div className="text-lg font-medium text-gray-900">
-                        {formatReportsDuration(entry.duration)}
+                        {formatReportsDuration(entry.duration || 0)}
                       </div>
                       <div className="text-sm text-green-600 font-medium">
                         ${calculateEarnings(entry).toFixed(2)}

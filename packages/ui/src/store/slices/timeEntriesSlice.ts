@@ -7,10 +7,10 @@ export interface TimeEntry {
   description?: string;
   startTime: string;
   endTime?: string;
-  duration: number; // in seconds
+  duration: number | null; // in seconds, null for running timers
   projectId?: string;
   taskId?: string;
-  userId: string;
+  userId?: string; // optional for current entry API response
   project?: {
     id: string;
     name: string;
@@ -20,8 +20,8 @@ export interface TimeEntry {
     id: string;
     name: string;
   };
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string; // optional for current entry API response
+  updatedAt?: string; // optional for current entry API response
 }
 
 interface TimeEntriesState {

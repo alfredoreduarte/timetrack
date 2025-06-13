@@ -98,10 +98,10 @@ const ResumeLastTimer: React.FC = () => {
             <h4 className="text-sm font-medium text-gray-900">
               {lastProject.name}
             </h4>
-            {lastEntry.duration > 0 && (
+            {(lastEntry.duration || 0) > 0 && (
               <div className="flex items-center gap-1 text-xs text-gray-500">
                 <ClockIcon className="h-3 w-3" />
-                <span>{formatTime(lastEntry.duration)}</span>
+                <span>{formatTime(lastEntry.duration || 0)}</span>
               </div>
             )}
           </div>
