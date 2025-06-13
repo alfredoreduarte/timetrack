@@ -36,6 +36,18 @@ class TimerViewModel: ObservableObject {
         }
     }
 
+    // Live earnings calculation for the current running timer
+    var currentTimerLiveEarnings: Double? {
+        guard let currentEntry = currentEntry,
+              currentEntry.isRunning,
+              let rate = currentEntry.hourlyRateSnapshot,
+              rate > 0 else {
+            return nil
+        }
+
+        return rate * Double(elapsedTime) / 3600.0
+    }
+
     init() {
         Task {
             await loadInitialData()

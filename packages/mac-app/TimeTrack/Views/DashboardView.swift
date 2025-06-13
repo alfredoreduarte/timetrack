@@ -129,39 +129,29 @@ struct TimeEntryRow: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    // Project indicator and name
-                    Circle()
-                        .fill(timerViewModel.getProjectColor(for: entry))
-                        .frame(width: 8, height: 8)
-                        .opacity(entry.isRunning ? (isBlinking ? 0.3 : 1.0) : 1.0)
-                        .onAppear {
-                            if entry.isRunning {
-                                withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
-                                    isBlinking = true
-                                }
+                    // Use shared project display component
+                    ProjectTaskDisplayView(
+                        entry: entry,
+                        style: .full
+                    )
+                    .opacity(entry.isRunning ? (isBlinking ? 0.3 : 1.0) : 1.0)
+                    .onAppear {
+                        if entry.isRunning {
+                            withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
+                                isBlinking = true
                             }
                         }
-                        .onChange(of: entry.isRunning) { newValue in
-                            if newValue {
-                                withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
-                                    isBlinking = true
-                                }
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    isBlinking = false
-                                }
+                    }
+                    .onChange(of: entry.isRunning) { newValue in
+                        if newValue {
+                            withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
+                                isBlinking = true
+                            }
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                isBlinking = false
                             }
                         }
-
-                    Text(timerViewModel.getProjectName(for: entry))
-                        .font(.headline)
-                        .lineLimit(1)
-
-                    if let task = entry.task {
-                        Text(task.name)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
                     }
 
                     Spacer()
@@ -187,7 +177,6 @@ struct TimeEntryRow: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(entry.isRunning ? AppTheme.success.opacity(0.5) : Color.primary.opacity(0.1), lineWidth: 0.5)
-//                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
             )
 
             // Restart button

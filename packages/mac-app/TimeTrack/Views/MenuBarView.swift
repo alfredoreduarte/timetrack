@@ -4,8 +4,7 @@ struct MenuBarView: View {
     @EnvironmentObject var timerViewModel: TimerViewModel
     @EnvironmentObject var authViewModel: AuthViewModel
     @EnvironmentObject var menuBarManager: MenuBarManager
-    @State private var earnings: DashboardEarnings?
-    @State private var isLoadingEarnings = false
+    @StateObject private var dashboardViewModel = DashboardViewModel()
     @State private var refreshTimer: Timer?
 
     var body: some View {
@@ -20,7 +19,7 @@ struct MenuBarView: View {
         .background(AppTheme.background)
         .onAppear {
             Task {
-                await loadEarnings()
+                await dashboardViewModel.loadDashboardEarnings()
             }
             startRefreshTimer()
         }
@@ -105,72 +104,21 @@ struct MenuBarView: View {
     private var currentTimerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let currentEntry = timerViewModel.currentEntry {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(timerViewModel.getProjectName(for: currentEntry))
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.primary)
-
-                        if let task = currentEntry.task, !task.name.isEmpty {
-                            Text(task.name)
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
-                        }
-
-                        if let description = currentEntry.description, !description.isEmpty {
-                            Text(description)
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    Spacer()
-
-                    VStack(alignment: .trailing) {
-                        Text(timerViewModel.formattedElapsedTime)
-                            .font(.system(size: 18, weight: .bold, design: .monospaced))
-                            .foregroundColor(.primary)
-
-                        if let rate = currentEntry.hourlyRateSnapshot {
-                            Text("$\(rate, specifier: "%.2f")/hr")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-
-                // Timer control button
-                HStack {
-                    Spacer()
-
-                    Button(action: {
+                // Use shared component for current timer display
+                CompactTimeEntryView(
+                    entry: currentEntry,
+                    showLiveEarnings: true,
+                    onTimerAction: {
                         Task {
                             if timerViewModel.isRunning {
                                 await timerViewModel.stopTimer()
                             } else {
-                                // This case shouldn't happen when there's a current entry
                                 await timerViewModel.restartTimer(fromEntry: currentEntry)
                             }
-                            await loadEarnings()
+                            await dashboardViewModel.loadDashboardEarnings()
                         }
-                    }) {
-                        HStack {
-                            Image(systemName: timerViewModel.isRunning ? "stop.fill" : "play.fill")
-                                .font(.system(size: 12))
-                            Text(timerViewModel.isRunning ? "Stop" : "Resume")
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 6)
-                        .background(timerViewModel.isRunning ? AppTheme.error : AppTheme.success)
-                        .cornerRadius(6)
                     }
-                    .buttonStyle(.plain)
-
-                    Spacer()
-                }
+                )
             } else {
                 VStack(spacing: 8) {
                     Text("No active timer")
@@ -181,7 +129,7 @@ struct MenuBarView: View {
                         Button(action: {
                             Task {
                                 await timerViewModel.restartTimer(fromEntry: latestEntry)
-                                await loadEarnings()
+                                await dashboardViewModel.loadDashboardEarnings()
                             }
                         }) {
                             HStack {
@@ -211,7 +159,7 @@ struct MenuBarView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.primary)
 
-            if isLoadingEarnings {
+            if dashboardViewModel.isLoading {
                 HStack {
                     ProgressView()
                         .scaleEffect(0.8)
@@ -219,58 +167,17 @@ struct MenuBarView: View {
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
                 }
-            } else if let earnings = earnings {
-                VStack(spacing: 6) {
-                    // Show live current timer earnings if timer is running
-                    if timerViewModel.isRunning, let currentEntry = timerViewModel.currentEntry, let rate = currentEntry.hourlyRateSnapshot {
-                        HStack {
-                            Text("Current Timer:")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            // Calculate live earnings based on elapsed time
-                            let liveEarnings = rate * Double(timerViewModel.elapsedTime) / 3600.0
-                            Text("$\(liveEarnings, specifier: "%.2f")")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.green)
-                        }
-                    } else if earnings.currentTimer.isRunning {
-                        // Fallback to API data if we don't have current entry data
-                        HStack {
-                            Text("Current Timer:")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text("$\(earnings.currentTimer.earnings, specifier: "%.2f")")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.green)
-                        }
-                    }
-
-                    HStack {
-                        Text("Today:")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("$\(earnings.today.earnings, specifier: "%.2f")")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.primary)
-                    }
-
-                    HStack {
-                        Text("This Week:")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("$\(earnings.thisWeek.earnings, specifier: "%.2f")")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.primary)
-                    }
-                }
-            } else {
-                Text("Unable to load earnings")
+            } else if let errorMessage = dashboardViewModel.errorMessage {
+                Text("Error: \(errorMessage)")
                     .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.red)
+            } else {
+                // Use shared earnings display component
+                CompactEarningsView(
+                    earnings: dashboardViewModel.earnings,
+                    showCurrentTimer: timerViewModel.isRunning,
+                    currentTimerEarnings: timerViewModel.currentTimerLiveEarnings
+                )
             }
         }
         .padding(.horizontal, 16)
@@ -287,7 +194,7 @@ struct MenuBarView: View {
                 Button("Refresh") {
                     Task {
                         await timerViewModel.loadInitialData()
-                        await loadEarnings()
+                        await dashboardViewModel.loadDashboardEarnings()
                     }
                 }
                 .buttonStyle(.bordered)
@@ -306,22 +213,11 @@ struct MenuBarView: View {
         .padding(.vertical, 12)
     }
 
-    private func loadEarnings() async {
-        isLoadingEarnings = true
-        defer { isLoadingEarnings = false }
-
-        do {
-            earnings = try await APIClient.shared.getDashboardEarnings()
-        } catch {
-            print("Error loading earnings: \(error)")
-        }
-    }
-
     private func startRefreshTimer() {
         // Refresh earnings data every 30 seconds to keep today/week totals updated
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
             Task { @MainActor in
-                await loadEarnings()
+                await dashboardViewModel.loadDashboardEarnings()
             }
         }
     }
@@ -331,6 +227,8 @@ struct MenuBarView: View {
         refreshTimer = nil
     }
 }
+
+
 
 #Preview {
     MenuBarView()
