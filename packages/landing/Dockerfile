@@ -51,4 +51,4 @@ ENV NODE_ENV=production
 
 EXPOSE 8080
 
-CMD ["node", "dist/server/server.js"]
+CMD ["node", "dist/server/server.mjs"]
