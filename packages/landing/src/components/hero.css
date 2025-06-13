@@ -1,0 +1,82 @@
+/* Glitch text effect inspired by retro computer CRT scanlines */
+.glitch {
+  position: relative;
+  display: inline-block;
+  color: #931bff;
+  /* fallback */
+}
+
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  overflow: hidden;
+  clip: rect(0, 900px, 0, 0);
+}
+
+.glitch::before {
+  animation: glitchTop 3s infinite linear alternate-reverse;
+  color: #00ff9e;
+  transform: translate(2px, -2px);
+}
+
+.glitch::after {
+  animation: glitchBottom 2.5s infinite linear alternate-reverse;
+  color: #ff00d4;
+  transform: translate(-2px, 2px);
+}
+
+@keyframes glitchTop {
+  0% {
+    clip: rect(0, 900px, 0, 0);
+  }
+
+  20% {
+    clip: rect(0, 900px, 60px, 0);
+  }
+
+  40% {
+    clip: rect(0, 900px, 0, 0);
+  }
+
+  60% {
+    clip: rect(0, 900px, 40px, 0);
+  }
+
+  80% {
+    clip: rect(0, 900px, 80px, 0);
+  }
+
+  100% {
+    clip: rect(0, 900px, 0, 0);
+  }
+}
+
+@keyframes glitchBottom {
+  0% {
+    clip: rect(0, 900px, 0, 0);
+  }
+
+  20% {
+    clip: rect(80px, 900px, 140px, 0);
+  }
+
+  40% {
+    clip: rect(40px, 900px, 90px, 0);
+  }
+
+  60% {
+    clip: rect(0, 900px, 0, 0);
+  }
+
+  80% {
+    clip: rect(50px, 900px, 100px, 0);
+  }
+
+  100% {
+    clip: rect(0, 900px, 0, 0);
+  }
+}

@@ -100,6 +100,38 @@ services:
       timeout: 10s
       retries: 3
 
+  # Marketing Landing Service (Vite dev server)
+  landing:
+    build:
+      context: .
+      dockerfile: ./packages/landing/Dockerfile
+      target: development
+      args:
+        PUBLIC_URL: "/"
+    container_name: timetrack-landing
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: "/"
+    ports:
+      - "${LANDING_PORT:-3014}:5174"
+    networks:
+      - timetrack-network
+    depends_on:
+      - api
+    volumes:
+      - ./packages/landing/src:/app/packages/landing/src
+      - ./packages/landing/index.html:/app/packages/landing/index.html:ro
+      - ./packages/landing/package.json:/app/packages/landing/package.json:ro
+      - ./packages/landing/vite.config.ts:/app/packages/landing/vite.config.ts:ro
+      - ./packages/landing/tailwind.config.js:/app/packages/landing/tailwind.config.js:ro
+      - ./packages/landing/postcss.config.js:/app/packages/landing/postcss.config.js:ro
+      - ./packages/shared:/app/packages/shared:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5174"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Redis for caching (optional, for future scaling)
   redis:
     image: redis:7-alpine
