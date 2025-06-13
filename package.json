@@ -25,7 +25,9 @@
     "lint:all": "npm run lint --workspace=@timetrack/api && npm run lint --workspace=timetrack-ui",
     "type-check:all": "npm run type-check --workspace=@timetrack/shared && npm run type-check --workspace=@timetrack/api && npm run type-check --workspace=timetrack-ui",
     "clean": "npm run clean --workspace=@timetrack/shared && npm run clean --workspace=@timetrack/api && npm run clean --workspace=timetrack-ui && rm -rf node_modules",
-    "package:ui": "npm run package --workspace=timetrack-ui"
+    "package:ui": "npm run package --workspace=timetrack-ui",
+    "dev:landing": "npm run dev:ssr --workspace=timetrack-landing",
+    "start:landing": "npm run start --workspace=timetrack-landing"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.13.1",
