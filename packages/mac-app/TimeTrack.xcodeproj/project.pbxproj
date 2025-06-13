@@ -20,6 +20,8 @@
 		D0000021000000000 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000022000000000 /* AuthViewModel.swift */; };
 		D0000023000000000 /* TimerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000024000000000 /* TimerViewModel.swift */; };
 		D0000029000000000 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000030000000001 /* DashboardViewModel.swift */; };
+		D0000031000000000 /* MenuBarManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000032000000000 /* MenuBarManager.swift */; };
+		D0000033000000000 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000034000000000 /* MenuBarView.swift */; };
 		D0000025000000000 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0000026000000000 /* Assets.xcassets */; };
 		D0000027000000000 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0000028000000000 /* Preview Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -39,6 +41,8 @@
 		D0000022000000000 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		D0000024000000000 /* TimerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerViewModel.swift; sourceTree = "<group>"; };
 		D0000030000000001 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
+		D0000032000000000 /* MenuBarManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarManager.swift; sourceTree = "<group>"; };
+		D0000034000000000 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		D0000026000000000 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D0000028000000000 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		D0000030000000000 /* TimeTrack.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TimeTrack.entitlements; sourceTree = "<group>"; };
@@ -94,6 +98,7 @@
 				D0000008000000000 /* RegisterView.swift */,
 				D0000010000000000 /* DashboardView.swift */,
 				D0000012000000000 /* TimerView.swift */,
+				D0000034000000000 /* MenuBarView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -114,6 +119,7 @@
 				D0000014000000000 /* APIClient.swift */,
 				D0000016000000000 /* AuthService.swift */,
 				D0000018000000000 /* TimerService.swift */,
+				D0000032000000000 /* MenuBarManager.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -216,6 +222,8 @@
 				D0000021000000000 /* AuthViewModel.swift in Sources */,
 				D0000023000000000 /* TimerViewModel.swift in Sources */,
 				D0000029000000000 /* DashboardViewModel.swift in Sources */,
+				D0000031000000000 /* MenuBarManager.swift in Sources */,
+				D0000033000000000 /* MenuBarView.swift in Sources */,
 				D0000001000000000 /* TimeTrackApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
