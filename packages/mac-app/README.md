@@ -18,7 +18,7 @@ A native macOS SwiftUI application for the TimeTrack time tracking system.
 
 ## Requirements
 
-- macOS 14.0 or later
+- macOS 13.0 or later (compatible with Intel and Apple Silicon Macs)
 - Xcode 15.4 or later
 - TimeTrack API server accessible (uses https://api.track.alfredo.re by default)
 

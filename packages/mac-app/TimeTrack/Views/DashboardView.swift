@@ -141,7 +141,7 @@ struct TimeEntryRow: View {
                                 }
                             }
                         }
-                        .onChange(of: entry.isRunning) { oldValue, newValue in
+                        .onChange(of: entry.isRunning) { newValue in
                             if newValue {
                                 withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
                                     isBlinking = true

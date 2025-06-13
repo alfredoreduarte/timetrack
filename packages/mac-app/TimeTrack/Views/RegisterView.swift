@@ -120,10 +120,10 @@ struct RegisterView: View {
         .onAppear {
             authViewModel.clearError()
         }
-        .onChange(of: confirmPassword) {
+        .onChange(of: confirmPassword) { _ in
             checkPasswordMatch()
         }
-        .onChange(of: password) {
+        .onChange(of: password) { _ in
             checkPasswordMatch()
         }
     }

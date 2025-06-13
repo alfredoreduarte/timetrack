@@ -181,7 +181,12 @@ class MenuBarManager: ObservableObject {
         // Add time if running
         if isRunning && !timeText.isEmpty {
             attributedString.append(NSAttributedString(string: " \(timeText)", attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+                .foregroundColor: NSColor.controlTextColor
+            ]))
+        } else {
+            attributedString.append(NSAttributedString(string: " 00:00:00", attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular),
                 .foregroundColor: NSColor.controlTextColor
             ]))
         }

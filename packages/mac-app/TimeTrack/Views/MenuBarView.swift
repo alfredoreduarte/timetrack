@@ -193,8 +193,8 @@ struct MenuBarView: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 6)
-                            .background(Color.green)
-                            .cornerRadius(8)
+                            .background(AppTheme.success)
+                            .cornerRadius(6)
                         }
                         .buttonStyle(.plain)
                     }
