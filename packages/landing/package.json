@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "dev:ssr": "cross-env NODE_ENV=development node --loader ts-node/esm server.ts",
-    "build": "vite build --outDir dist/client && vite build --ssr src/entry-server.tsx --outDir dist/server && esbuild server.ts --bundle --outfile=dist/server/server.js --platform=node --target=node18",
+    "build": "vite build --outDir dist/client && vite build --ssr src/entry-server.tsx --outDir dist/server && esbuild server.ts --bundle --outfile=dist/server/server.js --platform=node --format=esm --packages=external --target=node18",
     "preview": "vite preview",
     "start": "cross-env NODE_ENV=production node dist/server/server.js",
     "lint": "eslint src --ext .tsx,.ts",
