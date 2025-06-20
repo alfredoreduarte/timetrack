@@ -19,6 +19,7 @@ class TimerViewModel: ObservableObject {
 
     private let apiClient = APIClient.shared
     private var timer: Timer?
+    private var idleMonitor: IdleMonitor?
 
     var isRunning: Bool {
         currentEntry?.isRunning ?? false
@@ -55,12 +56,26 @@ class TimerViewModel: ObservableObject {
 
         // Set up automatic refresh on app focus
         setupAutoRefresh()
+
+        // Set up idle monitoring to automatically stop running timers
+        idleMonitor = IdleMonitor(threshold: 600)
+        idleMonitor?.onIdle = { [weak self] in
+            Task { @MainActor in
+                guard let self = self else { return }
+                if self.isRunning {
+                    await self.stopTimer()
+                }
+            }
+        }
     }
 
     deinit {
         // Cleanup timer directly - no need for Task since timer invalidation is safe
         timer?.invalidate()
         timer = nil
+
+        // Release idle monitor (which removes its event monitors and timers)
+        idleMonitor = nil
 
         // Remove notification observers
         NotificationCenter.default.removeObserver(self)
