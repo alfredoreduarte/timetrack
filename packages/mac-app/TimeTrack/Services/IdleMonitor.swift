@@ -36,9 +36,8 @@ final class IdleMonitor {
     // MARK: - Private helpers
 
     private func setupEventMonitoring() {
+        // Monitor only mouse events to avoid requiring Input Monitoring permission
         let masks: [NSEvent.EventTypeMask] = [
-            .keyDown,
-            .keyUp,
             .mouseMoved,
             .leftMouseDown,
             .rightMouseDown,
