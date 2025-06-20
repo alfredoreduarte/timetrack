@@ -17,6 +17,9 @@ class TimerViewModel: ObservableObject {
     @Published var selectedProjectId: String?
     @Published var selectedTaskId: String?
 
+    // MARK: - Idle alert window reference
+    private var idleAlertWindow: NSWindow?
+
     private let apiClient = APIClient.shared
     private var timer: Timer?
     private var idleMonitor: IdleMonitor?
@@ -64,6 +67,7 @@ class TimerViewModel: ObservableObject {
                 guard let self = self else { return }
                 if self.isRunning {
                     await self.stopTimer()
+                    self.showIdleAlert()
                 }
             }
         }
@@ -363,6 +367,53 @@ class TimerViewModel: ObservableObject {
     private func refreshTimerState() async {
         // Lightweight refresh focused on timer state
         await loadCurrentEntry()
+    }
+
+    // MARK: - Idle Alert Handling
+    private func showIdleAlert() {
+        // If alert already visible, just bring it to front
+        if let window = idleAlertWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        // Create alert SwiftUI view
+        let alertView = IdleAlertView { [weak self] in
+            guard let self = self else { return }
+            // Close the alert window
+            self.idleAlertWindow?.close()
+            self.idleAlertWindow = nil
+
+            // Bring the main application window to the front
+            if let mainWindow = NSApp.windows.first(where: { $0.title == "TimeTrack" }) {
+                NSApp.activate(ignoringOtherApps: true)
+                mainWindow.makeKeyAndOrderFront(nil)
+            }
+        }
+
+        // Wrap in hosting controller
+        let hostingController = NSHostingController(rootView: alertView)
+
+        // Configure window
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 160),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = hostingController
+        window.level = .floating
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.title = ""
+
+        // Show window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Keep strong reference
+        idleAlertWindow = window
     }
 }
 
