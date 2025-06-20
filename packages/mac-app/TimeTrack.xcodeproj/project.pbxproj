@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		38119BE92E06006100F46039 /* IdleAlertView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38119BE82E06006100F46039 /* IdleAlertView.swift */; };
+		38C566342DFD0D910013F6DF /* IdleMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C566332DFD0D910013F6DF /* IdleMonitor.swift */; };
 		D0000001000000000 /* TimeTrackApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000002000000000 /* TimeTrackApp.swift */; };
 		D0000003000000000 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000004000000000 /* ContentView.swift */; };
 		D0000005000000000 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000006000000000 /* LoginView.swift */; };
@@ -19,15 +21,17 @@
 		D0000019000000000 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000020000000000 /* Models.swift */; };
 		D0000021000000000 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000022000000000 /* AuthViewModel.swift */; };
 		D0000023000000000 /* TimerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000024000000000 /* TimerViewModel.swift */; };
+		D0000025000000000 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0000026000000000 /* Assets.xcassets */; };
+		D0000027000000000 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0000028000000000 /* Preview Assets.xcassets */; };
 		D0000029000000000 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000030000000001 /* DashboardViewModel.swift */; };
 		D0000031000000000 /* MenuBarManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000032000000000 /* MenuBarManager.swift */; };
 		D0000033000000000 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000034000000000 /* MenuBarView.swift */; };
 		D0000035000000000 /* SharedComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000036000000000 /* SharedComponents.swift */; };
-		D0000025000000000 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0000026000000000 /* Assets.xcassets */; };
-		D0000027000000000 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0000028000000000 /* Preview Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		38119BE82E06006100F46039 /* IdleAlertView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleAlertView.swift; sourceTree = "<group>"; };
+		38C566332DFD0D910013F6DF /* IdleMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleMonitor.swift; sourceTree = "<group>"; };
 		D0000001000000001 /* TimeTrack.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TimeTrack.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D0000002000000000 /* TimeTrackApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeTrackApp.swift; sourceTree = "<group>"; };
 		D0000004000000000 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -41,13 +45,13 @@
 		D0000020000000000 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		D0000022000000000 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		D0000024000000000 /* TimerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerViewModel.swift; sourceTree = "<group>"; };
+		D0000026000000000 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D0000028000000000 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		D0000030000000000 /* TimeTrack.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TimeTrack.entitlements; sourceTree = "<group>"; };
 		D0000030000000001 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
 		D0000032000000000 /* MenuBarManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarManager.swift; sourceTree = "<group>"; };
 		D0000034000000000 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		D0000036000000000 /* SharedComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedComponents.swift; sourceTree = "<group>"; };
-		D0000026000000000 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		D0000028000000000 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
-		D0000030000000000 /* TimeTrack.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TimeTrack.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -99,6 +103,7 @@
 				D0000006000000000 /* LoginView.swift */,
 				D0000008000000000 /* RegisterView.swift */,
 				D0000010000000000 /* DashboardView.swift */,
+				38119BE82E06006100F46039 /* IdleAlertView.swift */,
 				D0000012000000000 /* TimerView.swift */,
 				D0000034000000000 /* MenuBarView.swift */,
 				D0000036000000000 /* SharedComponents.swift */,
@@ -119,6 +124,7 @@
 		D0000001000000008 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				38C566332DFD0D910013F6DF /* IdleMonitor.swift */,
 				D0000014000000000 /* APIClient.swift */,
 				D0000016000000000 /* AuthService.swift */,
 				D0000018000000000 /* TimerService.swift */,
@@ -224,6 +230,8 @@
 				D0000019000000000 /* Models.swift in Sources */,
 				D0000021000000000 /* AuthViewModel.swift in Sources */,
 				D0000023000000000 /* TimerViewModel.swift in Sources */,
+				38119BE92E06006100F46039 /* IdleAlertView.swift in Sources */,
+				38C566342DFD0D910013F6DF /* IdleMonitor.swift in Sources */,
 				D0000029000000000 /* DashboardViewModel.swift in Sources */,
 				D0000031000000000 /* MenuBarManager.swift in Sources */,
 				D0000033000000000 /* MenuBarView.swift in Sources */,
