@@ -47,6 +47,16 @@ struct TimeTrackApp: App {
                     showMainWindow()
                 }
                 .keyboardShortcut("m", modifiers: [.command])
+
+                Button("Refresh") {
+                    Task {
+                        await timerViewModel.loadInitialData()
+                    }
+                }
+
+                Button("Log Out") {
+                    authViewModel.logout()
+                }
             }
         }
 
