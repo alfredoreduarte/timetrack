@@ -133,7 +133,7 @@ const Projects: React.FC = () => {
       name: project.name,
       description: project.description || "",
       color: project.color || "#3B82F6",
-      hourlyRate: project.hourlyRate ? project.hourlyRate.toString() : "",
+      hourlyRate: project.hourlyRate !== null && project.hourlyRate !== undefined ? project.hourlyRate.toString() : "",
     });
     setShowProjectModal(true);
   };
@@ -211,7 +211,7 @@ const Projects: React.FC = () => {
     setTaskFormData({
       name: task.name,
       description: task.description || "",
-      hourlyRate: task.hourlyRate ? task.hourlyRate.toString() : "",
+      hourlyRate: task.hourlyRate !== null && task.hourlyRate !== undefined ? task.hourlyRate.toString() : "",
     });
     setShowTaskModal(true);
   };
@@ -403,7 +403,7 @@ const Projects: React.FC = () => {
                           Created{" "}
                           {new Date(task.createdAt).toLocaleDateString()}
                         </span>
-                        {task.hourlyRate && (
+                        {task.hourlyRate !== null && task.hourlyRate !== undefined && (
                           <span className="font-medium">
                             ${task.hourlyRate}/hr
                           </span>
@@ -621,7 +621,7 @@ const Projects: React.FC = () => {
                 <span>
                   Created {new Date(project.createdAt).toLocaleDateString()}
                 </span>
-                {project.hourlyRate && (
+                {project.hourlyRate !== null && project.hourlyRate !== undefined && (
                   <span className="font-medium">${project.hourlyRate}/hr</span>
                 )}
               </div>

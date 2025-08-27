@@ -14,14 +14,14 @@ const createTaskSchema = z.object({
   name: z.string().min(1, "Task name is required"),
   description: z.string().optional(),
   projectId: z.string(),
-  hourlyRate: z.number().positive().optional(),
+  hourlyRate: z.number().nonnegative().optional(),
 });
 
 const updateTaskSchema = z.object({
   name: z.string().min(1, "Task name is required").optional(),
   description: z.string().optional(),
   isCompleted: z.boolean().optional(),
-  hourlyRate: z.number().positive().optional(),
+  hourlyRate: z.number().nonnegative().optional(),
 });
 
 /**

@@ -25,7 +25,7 @@ const Settings: React.FC = () => {
       setFormData({
         name: user.name || "",
         email: user.email || "",
-        defaultHourlyRate: user.defaultHourlyRate?.toString() || "",
+        defaultHourlyRate: user.defaultHourlyRate !== null && user.defaultHourlyRate !== undefined ? user.defaultHourlyRate.toString() : "",
       });
     }
   }, [user]);
@@ -37,7 +37,7 @@ const Settings: React.FC = () => {
       const hasEmailChange = formData.email !== (user.email || "");
       const hasRateChange =
         formData.defaultHourlyRate !==
-        (user.defaultHourlyRate?.toString() || "");
+        (user.defaultHourlyRate !== null && user.defaultHourlyRate !== undefined ? user.defaultHourlyRate.toString() : "");
 
       setHasChanges(hasNameChange || hasEmailChange || hasRateChange);
     }
@@ -97,7 +97,7 @@ const Settings: React.FC = () => {
       setFormData({
         name: user.name || "",
         email: user.email || "",
-        defaultHourlyRate: user.defaultHourlyRate?.toString() || "",
+        defaultHourlyRate: user.defaultHourlyRate !== null && user.defaultHourlyRate !== undefined ? user.defaultHourlyRate.toString() : "",
       });
     }
   };

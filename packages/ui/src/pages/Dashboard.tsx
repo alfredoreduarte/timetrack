@@ -43,7 +43,8 @@ const Dashboard: React.FC = () => {
       isRunning &&
       currentEntry &&
       earnings?.currentTimer?.isRunning &&
-      earnings?.currentTimer?.hourlyRate
+      earnings?.currentTimer?.hourlyRate !== undefined &&
+      earnings?.currentTimer?.hourlyRate !== null
     ) {
       dispatch(
         updateCurrentTimerEarnings({
@@ -63,7 +64,7 @@ const Dashboard: React.FC = () => {
 
   // Calculate current timer earnings in real-time
   const getCurrentTimerEarnings = (): number => {
-    if (!isRunning || !earnings?.currentTimer?.hourlyRate) return 0;
+    if (!isRunning || earnings?.currentTimer?.hourlyRate === undefined || earnings?.currentTimer?.hourlyRate === null) return 0;
     return (earnings.currentTimer.hourlyRate * elapsedTime) / 3600;
   };
 
@@ -84,8 +85,8 @@ const Dashboard: React.FC = () => {
 
   // Calculate earnings for an entry
   const calculateEarnings = (entry: TimeEntry): number => {
-    const project = projects.find((p: any) => p.id === entry.projectId);
-    const hourlyRate = project?.hourlyRate || 0;
+    // Use the hourly rate snapshot that was captured when the entry was created
+    const hourlyRate = entry.hourlyRateSnapshot || 0;
     const hours = (entry.duration || 0) / 3600;
     return hours * hourlyRate;
   };
@@ -152,6 +153,7 @@ const Dashboard: React.FC = () => {
 
           {/* Currently Earning */}
           {earnings?.currentTimer?.hourlyRate !== undefined &&
+            earnings?.currentTimer?.hourlyRate !== null &&
             earnings.currentTimer.hourlyRate > 0 && (
               <div className="card p-4 bg-green-50 border-green-200">
                 <div className="flex items-center">
