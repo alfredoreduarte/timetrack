@@ -17,7 +17,7 @@ const createProjectSchema = z.object({
     .string()
     .regex(/^#[0-9A-F]{6}$/i, "Invalid color format")
     .optional(),
-  hourlyRate: z.number().positive().optional(),
+  hourlyRate: z.number().nonnegative().optional(),
 });
 
 const updateProjectSchema = z.object({
@@ -27,7 +27,7 @@ const updateProjectSchema = z.object({
     .string()
     .regex(/^#[0-9A-F]{6}$/i, "Invalid color format")
     .optional(),
-  hourlyRate: z.number().positive().optional(),
+  hourlyRate: z.number().nonnegative().optional(),
   isActive: z.boolean().optional(),
 });
 

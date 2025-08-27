@@ -67,7 +67,7 @@ function getStartOfWeekInTimezone(timezone: string): Date {
 const updateProfileSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").optional(),
   email: z.string().email("Invalid email address").optional(),
-  defaultHourlyRate: z.number().positive().optional(),
+  defaultHourlyRate: z.number().nonnegative().optional(),
 });
 
 const changePasswordSchema = z.object({

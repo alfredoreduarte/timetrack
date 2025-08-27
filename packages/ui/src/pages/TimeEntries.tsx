@@ -59,9 +59,8 @@ const TimeEntries: React.FC = () => {
 
   // Calculate earnings for an entry
   const calculateEarnings = (entry: TimeEntry): number => {
-    // Try to get hourly rate from the full project object in the store first
-    const fullProject = safeProjects.find((p) => p.id === entry.projectId);
-    const hourlyRate = fullProject?.hourlyRate || 0;
+    // Use the hourly rate snapshot that was captured when the entry was created
+    const hourlyRate = entry.hourlyRateSnapshot || 0;
     const hours = (entry.duration || 0) / 3600;
     return hours * hourlyRate;
   };

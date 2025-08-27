@@ -48,7 +48,7 @@ async function getHourlyRate(
       where: { id: taskId },
       select: { hourlyRate: true },
     });
-    if (task?.hourlyRate) return task.hourlyRate;
+    if (task?.hourlyRate !== null && task?.hourlyRate !== undefined) return task.hourlyRate;
   }
 
   if (projectId) {
@@ -56,7 +56,7 @@ async function getHourlyRate(
       where: { id: projectId },
       select: { hourlyRate: true },
     });
-    if (project?.hourlyRate) return project.hourlyRate;
+    if (project?.hourlyRate !== null && project?.hourlyRate !== undefined) return project.hourlyRate;
   }
 
   const user = await prisma.user.findUnique({
@@ -64,7 +64,7 @@ async function getHourlyRate(
     select: { defaultHourlyRate: true },
   });
 
-  return user?.defaultHourlyRate || null;
+  return user?.defaultHourlyRate !== null && user?.defaultHourlyRate !== undefined ? user.defaultHourlyRate : null;
 }
 
 /**
