@@ -35,7 +35,7 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
 
   // Format data for the chart
   const chartData = data.map((day) => ({
-    name: new Date(day.date).toLocaleDateString("en-US", {
+    name: new Date(day.date + 'T12:00:00').toLocaleDateString("en-US", {
       weekday: "short",
       month: "numeric",
       day: "numeric",
@@ -50,8 +50,11 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
 
   // Format week range for display
   const formatWeekRange = () => {
-    const startDate = new Date(weekStartDate);
-    const endDate = new Date(weekEndDate);
+    // Extract just the date part and add time to avoid timezone issues
+    const startDateStr = weekStartDate.split('T')[0] + 'T12:00:00';
+    const endDateStr = weekEndDate.split('T')[0] + 'T12:00:00';
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
     return `${startDate.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",

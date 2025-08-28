@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { reportsAPI } from "../../services/api";
+import { getUserTimezone } from "../../../../shared/src/utils/timezone";
 
 export interface DailyData {
   date: string;
@@ -51,17 +52,20 @@ const initialState: ReportsState = {
   currentWeekOffset: 0,
 };
 
-// Helper function to get start and end of week
+// Helper function to get start and end of week (Monday to Sunday)
 const getWeekDates = (weekOffset: number = 0) => {
   const now = new Date();
   const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  
+  // Calculate days to Monday (handle Sunday as day 7)
+  const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
 
-  // Calculate start of week (Sunday)
+  // Calculate start of week (Monday)
   const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - currentDay + weekOffset * 7);
+  startOfWeek.setDate(now.getDate() - daysToMonday + weekOffset * 7);
   startOfWeek.setHours(0, 0, 0, 0);
 
-  // Calculate end of week (Saturday)
+  // Calculate end of week (Sunday)
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(startOfWeek.getDate() + 6);
   endOfWeek.setHours(23, 59, 59, 999);
@@ -81,6 +85,7 @@ export const fetchWeeklyData = createAsyncThunk(
     const response = await reportsAPI.getSummaryReport({
       startDate,
       endDate,
+      timezone: getUserTimezone(),
     });
 
     // Extract the summary data from the response
@@ -126,6 +131,7 @@ export const fetchDetailedTimeEntries = createAsyncThunk(
     const response = await reportsAPI.getDetailedReport({
       startDate,
       endDate,
+      timezone: getUserTimezone(),
     });
 
     return response.timeEntries;
