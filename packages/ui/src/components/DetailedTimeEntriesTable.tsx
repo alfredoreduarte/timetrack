@@ -1,5 +1,6 @@
 import React from "react";
 import { DetailedTimeEntry } from "../store/slices/reportsSlice";
+import { getUserTimezone } from "../../../shared/src/utils/timezone";
 
 interface DetailedTimeEntriesTableProps {
   entries: DetailedTimeEntry[];
@@ -34,12 +35,29 @@ const formatCurrency = (amount: number): string => {
 };
 
 const formatDate = (dateString: string): string => {
-  const date = new Date(dateString);
+  const date = new Date(dateString + 'T12:00:00'); // Add time to avoid timezone issues
   return date.toLocaleDateString("en-US", {
     weekday: "long",
     month: "short",
     day: "numeric",
   });
+};
+
+// Helper function to get date in user's timezone
+const getDateInTimezone = (dateString: string): string => {
+  const date = new Date(dateString);
+  const userTimezone = getUserTimezone();
+  try {
+    // Convert to user's timezone and format as YYYY-MM-DD
+    const year = date.toLocaleDateString('en', { timeZone: userTimezone, year: 'numeric' });
+    const month = date.toLocaleDateString('en', { timeZone: userTimezone, month: '2-digit' });
+    const day = date.toLocaleDateString('en', { timeZone: userTimezone, day: '2-digit' });
+    return `${year}-${month}-${day}`;
+  } catch (error) {
+    console.warn('Timezone conversion failed, falling back to UTC:', error);
+    // Fallback to UTC if timezone conversion fails
+    return date.toISOString().split("T")[0];
+  }
 };
 
 const DetailedTimeEntriesTable: React.FC<DetailedTimeEntriesTableProps> = ({
@@ -129,7 +147,7 @@ const DetailedTimeEntriesTable: React.FC<DetailedTimeEntriesTableProps> = ({
     const grouped: { [date: string]: GroupedEntry } = {};
 
     entries.forEach((entry) => {
-      const date = entry.startTime.split("T")[0]; // Get YYYY-MM-DD
+      const date = getDateInTimezone(entry.startTime); // Get YYYY-MM-DD in user's timezone
       const projectId = entry.project?.id || "no-project";
       const projectName = entry.project?.name || "No Project";
       const projectColor = entry.project?.color || "#6B7280";

@@ -316,11 +316,13 @@ class APIClient {
       startDate: string;
       endDate: string;
       projectId?: string;
+      timezone?: string;
     }) => {
       const queryParams = new URLSearchParams();
       queryParams.append("startDate", params.startDate);
       queryParams.append("endDate", params.endDate);
       if (params.projectId) queryParams.append("projectId", params.projectId);
+      if (params.timezone) queryParams.append("timezone", params.timezone);
 
       const url = `/reports/summary?${queryParams.toString()}`;
       return this.request<{
@@ -352,12 +354,14 @@ class APIClient {
       endDate: string;
       projectId?: string;
       taskId?: string;
+      timezone?: string;
     }) => {
       const queryParams = new URLSearchParams();
       queryParams.append("startDate", params.startDate);
       queryParams.append("endDate", params.endDate);
       if (params.projectId) queryParams.append("projectId", params.projectId);
       if (params.taskId) queryParams.append("taskId", params.taskId);
+      if (params.timezone) queryParams.append("timezone", params.timezone);
 
       const url = `/reports/detailed?${queryParams.toString()}`;
       return this.request<{

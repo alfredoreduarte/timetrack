@@ -9,12 +9,35 @@ const router = express.Router();
 // Apply authentication to all routes
 router.use(authenticate);
 
+// Helper function to validate timezone
+function isValidTimezone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: timezone });
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Helper function to format date in user's timezone
+function formatDateInTimezone(date: Date, timezone: string): string {
+  try {
+    // Convert the UTC date to the user's timezone and extract the date part
+    const dateInTimezone = new Date(date.toLocaleString("en-US", { timeZone: timezone }));
+    return dateInTimezone.toISOString().split("T")[0];
+  } catch (error) {
+    // Fallback to UTC if timezone conversion fails
+    return date.toISOString().split("T")[0];
+  }
+}
+
 // Validation schemas
 const reportQuerySchema = z.object({
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   projectId: z.string().optional(),
   taskId: z.string().optional(),
+  timezone: z.string().optional(),
 });
 
 /**
@@ -50,9 +73,19 @@ const reportQuerySchema = z.object({
 router.get(
   "/summary",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { startDate, endDate, projectId } = reportQuerySchema.parse(
+    const { startDate, endDate, projectId, timezone } = reportQuerySchema.parse(
       req.query
     );
+
+    // Validate timezone
+    let userTimezone = "UTC";
+    if (timezone && isValidTimezone(timezone)) {
+      userTimezone = timezone;
+    } else if (timezone) {
+      console.warn(
+        `Invalid timezone provided: ${timezone}, falling back to UTC`
+      );
+    }
 
     const where: any = {
       userId: req.user!.id,
@@ -133,9 +166,9 @@ router.get(
       return acc;
     }, {} as Record<string, any>);
 
-    // Group by date
+    // Group by date (in user's timezone)
     const dailySummary = timeEntries.reduce((acc: any, entry: any) => {
-      const date = entry.startTime.toISOString().split("T")[0];
+      const date = formatDateInTimezone(entry.startTime, userTimezone);
 
       if (!acc[date]) {
         acc[date] = {
@@ -204,9 +237,19 @@ router.get(
 router.get(
   "/detailed",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { startDate, endDate, projectId, taskId } = reportQuerySchema.parse(
+    const { startDate, endDate, projectId, taskId, timezone } = reportQuerySchema.parse(
       req.query
     );
+
+    // Validate timezone
+    let userTimezone = "UTC";
+    if (timezone && isValidTimezone(timezone)) {
+      userTimezone = timezone;
+    } else if (timezone) {
+      console.warn(
+        `Invalid timezone provided: ${timezone}, falling back to UTC`
+      );
+    }
 
     const where: any = {
       userId: req.user!.id,
@@ -304,9 +347,19 @@ router.get(
 router.get(
   "/earnings",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { startDate, endDate, projectId } = reportQuerySchema.parse(
+    const { startDate, endDate, projectId, timezone } = reportQuerySchema.parse(
       req.query
     );
+
+    // Validate timezone
+    let userTimezone = "UTC";
+    if (timezone && isValidTimezone(timezone)) {
+      userTimezone = timezone;
+    } else if (timezone) {
+      console.warn(
+        `Invalid timezone provided: ${timezone}, falling back to UTC`
+      );
+    }
 
     const where: any = {
       userId: req.user!.id,
@@ -391,7 +444,8 @@ router.get(
 
     // Group by month for trend analysis
     const monthlyEarnings = timeEntries.reduce((acc: any, entry: any) => {
-      const month = entry.startTime.toISOString().substring(0, 7); // YYYY-MM
+      const dateInTimezone = formatDateInTimezone(entry.startTime, userTimezone);
+      const month = dateInTimezone.substring(0, 7); // YYYY-MM
 
       if (!acc[month]) {
         acc[month] = {
@@ -458,9 +512,19 @@ router.get(
 router.get(
   "/export",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { startDate, endDate, projectId } = reportQuerySchema.parse(
+    const { startDate, endDate, projectId, timezone } = reportQuerySchema.parse(
       req.query
     );
+
+    // Validate timezone
+    let userTimezone = "UTC";
+    if (timezone && isValidTimezone(timezone)) {
+      userTimezone = timezone;
+    } else if (timezone) {
+      console.warn(
+        `Invalid timezone provided: ${timezone}, falling back to UTC`
+      );
+    }
 
     const where: any = {
       userId: req.user!.id,
@@ -522,10 +586,15 @@ router.get(
       const duration = (entry.duration || 0) / 3600;
       const earnings = (entry.hourlyRateSnapshot || 0) * duration;
 
+      // Format dates in user's timezone
+      const startDateInTimezone = formatDateInTimezone(entry.startTime, userTimezone);
+      const startTimeInTimezone = new Date(entry.startTime.toLocaleString("en-US", { timeZone: userTimezone })).toISOString().split("T")[1].split(".")[0];
+      const endTimeInTimezone = entry.endTime ? new Date(entry.endTime.toLocaleString("en-US", { timeZone: userTimezone })).toISOString().split("T")[1].split(".")[0] : "";
+
       return [
-        entry.startTime.toISOString().split("T")[0],
-        entry.startTime.toISOString().split("T")[1].split(".")[0],
-        entry.endTime?.toISOString().split("T")[1].split(".")[0] || "",
+        startDateInTimezone,
+        startTimeInTimezone,
+        endTimeInTimezone,
         duration.toFixed(2),
         entry.description || "",
         entry.project?.name || "",
