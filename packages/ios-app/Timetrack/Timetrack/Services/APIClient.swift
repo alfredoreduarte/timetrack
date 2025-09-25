@@ -17,19 +17,87 @@ class APIClient: ObservableObject {
             self.baseURL = "https://api.track.alfredo.re"
         }
 
-        // Load saved token
-        self.authToken = UserDefaults.standard.string(forKey: "timetrack_auth_token")
+        // Load saved token from shared UserDefaults (for Watch app sync)
+        if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared"),
+           let token = sharedDefaults.string(forKey: "timetrack_auth_token") {
+            self.authToken = token
+            print("📱 iOS: Loaded token from shared UserDefaults: \(token.prefix(20))...")
+            // Also ensure it's in local storage
+            UserDefaults.standard.set(token, forKey: "timetrack_auth_token")
+        } else {
+            // Fallback to local UserDefaults and migrate if found
+            if let token = UserDefaults.standard.string(forKey: "timetrack_auth_token") {
+                self.authToken = token
+                print("📱 iOS: Found token in local UserDefaults, migrating to shared...")
+                // Migrate to shared UserDefaults
+                migrateTokenToShared(token)
+            } else {
+                print("📱 iOS: No token found")
+            }
+        }
+        
+        // Force write current token to shared storage if we have one
+        if let currentToken = self.authToken {
+            ensureTokenInSharedStorage(currentToken)
+        }
+    }
+    
+    private func ensureTokenInSharedStorage(_ token: String) {
+        if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared") {
+            sharedDefaults.set(token, forKey: "timetrack_auth_token")
+            sharedDefaults.set("test-value-\(Date().timeIntervalSince1970)", forKey: "test-key")
+            sharedDefaults.synchronize()
+            print("📱 iOS: Ensured token is in shared storage: \(token.prefix(20))...")
+        }
+    }
+    
+    private func migrateTokenToShared(_ token: String) {
+        if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared") {
+            print("📱 iOS: About to write to shared UserDefaults...")
+            sharedDefaults.set(token, forKey: "timetrack_auth_token")
+            sharedDefaults.set("test-value", forKey: "test-key") // Test write
+            sharedDefaults.synchronize() // Force sync
+            print("✅ iOS: Migrated token to shared UserDefaults: \(token.prefix(20))...")
+            
+            // Verify it was written
+            if let retrievedToken = sharedDefaults.string(forKey: "timetrack_auth_token") {
+                print("✅ iOS: Verification - token retrieved from shared: \(retrievedToken.prefix(20))...")
+            } else {
+                print("❌ iOS: Verification failed - token not found in shared storage")
+            }
+            
+            if let testValue = sharedDefaults.string(forKey: "test-key") {
+                print("✅ iOS: Test value written and retrieved: \(testValue)")
+            } else {
+                print("❌ iOS: Test value write failed")
+            }
+        } else {
+            print("❌ iOS: Failed to access shared UserDefaults for migration")
+        }
     }
 
     // MARK: - Token Management
     func saveToken(_ token: String) {
         self.authToken = token
+        // Save to both local and shared UserDefaults
         UserDefaults.standard.set(token, forKey: "timetrack_auth_token")
+        print("💾 iOS: Saved token to local UserDefaults: \(token.prefix(20))...")
+        
+        if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared") {
+            sharedDefaults.set(token, forKey: "timetrack_auth_token")
+            print("💾 iOS: Saved token to shared UserDefaults: \(token.prefix(20))...")
+        } else {
+            print("❌ iOS: Failed to access shared UserDefaults")
+        }
     }
 
     func clearToken() {
         self.authToken = nil
+        // Clear from both local and shared UserDefaults
         UserDefaults.standard.removeObject(forKey: "timetrack_auth_token")
+        if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared") {
+            sharedDefaults.removeObject(forKey: "timetrack_auth_token")
+        }
     }
 
     // MARK: - Generic Request Method
@@ -142,6 +210,44 @@ class APIClient: ObservableObject {
             responseType: UserResponse.self
         )
         return response.user
+    }
+
+    func requestPasswordReset(email: String) async throws -> String {
+        struct PasswordResetRequest: Codable {
+            let email: String
+        }
+
+        struct PasswordResetResponse: Codable {
+            let message: String
+        }
+
+        let request = PasswordResetRequest(email: email)
+        let body = try JSONEncoder().encode(request)
+
+        let response = try await makeRequest(
+            endpoint: "/auth/request-password-reset",
+            method: .POST,
+            body: body,
+            responseType: PasswordResetResponse.self
+        )
+        return response.message
+    }
+
+    func resetPassword(token: String, password: String) async throws -> AuthResponse {
+        struct ResetPasswordRequest: Codable {
+            let token: String
+            let password: String
+        }
+
+        let request = ResetPasswordRequest(token: token, password: password)
+        let body = try JSONEncoder().encode(request)
+
+        return try await makeRequest(
+            endpoint: "/auth/reset-password",
+            method: .POST,
+            body: body,
+            responseType: AuthResponse.self
+        )
     }
 
     func getCaptcha() async throws -> CaptchaResponse {
