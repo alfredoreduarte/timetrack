@@ -75,7 +75,7 @@ class AuthViewModel: ObservableObject {
 
     func refreshToken() async -> Bool {
         do {
-            let newToken = try await apiClient.refreshToken()
+            _ = try await apiClient.refreshToken()
             // Token is automatically saved by the API client
             return true
         } catch {

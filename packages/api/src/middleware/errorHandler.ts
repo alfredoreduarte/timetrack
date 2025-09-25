@@ -17,7 +17,7 @@ export const errorHandler = (
   let message = err.message;
 
   // Log error
-  logger.error({
+  logger.error("Request failed", {
     error: err.message,
     stack: err.stack,
     url: req.url,

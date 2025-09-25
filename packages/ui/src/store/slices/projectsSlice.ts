@@ -18,7 +18,7 @@ export interface Task {
   name: string;
   description?: string;
   projectId: string;
-  hourlyRate?: number;
+  hourlyRate?: number | null;
   isCompleted: boolean;
   createdAt: string;
   updatedAt: string;

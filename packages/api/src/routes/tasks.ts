@@ -21,7 +21,7 @@ const updateTaskSchema = z.object({
   name: z.string().min(1, "Task name is required").optional(),
   description: z.string().optional(),
   isCompleted: z.boolean().optional(),
-  hourlyRate: z.number().nonnegative().optional(),
+  hourlyRate: z.union([z.number().nonnegative(), z.null()]).optional(),
 });
 
 /**
@@ -282,6 +282,8 @@ router.get(
  *               hourlyRate:
  *                 type: number
  *                 minimum: 0
+ *                 nullable: true
+ *                 description: Set to null to remove override and use project's default rate
  *     responses:
  *       200:
  *         description: Task updated successfully
