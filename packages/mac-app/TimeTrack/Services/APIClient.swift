@@ -144,6 +144,44 @@ class APIClient: ObservableObject {
         return response.user
     }
 
+    func requestPasswordReset(email: String) async throws -> String {
+        struct PasswordResetRequest: Codable {
+            let email: String
+        }
+
+        struct PasswordResetResponse: Codable {
+            let message: String
+        }
+
+        let request = PasswordResetRequest(email: email)
+        let body = try JSONEncoder().encode(request)
+
+        let response = try await makeRequest(
+            endpoint: "/auth/request-password-reset",
+            method: .POST,
+            body: body,
+            responseType: PasswordResetResponse.self
+        )
+        return response.message
+    }
+
+    func resetPassword(token: String, password: String) async throws -> AuthResponse {
+        struct ResetPasswordRequest: Codable {
+            let token: String
+            let password: String
+        }
+
+        let request = ResetPasswordRequest(token: token, password: password)
+        let body = try JSONEncoder().encode(request)
+
+        return try await makeRequest(
+            endpoint: "/auth/reset-password",
+            method: .POST,
+            body: body,
+            responseType: AuthResponse.self
+        )
+    }
+
     func getCaptcha() async throws -> CaptchaResponse {
         return try await makeRequest(
             endpoint: "/auth/captcha",

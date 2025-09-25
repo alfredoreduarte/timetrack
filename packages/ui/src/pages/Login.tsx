@@ -96,6 +96,17 @@ const Login: React.FC = () => {
             </button>
           </div>
 
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              <Link
+                to="/forgot-password"
+                className="font-medium text-primary-600 hover:text-primary-500"
+              >
+                Forgot your password?
+              </Link>
+            </div>
+          </div>
+
           <div className="text-center">
             <span className="text-sm text-gray-600">
               Don't have an account?{" "}

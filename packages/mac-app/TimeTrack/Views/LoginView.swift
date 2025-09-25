@@ -7,8 +7,13 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var showingAlert = false
+    @State private var showingForgotPassword = false
 
     var body: some View {
+        loginContent
+    }
+    
+    private var loginContent: some View {
         VStack(spacing: 0) {
             // Header
             VStack(spacing: 16) {
@@ -77,6 +82,17 @@ struct LoginView: View {
                 .disabled(authViewModel.isLoading || email.isEmpty || password.isEmpty)
 
                 HStack {
+                    Button("Forgot password?") {
+                        showingAlert = true
+                    }
+                    .font(.footnote)
+                    .foregroundColor(.blue)
+                    
+                    Spacer()
+                }
+                .padding(.top, 10)
+
+                HStack {
                     Text("Don't have an account?")
                         .foregroundColor(.secondary)
 
@@ -92,6 +108,11 @@ struct LoginView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
+        .alert("Password Reset", isPresented: $showingAlert) {
+            Button("OK") {}
+        } message: {
+            Text("Password reset functionality will be available in a future update. Please contact support for assistance.")
+        }
         .onAppear {
             authViewModel.clearError()
         }
