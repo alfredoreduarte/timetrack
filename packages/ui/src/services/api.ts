@@ -4,20 +4,8 @@ import { Project, Task } from "../store/slices/projectsSlice";
 import { TimeEntry } from "../store/slices/timeEntriesSlice";
 
 // Use environment variable or fallback to localhost:3011 for development
-// In browser, we need to use localhost, but in Docker we need to use container name
-const getApiBaseUrl = () => {
-  const envUrl = (import.meta as any).env.VITE_API_URL;
-
-  // If we're in a browser (client-side), always use localhost
-  if (typeof window !== 'undefined') {
-    return "http://localhost:3011";
-  }
-
-  // If we're on server-side (during SSR), use env variable or localhost
-  return envUrl || "http://localhost:3011";
-};
-
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL =
+  (import.meta as any).env.VITE_API_URL || "http://localhost:3011";
 
 class APIClient {
   private client: AxiosInstance;
@@ -309,17 +297,7 @@ class APIClient {
       return this.request<TimeEntry>("POST", "/time-entries", entryData);
     },
 
-    updateTimeEntry: async (
-      id: string,
-      entryData: {
-        description?: string;
-        startTime?: string;
-        endTime?: string;
-        hours?: number;
-        projectId?: string | null;
-        taskId?: string | null;
-      }
-    ) => {
+    updateTimeEntry: async (id: string, entryData: Partial<TimeEntry>) => {
       return this.request<TimeEntry>("PUT", `/time-entries/${id}`, entryData);
     },
 
