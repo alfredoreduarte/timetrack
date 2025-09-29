@@ -7,7 +7,6 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var showingAlert = false
-    @State private var showingForgotPassword = false
 
     var body: some View {
         NavigationView {
@@ -81,17 +80,6 @@ struct LoginView: View {
                     .disabled(authViewModel.isLoading || email.isEmpty || password.isEmpty)
 
                     HStack {
-                        Button("Forgot password?") {
-                            showingForgotPassword = true
-                        }
-                        .font(.footnote)
-                        .foregroundColor(.blue)
-                        
-                        Spacer()
-                    }
-                    .padding(.top, 10)
-
-                    HStack {
                         Text("Don't have an account?")
                             .foregroundColor(.secondary)
 
@@ -109,9 +97,6 @@ struct LoginView: View {
             .background(Color(UIColor.systemBackground))
             .onAppear {
                 authViewModel.clearError()
-            }
-            .sheet(isPresented: $showingForgotPassword) {
-                ForgotPasswordView()
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())

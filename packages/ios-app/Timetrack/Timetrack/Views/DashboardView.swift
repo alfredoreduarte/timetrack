@@ -5,7 +5,6 @@ struct DashboardView: View {
     @EnvironmentObject var timerViewModel: TimerViewModel
     @StateObject private var dashboardViewModel = DashboardViewModel()
     @State private var rotationDegrees = 0.0
-    @State private var showingSettings = false
 
     var body: some View {
         NavigationView {
@@ -24,7 +23,7 @@ struct DashboardView: View {
                         }
                     },
                     onSettings: {
-                        showingSettings = true
+                        authViewModel.logout()
                     },
                     rotationDegrees: rotationDegrees,
                     isRefreshing: timerViewModel.isRefreshing
@@ -97,27 +96,14 @@ struct DashboardView: View {
                 }
             }
             .background(Color(UIColor.systemBackground))
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("TimeTrack")
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HStack {
-                        Text("TimeTrack")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                        
-                        Button(action: {
-                            authViewModel.logout()
-                        }) {
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                                .font(.title3)
-                                .foregroundColor(.secondary)
-                        }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Log Out") {
+                        authViewModel.logout()
                     }
                 }
-            }
-            .sheet(isPresented: $showingSettings) {
-                SettingsView()
             }
             .onAppear {
                 Task {

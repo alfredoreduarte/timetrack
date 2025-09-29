@@ -27,10 +27,7 @@ if (process.env.NODE_ENV !== "production") {
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
-        winston.format.printf(({ level, message, timestamp, ...meta }) => {
-          const metaString = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
-          return `${level}: ${message} ${metaString}`;
-        })
+        winston.format.simple()
       ),
     })
   );

@@ -7,12 +7,11 @@ import {
   TimeEntry,
 } from "../store/slices/timeEntriesSlice";
 import { useTimer } from "../hooks/useTimer";
-import { fetchProjects, fetchTasks, Task } from "../store/slices/projectsSlice";
+import { fetchProjects } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
 import LoadingSpinner from "../components/LoadingSpinner";
-import EditTimeEntryModal from "../components/EditTimeEntryModal";
 import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
-import { ClockIcon, PencilIcon } from "@heroicons/react/24/outline";
+import { ClockIcon } from "@heroicons/react/24/outline";
 import { StopIcon } from "@heroicons/react/24/solid";
 
 const TimeEntries: React.FC = () => {
@@ -20,7 +19,7 @@ const TimeEntries: React.FC = () => {
   const { entries, loading, error, pagination } = useSelector(
     (state: RootState) => state.timeEntries
   );
-  const { projects, tasks } = useSelector((state: RootState) => state.projects);
+  const { projects } = useSelector((state: RootState) => state.projects);
 
   // Use centralized timer hook
   const { stopTimer } = useTimer();
@@ -31,20 +30,14 @@ const TimeEntries: React.FC = () => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  // Edit modal state
-  const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-
   // Safe defaults to prevent undefined errors
   const safeEntries = entries || [];
   const safeProjects = projects || [];
-  const safeTasks = tasks || [];
 
   // Load initial data
   useEffect(() => {
     dispatch(fetchTimeEntries({}));
     dispatch(fetchProjects());
-    dispatch(fetchTasks());
   }, [dispatch]);
 
   // Apply filters
@@ -92,20 +85,6 @@ const TimeEntries: React.FC = () => {
     } catch (error) {
       // Error is already logged in the hook
     }
-  };
-
-  // Handle edit entry
-  const handleEditEntry = (entry: TimeEntry) => {
-    setEditingEntry(entry);
-    setIsEditModalOpen(true);
-  };
-
-  // Handle save edited entry
-  const handleSaveEntry = (updatedEntry: TimeEntry) => {
-    // Refresh the entries list
-    dispatch(fetchTimeEntries({}));
-    setIsEditModalOpen(false);
-    setEditingEntry(null);
   };
 
   // Load more entries (pagination)
@@ -309,21 +288,12 @@ const TimeEntries: React.FC = () => {
                           Stop
                         </button>
                       ) : (
-                        <div className="flex flex-col gap-1">
-                          <button
-                            onClick={() => handleEditEntry(entry)}
-                            className="flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm hover:bg-blue-50 px-2 py-1 rounded transition-colors"
-                          >
-                            <PencilIcon className="h-4 w-4" />
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteEntry(entry.id)}
-                            className="text-red-600 hover:text-red-700 text-sm hover:bg-red-50 px-2 py-1 rounded transition-colors"
-                          >
-                            Delete
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => handleDeleteEntry(entry.id)}
+                          className="text-red-600 hover:text-red-700 text-sm mt-1 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+                        >
+                          Delete
+                        </button>
                       )}
                     </div>
                   </div>
@@ -355,21 +325,6 @@ const TimeEntries: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Edit Modal */}
-      {editingEntry && (
-        <EditTimeEntryModal
-          isOpen={isEditModalOpen}
-          onClose={() => {
-            setIsEditModalOpen(false);
-            setEditingEntry(null);
-          }}
-          entry={editingEntry}
-          projects={safeProjects}
-          tasks={safeTasks}
-          onSave={handleSaveEntry}
-        />
-      )}
     </div>
   );
 };

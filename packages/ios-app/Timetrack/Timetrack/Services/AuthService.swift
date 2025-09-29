@@ -15,14 +15,6 @@ class AuthService: ObservableObject {
         return try await apiClient.getCurrentUser()
     }
 
-    func requestPasswordReset(email: String) async throws -> String {
-        return try await apiClient.requestPasswordReset(email: email)
-    }
-
-    func resetPassword(token: String, password: String) async throws -> AuthResponse {
-        return try await apiClient.resetPassword(token: token, password: password)
-    }
-
     func logout() {
         apiClient.clearToken()
     }
