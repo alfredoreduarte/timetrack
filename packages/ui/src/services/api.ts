@@ -95,22 +95,6 @@ class APIClient {
       return response.user;
     },
 
-    requestPasswordReset: async (email: string) => {
-      return this.request<{ message: string }>(
-        "POST",
-        "/auth/request-password-reset",
-        { email }
-      );
-    },
-
-    resetPassword: async (token: string, password: string) => {
-      return this.request<{ message: string; user: User; token: string }>(
-        "POST",
-        "/auth/reset-password",
-        { token, password }
-      );
-    },
-
     updateProfile: async (profileData: {
       name?: string;
       email?: string;

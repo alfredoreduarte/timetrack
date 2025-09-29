@@ -18,8 +18,6 @@ model User {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   defaultHourlyRate Float?
-  passwordResetToken    String?
-  passwordResetExpiresAt DateTime?
 
   // Relations
   projects     Project[]
@@ -29,7 +27,6 @@ model User {
 
   @@map("users")
   @@index([email])
-  @@index([passwordResetToken])
 }
 
 model Project {

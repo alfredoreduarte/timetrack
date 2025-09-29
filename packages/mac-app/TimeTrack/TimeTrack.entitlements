@@ -2,34 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- App Sandbox (Required for App Store) -->
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
-	
-	<!-- Network access for API communication -->
 	<key>com.apple.security.network.client</key>
 	<true/>
-	
-	<!-- File system access for data export -->
 	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
-	<key>com.apple.security.files.user-selected.read-write</key>
-	<true/>
-	
-	<!-- Hardened Runtime (Required for notarization) -->
-	<key>com.apple.security.cs.allow-jit</key>
-	<false/>
-	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-	<false/>
-	<key>com.apple.security.cs.allow-dyld-environment-variables</key>
-	<false/>
-	<key>com.apple.security.cs.disable-library-validation</key>
-	<false/>
-	
-	<!-- User notifications for timer alerts -->
-	<key>com.apple.security.temporary-exception.shared-preference.read-only</key>
-	<array>
-		<string>com.apple.notificationcenter</string>
-	</array>
 </dict>
 </plist>
