@@ -93,6 +93,15 @@ class EmailService {
 
   async sendPasswordResetEmail(email: string, resetToken: string): Promise<boolean> {
     const resetUrl = `${process.env.APPLICATION_URL || 'http://localhost:3010'}/reset-password?token=${resetToken}`;
+
+    // In development, log the reset link directly to console for easy access
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔐 PASSWORD RESET LINK (for development):');
+      console.log(`📧 Email: ${email}`);
+      console.log(`🔗 Reset URL: ${resetUrl}`);
+      console.log('⏰ Link expires in 1 hour');
+      console.log('─'.repeat(80));
+    }
     
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">

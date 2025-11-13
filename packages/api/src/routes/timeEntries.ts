@@ -11,9 +11,9 @@ router.use(authenticate);
 
 // Validation schemas
 const startTimeEntrySchema = z.object({
-  description: z.string().optional(),
-  projectId: z.string().optional(),
-  taskId: z.string().optional(),
+  description: z.string().nullable().optional(),
+  projectId: z.string().nullable().optional(),
+  taskId: z.string().nullable().optional(),
 });
 
 const stopTimeEntrySchema = z.object({
@@ -21,19 +21,20 @@ const stopTimeEntrySchema = z.object({
 });
 
 const createTimeEntrySchema = z.object({
-  description: z.string().optional(),
+  description: z.string().nullable().optional(),
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
-  projectId: z.string().optional(),
-  taskId: z.string().optional(),
+  projectId: z.string().nullable().optional(),
+  taskId: z.string().nullable().optional(),
 });
 
 const updateTimeEntrySchema = z.object({
-  description: z.string().optional(),
+  description: z.string().nullable().optional(),
   startTime: z.string().datetime().optional(),
   endTime: z.string().datetime().optional(),
-  projectId: z.string().optional(),
-  taskId: z.string().optional(),
+  hours: z.number().positive().optional(), // New: Set duration by hours
+  projectId: z.string().nullable().optional(),
+  taskId: z.string().nullable().optional(),
 });
 
 // Helper function to calculate hourly rate
@@ -287,7 +288,11 @@ router.post(
     }
 
     // Get hourly rate
-    const hourlyRate = await getHourlyRate(req.user!.id, projectId, taskId);
+    const hourlyRate = await getHourlyRate(
+      req.user!.id,
+      projectId || undefined,
+      taskId || undefined
+    );
 
     const timeEntry = await prisma.timeEntry.create({
       data: {
@@ -557,7 +562,11 @@ router.post(
     }
 
     const duration = Math.floor((end.getTime() - start.getTime()) / 1000);
-    const hourlyRate = await getHourlyRate(req.user!.id, projectId, taskId);
+    const hourlyRate = await getHourlyRate(
+      req.user!.id,
+      projectId || undefined,
+      taskId || undefined
+    );
 
     const timeEntry = await prisma.timeEntry.create({
       data: {
@@ -620,11 +629,36 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               description:
+ *                 type: string
+ *               startTime:
+ *                 type: string
+ *                 format: date-time
+ *               endTime:
+ *                 type: string
+ *                 format: date-time
+ *               hours:
+ *                 type: number
+ *                 description: Duration in hours (will calculate endTime from startTime)
+ *               projectId:
+ *                 type: string
+ *                 nullable: true
+ *               taskId:
+ *                 type: string
+ *                 nullable: true
  *     responses:
  *       200:
  *         description: Time entry updated successfully
  *       404:
  *         description: Time entry not found
+ *       400:
+ *         description: Invalid time entry data
  */
 router.put(
   "/:id",
@@ -643,34 +677,87 @@ router.put(
       throw createError("Time entry not found", 404);
     }
 
-    // Calculate new duration if times are updated
-    let duration = existingEntry.duration;
-    if (updateData.startTime || updateData.endTime) {
-      const start = updateData.startTime
-        ? new Date(updateData.startTime)
-        : existingEntry.startTime;
-      const end = updateData.endTime
-        ? new Date(updateData.endTime)
-        : existingEntry.endTime;
+    // Prevent editing running entries
+    if (existingEntry.isRunning) {
+      throw createError("Cannot edit a running time entry. Please stop it first.", 400);
+    }
 
-      if (end && end <= start) {
+    // Validate project and task if provided
+    if (updateData.projectId !== undefined) {
+      if (updateData.projectId) {
+        const project = await prisma.project.findFirst({
+          where: {
+            id: updateData.projectId,
+            userId: req.user!.id,
+          },
+        });
+        if (!project) {
+          throw createError("Project not found", 404);
+        }
+      }
+    }
+
+    if (updateData.taskId !== undefined) {
+      if (updateData.taskId) {
+        const task = await prisma.task.findFirst({
+          where: {
+            id: updateData.taskId,
+            userId: req.user!.id,
+          },
+        });
+        if (!task) {
+          throw createError("Task not found", 404);
+        }
+      }
+    }
+
+    // Calculate times and duration
+    let startTime = updateData.startTime
+      ? new Date(updateData.startTime)
+      : existingEntry.startTime;
+    let endTime = updateData.endTime
+      ? new Date(updateData.endTime)
+      : existingEntry.endTime;
+    let duration = existingEntry.duration;
+
+    // Handle hours parameter - it overrides endTime
+    if (updateData.hours !== undefined) {
+      if (updateData.hours <= 0 || updateData.hours > 24) {
+        throw createError("Hours must be between 0 and 24", 400);
+      }
+      // Calculate endTime based on hours from startTime
+      const durationMs = updateData.hours * 60 * 60 * 1000;
+      endTime = new Date(startTime.getTime() + durationMs);
+      duration = Math.floor(durationMs / 1000);
+    } else if (updateData.startTime || updateData.endTime) {
+      // Recalculate duration if times are updated directly
+      if (endTime && endTime <= startTime) {
         throw createError("End time must be after start time", 400);
       }
 
-      if (end) {
-        duration = Math.floor((end.getTime() - start.getTime()) / 1000);
+      if (endTime) {
+        duration = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
       }
+    }
+
+    // Update hourly rate snapshot if project or task changed
+    let hourlyRateSnapshot = existingEntry.hourlyRateSnapshot;
+    if (updateData.projectId !== undefined || updateData.taskId !== undefined) {
+      const projectId = updateData.projectId !== undefined ? updateData.projectId : existingEntry.projectId;
+      const taskId = updateData.taskId !== undefined ? updateData.taskId : existingEntry.taskId;
+      hourlyRateSnapshot = await getHourlyRate(req.user!.id, projectId || undefined, taskId || undefined);
     }
 
     const timeEntry = await prisma.timeEntry.update({
       where: { id },
       data: {
-        ...updateData,
-        ...(updateData.startTime && {
-          startTime: new Date(updateData.startTime),
-        }),
-        ...(updateData.endTime && { endTime: new Date(updateData.endTime) }),
+        description: updateData.description !== undefined ? updateData.description : existingEntry.description,
+        projectId: updateData.projectId !== undefined ? updateData.projectId : existingEntry.projectId,
+        taskId: updateData.taskId !== undefined ? updateData.taskId : existingEntry.taskId,
+        startTime,
+        endTime,
         duration,
+        hourlyRateSnapshot,
       },
       select: {
         id: true,
