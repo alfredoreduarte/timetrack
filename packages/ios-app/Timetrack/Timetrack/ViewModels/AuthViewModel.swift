@@ -114,4 +114,11 @@ class AuthViewModel: ObservableObject {
     func clearError() {
         errorMessage = nil
     }
+    
+    func setUserData(_ user: User, token: String) {
+        apiClient.saveToken(token)
+        currentUser = user
+        isAuthenticated = true
+        errorMessage = nil
+    }
 }

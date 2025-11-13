@@ -43,6 +43,7 @@ services:
       RATE_LIMIT_MAX_REQUESTS: 100
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3010,https://yourdomain.com}
       LOG_LEVEL: info
+      APPLICATION_URL: ${APPLICATION_URL:-http://localhost:3010}
     ports:
       - "${API_PORT:-3011}:${API_PORT:-3011}"
     depends_on:

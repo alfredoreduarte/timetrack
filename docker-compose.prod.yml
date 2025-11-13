@@ -44,6 +44,7 @@ services:
       RATE_LIMIT_MAX_REQUESTS: 100
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       LOG_LEVEL: info
+      APPLICATION_URL: ${APPLICATION_URL:-https://app.track.alfredo.re}
     depends_on:
       postgres:
         condition: service_healthy

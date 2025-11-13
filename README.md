@@ -129,7 +129,25 @@ JWT_SECRET=your_long_secret_key
 # Optional
 ALLOWED_ORIGINS=http://localhost:3010
 REACT_APP_API_URL=http://localhost:3011
+APPLICATION_URL=http://localhost:3010  # Frontend URL for emails
 ```
+
+### Why Both docker.env and docker-compose.yml?
+
+While it may seem redundant, this dual configuration serves important purposes:
+
+- **docker.env**: Single source of truth for environment variables
+  - Shared across all docker-compose files (dev, prod, test)
+  - Keeps secrets out of version control (gitignored)
+  - Easy to swap for different environments
+
+- **docker-compose.yml environment section**: Service-specific configuration
+  - Provides defaults when docker.env values are missing (`${VAR:-default}`)
+  - Constructs derived values (e.g., DATABASE_URL from multiple variables)
+  - Documents required variables for each service
+  - Allows running without docker.env using built-in defaults
+
+This pattern enables flexibility: you can run with just docker-compose.yml for quick starts, or customize via docker.env for production deployments without modifying the compose files.
 
 ## 🚀 Deployment Options
 
