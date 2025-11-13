@@ -1,0 +1,268 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+TimeTrack is a comprehensive time tracking application built as a monorepo with multiple client platforms (web, Electron desktop, native macOS, iOS/watchOS) connecting to a centralized API. The system tracks time spent on projects and tasks, calculates earnings based on hierarchical hourly rates (Task > Project > User), and provides detailed reporting.
+
+## Architecture
+
+### Monorepo Structure
+```
+packages/
+├── api/       # Node.js/Express API with Prisma ORM and PostgreSQL
+├── ui/        # React web app + Electron desktop app
+├── mac-app/   # Native macOS SwiftUI application
+├── ios-app/   # Native iOS & watchOS SwiftUI applications
+├── landing/   # SSR marketing page with React + Vite
+└── shared/    # Shared TypeScript types and utilities
+```
+
+### Key Architectural Patterns
+- **Docker-first development**: All services run in containers with volume mounts for hot reloading
+- **npm workspaces**: Monorepo management with centralized dependencies
+- **Layered API architecture**: Routes → Middleware → Controllers → Prisma → Database
+- **Redux Toolkit state management**: Normalized state with async thunks for API calls
+- **MVVM for native apps**: SwiftUI with @ObservableObject ViewModels
+- **Real-time updates**: Socket.IO for WebSocket connections, user-specific rooms
+- **Hierarchical hourly rates**: Task rate > Project rate > User default rate
+
+## Common Development Commands
+
+### Essential Daily Commands
+```bash
+npm run dev          # Start development environment (all services)
+npm run logs         # View application logs
+npm run stop         # Stop all services
+npm run restart      # Restart all services
+npm run status       # Check service status
+```
+
+### Database Operations
+```bash
+npm run migrate      # Run database migrations (development)
+npm run migrate:prod # Run production migrations
+npm run backup       # Create database backup
+npm run db:studio    # Open Prisma Studio (from api package)
+```
+
+### Building and Testing
+```bash
+npm run build:all    # Build all packages (shared → api → ui → landing)
+npm run test:all     # Run tests across api and ui packages
+npm run lint:all     # Lint all packages
+npm run type-check:all # TypeScript type checking
+npm run package:ui   # Create Electron installer
+```
+
+### Package-Specific Commands
+```bash
+# In packages/api
+npm run dev          # Start with nodemon hot reload
+npm run db:generate  # Regenerate Prisma client after schema changes
+
+# In packages/ui
+npm run dev          # Start Vite dev server
+npm run test         # Run Vitest tests with Testing Library
+
+# In packages/mac-app
+./build_portable.sh  # Build portable Mac app
+./build_appstore.sh  # Build for App Store submission
+```
+
+## High-Level Code Architecture
+
+### API Server (packages/api)
+**Tech Stack**: Express.js, TypeScript, Prisma ORM, PostgreSQL, Socket.IO, JWT auth
+
+**Request Flow**:
+1. Request arrives at route handler with validation (express-validator)
+2. Auth middleware verifies JWT token
+3. Sanitization middleware cleans input (DOMPurify)
+4. Controller processes request with business logic
+5. Prisma ORM handles database operations
+6. Response sent with consistent format: `{ data: T }` or `{ error: string }`
+7. Socket.IO emits real-time updates to user-specific rooms
+
+**Key Endpoints**:
+- `/auth/*` - Registration, login, password reset
+- `/time-entries/*` - Timer operations (start/stop/current)
+- `/projects/*` and `/tasks/*` - Project/task CRUD
+- `/reports/*` - Time and earnings analytics
+
+### Web/Electron UI (packages/ui)
+**Tech Stack**: React 18, Redux Toolkit, TypeScript, Tailwind CSS, Vite, Electron
+
+**State Management Architecture**:
+- Redux store with slices: `auth`, `projects`, `tasks`, `timeEntries`, `dashboard`
+- Async thunks handle API calls with standardized error handling
+- Normalized state structure prevents duplication
+- Real-time Socket.IO updates dispatched to Redux
+
+**Component Structure**:
+- Pages (containers) connect to Redux store
+- Components are presentational and reusable
+- Custom hooks abstract complex logic
+- Testing with Vitest + Testing Library + MSW
+
+### Native macOS App (packages/mac-app)
+**Tech Stack**: SwiftUI, MVVM, URLSession, UserDefaults
+
+**Architecture**:
+- **Models**: Codable structs matching API schema
+- **ViewModels**: @MainActor ObservableObject classes with @Published properties
+- **Views**: SwiftUI components reactive to ViewModel changes
+- **Services**: APIClient (async/await), AuthService (JWT), TimerService (real-time)
+- **Menu Bar**: Live timer display with popover controls
+
+**macOS-Specific Patterns** (from .cursorrules):
+- NO iOS modifiers (keyboardType, autocapitalization)
+- Use NSColor instead of UIColor
+- Window-based thinking, not screen-based
+- @MainActor for UI isolation with proper deinit cleanup
+
+### Shared Package (packages/shared)
+Provides TypeScript types, API constants, and utilities used by both API and UI to ensure type safety across the stack.
+
+## Database Schema
+
+PostgreSQL database managed by Prisma with these core entities:
+- **User**: Authentication, default hourly rate, password reset tokens
+- **Project**: Name, description, color, optional hourly rate, active status
+- **Task**: Belongs to project, optional hourly rate, completion tracking
+- **TimeEntry**: Start/end times, duration, hourly rate snapshot, running status
+
+Migration workflow:
+1. Modify `packages/api/prisma/schema.prisma`
+2. Run `npx prisma migrate dev` to create migration
+3. Run `npm run migrate` to apply in development
+4. Run `npm run migrate:prod` for production deployment
+
+## Security Implementation
+
+- **Authentication**: JWT tokens with secure httpOnly cookies (web) or UserDefaults (native)
+- **Password security**: bcryptjs hashing with salt rounds
+- **API protection**: Rate limiting, request size limits, Helmet security headers
+- **Input validation**: Zod schemas, express-validator, DOMPurify sanitization
+- **CORS**: Configurable allowed origins for cross-origin requests
+- **CSP headers**: Content Security Policy for XSS protection
+- **SQL injection**: Prevented via Prisma parameterized queries
+
+## Environment Configuration
+
+Development uses `docker.env` with these key variables:
+```bash
+POSTGRES_PASSWORD     # Database password
+JWT_SECRET           # JWT signing secret
+EMAIL_HOST          # SMTP server for password reset
+ALLOWED_ORIGINS     # CORS origins (comma-separated)
+REACT_APP_API_URL   # API endpoint for UI
+```
+
+## Port Allocation
+
+- **3010**: Web UI (nginx in Docker)
+- **3011**: API server
+- **3012**: PostgreSQL database
+- **3013**: Redis cache
+- **3014**: Landing page
+- **5173**: Vite dev server (UI development)
+- **5174**: Vite dev server (Landing development)
+
+## Deployment
+
+The `deploy.sh` script handles both development and production deployments:
+```bash
+./deploy.sh dev   # Development with hot reload
+./deploy.sh prod  # Production with optimizations
+```
+
+Features:
+- Automatic Docker Compose detection
+- Health checks before declaring success
+- Database backup before production deployments
+- Automatic migration running
+- Log tailing and service status monitoring
+
+## Testing Strategy
+
+**API Testing** (packages/api):
+- Jest configured but minimal coverage currently
+- Test files in `src/__tests__/`
+
+**UI Testing** (packages/ui):
+- Vitest with Testing Library for component tests
+- MSW for API mocking
+- Test files in `src/components/__tests__/` and `src/pages/__tests__/`
+- Run with `npm run test` in ui package
+
+**Native Apps**:
+- XCTest framework for iOS/macOS
+- UI tests and unit tests via Xcode
+
+## Real-time Features
+
+Socket.IO implementation:
+1. Client connects on authentication
+2. Server creates user-specific room
+3. Timer updates broadcast to user's room
+4. Client Redux store updated via Socket.IO listeners
+5. Electron IPC for main/renderer communication
+
+## Development Workflow
+
+### Critical: Environment Variable Verification
+**IMPORTANT**: NEVER use an environment variable in code without first verifying it exists. Always check:
+1. Check if the variable is defined in `docker.env`, `.env`, or the deployment environment
+2. Verify the variable name matches exactly (case-sensitive)
+3. Check existing code for how similar variables are accessed
+4. Use proper fallbacks or throw clear errors if required variables are missing
+
+Common pitfalls to avoid:
+- Don't assume variables like `REACT_APP_*` exist without checking
+- Don't create new environment variables without documenting them
+- Don't hardcode values that should be environment variables
+- Always validate environment variables at startup, not at usage time
+
+### Hot Reload Configuration
+- **API**: Nodemon watches `src/` and `../shared/src/` with 2-second delay
+- **UI**: Vite HMR for instant updates
+- **Shared changes**: Trigger reload in both API and UI
+
+### Working with the Monorepo
+1. Changes to shared package require rebuilding: `npm run build:shared`
+2. API and UI will auto-reload when shared is rebuilt
+3. Use `npm run dev` at root for all services
+4. Individual package development possible with package-specific scripts
+
+### Adding New Features
+1. Define types in `packages/shared/src/types/`
+2. Add database schema in `packages/api/prisma/schema.prisma`
+3. Create migration: `npx prisma migrate dev`
+4. Implement API endpoint in `packages/api/src/routes/`
+5. Add Redux slice in `packages/ui/src/store/slices/`
+6. Create React components in `packages/ui/src/components/`
+7. Update native apps if needed
+
+## Important Files
+
+**Configuration**:
+- `/docker-compose.yml` - Development Docker setup
+- `/docker-compose.prod.yml` - Production Docker setup
+- `/packages/api/prisma/schema.prisma` - Database schema
+- `/packages/ui/vite.config.ts` - Vite configuration
+
+**Entry Points**:
+- `/packages/api/src/server.ts` - API server
+- `/packages/ui/src/App.tsx` - React app
+- `/packages/ui/src/main.tsx` - Web entry
+- `/packages/ui/src/electron/main.ts` - Electron entry
+- `/packages/mac-app/TimeTrack/TimeTrackApp.swift` - macOS app
+- `/packages/ios-app/Timetrack/TimetracApp.swift` - iOS app
+
+**Key Services**:
+- `/packages/api/src/middleware/errorHandler.ts` - Centralized error handling
+- `/packages/api/src/utils/logger.ts` - Winston logging configuration
+- `/packages/ui/src/services/api.ts` - Axios API client
+- `/packages/ui/src/store/index.ts` - Redux store configuration
