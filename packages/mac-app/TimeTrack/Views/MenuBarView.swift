@@ -51,6 +51,12 @@ struct MenuBarView: View {
             // Quick actions
             quickActionsSection
 
+            Divider()
+                .background(Color.gray.opacity(0.3))
+
+            // Preferences
+            preferencesSection
+
             Spacer()
         }
     }
@@ -213,6 +219,44 @@ struct MenuBarView: View {
         .padding(.vertical, 12)
     }
 
+    private var preferencesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Preferences")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.primary)
+
+            HStack {
+                Text("Toolbar view:")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Text("Current timer")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    Toggle("", isOn: Binding(
+                        get: { menuBarManager.toolbarViewMode == .today },
+                        set: { isToday in
+                            menuBarManager.toolbarViewMode = isToday ? .today : .current
+                        }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .scaleEffect(0.7)
+
+                    Text("Today's totals")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
     private func startRefreshTimer() {
         // Refresh earnings data every 30 seconds to keep today/week totals updated
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
@@ -227,8 +271,6 @@ struct MenuBarView: View {
         refreshTimer = nil
     }
 }
-
-
 
 #Preview {
     MenuBarView()
