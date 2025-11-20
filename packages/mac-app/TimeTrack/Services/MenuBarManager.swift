@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 @MainActor
 class MenuBarManager: ObservableObject {
@@ -8,9 +9,9 @@ class MenuBarManager: ObservableObject {
     private var timerViewModel: TimerViewModel
     private var authViewModel: AuthViewModel
     private var dashboardViewModel: DashboardViewModel
-    private var updateTimer: Timer?
     private var earningsRefreshTimer: Timer?
     private var showMainWindowCallback: (() -> Void)?
+    private var cancellables = Set<AnyCancellable>()
 
     init(timerViewModel: TimerViewModel, authViewModel: AuthViewModel, showMainWindowCallback: @escaping () -> Void) {
         self.timerViewModel = timerViewModel
@@ -20,6 +21,7 @@ class MenuBarManager: ObservableObject {
 
         setupMenuBar()
         setupEarningsRefresh()
+        setupReactiveUpdates()
     }
 
     private func setupMenuBar() {
@@ -42,14 +44,10 @@ class MenuBarManager: ObservableObject {
         setupStatusItem()
         setupPopover()
         updateStatusItemIcon()
-
-        // Listen for timer state changes to update the icon
-        setupTimerObserver()
     }
 
     private func cleanup() {
-        updateTimer?.invalidate()
-        updateTimer = nil
+        cancellables.removeAll()
         earningsRefreshTimer?.invalidate()
         earningsRefreshTimer = nil
 
@@ -82,13 +80,30 @@ class MenuBarManager: ObservableObject {
         popover.contentViewController = hostingController
     }
 
-    private func setupTimerObserver() {
-        // Observe timer changes to update the menu bar icon
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+    private func setupReactiveUpdates() {
+        // Subscribe to elapsedTime changes for instant menu bar updates
+        timerViewModel.$elapsedTime
+            .debounce(for: .milliseconds(10), scheduler: RunLoop.main)
+            .sink { [weak self] newValue in
                 self?.updateStatusItemIcon()
             }
-        }
+            .store(in: &cancellables)
+
+        // Subscribe to currentEntry changes to update when timer starts/stops
+        timerViewModel.$currentEntry
+            .debounce(for: .milliseconds(10), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateStatusItemIcon()
+            }
+            .store(in: &cancellables)
+
+        // Subscribe to dashboard earnings changes
+        dashboardViewModel.$earnings
+            .debounce(for: .milliseconds(10), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateStatusItemIcon()
+            }
+            .store(in: &cancellables)
     }
 
     private func setupEarningsRefresh() {
