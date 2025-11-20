@@ -1,5 +1,11 @@
 import SwiftUI
 import AppKit
+import Combine
+
+enum ToolbarViewMode: String {
+    case current = "current"
+    case today = "today"
+}
 
 @MainActor
 class MenuBarManager: ObservableObject {
@@ -7,15 +13,35 @@ class MenuBarManager: ObservableObject {
     private var popover: NSPopover?
     private var timerViewModel: TimerViewModel
     private var authViewModel: AuthViewModel
-    private var updateTimer: Timer?
+    private var dashboardViewModel: DashboardViewModel
+    private var earningsRefreshTimer: Timer?
     private var showMainWindowCallback: (() -> Void)?
+    private var cancellables = Set<AnyCancellable>()
+
+    @Published var toolbarViewMode: ToolbarViewMode {
+        didSet {
+            UserDefaults.standard.set(toolbarViewMode.rawValue, forKey: "toolbarViewMode")
+            updateStatusItemIcon()
+        }
+    }
 
     init(timerViewModel: TimerViewModel, authViewModel: AuthViewModel, showMainWindowCallback: @escaping () -> Void) {
         self.timerViewModel = timerViewModel
         self.authViewModel = authViewModel
+        self.dashboardViewModel = DashboardViewModel()
         self.showMainWindowCallback = showMainWindowCallback
 
+        // Load saved toolbar view mode from UserDefaults
+        if let savedMode = UserDefaults.standard.string(forKey: "toolbarViewMode"),
+           let mode = ToolbarViewMode(rawValue: savedMode) {
+            self.toolbarViewMode = mode
+        } else {
+            self.toolbarViewMode = .current
+        }
+
         setupMenuBar()
+        setupEarningsRefresh()
+        setupReactiveUpdates()
     }
 
     private func setupMenuBar() {
@@ -38,14 +64,12 @@ class MenuBarManager: ObservableObject {
         setupStatusItem()
         setupPopover()
         updateStatusItemIcon()
-
-        // Listen for timer state changes to update the icon
-        setupTimerObserver()
     }
 
     private func cleanup() {
-        updateTimer?.invalidate()
-        updateTimer = nil
+        cancellables.removeAll()
+        earningsRefreshTimer?.invalidate()
+        earningsRefreshTimer = nil
 
         if let statusItem = statusItem {
             NSStatusBar.system.removeStatusItem(statusItem)
@@ -76,11 +100,42 @@ class MenuBarManager: ObservableObject {
         popover.contentViewController = hostingController
     }
 
-    private func setupTimerObserver() {
-        // Observe timer changes to update the menu bar icon
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+    private func setupReactiveUpdates() {
+        // Subscribe to elapsedTime changes for instant menu bar updates
+        timerViewModel.$elapsedTime
+            .debounce(for: .milliseconds(10), scheduler: RunLoop.main)
+            .sink { [weak self] newValue in
                 self?.updateStatusItemIcon()
+            }
+            .store(in: &cancellables)
+
+        // Subscribe to currentEntry changes to update when timer starts/stops
+        timerViewModel.$currentEntry
+            .debounce(for: .milliseconds(10), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateStatusItemIcon()
+            }
+            .store(in: &cancellables)
+
+        // Subscribe to dashboard earnings changes
+        dashboardViewModel.$earnings
+            .debounce(for: .milliseconds(10), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateStatusItemIcon()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func setupEarningsRefresh() {
+        // Initial load of earnings
+        Task {
+            await dashboardViewModel.loadDashboardEarnings()
+        }
+
+        // Refresh earnings every 30 seconds to keep today's total updated
+        earningsRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.dashboardViewModel.loadDashboardEarnings()
             }
         }
     }
@@ -161,32 +216,69 @@ class MenuBarManager: ObservableObject {
         guard let statusItem = statusItem,
               let button = statusItem.button else { return }
 
-        let isRunning = timerViewModel.isRunning
-        let timeText = timerViewModel.formattedElapsedTime
-
-        // Create attributed string with icon and time
         let attributedString = NSMutableAttributedString()
 
-        // Add icon
-        let iconName = isRunning ? "stop.fill" : "play.fill"
+        if toolbarViewMode == .current {
+            // CURRENT MODE: Show current timer time and earnings
+            let isRunning = timerViewModel.isRunning
+            let timeText = timerViewModel.formattedElapsedTime
+            let currentEarnings = timerViewModel.currentTimerLiveEarnings ?? 0.0
 
-        if let icon = NSImage(systemSymbolName: iconName, accessibilityDescription: nil) {
-            icon.isTemplate = true
-            let iconAttachment = NSTextAttachment()
-            iconAttachment.image = icon
-            iconAttachment.bounds = CGRect(x: 0, y: -2, width: 12, height: 12)
-            attributedString.append(NSAttributedString(attachment: iconAttachment))
-        }
+            // Add icon
+            let iconName = isRunning ? "stop.fill" : "play.fill"
+            if let icon = NSImage(systemSymbolName: iconName, accessibilityDescription: nil) {
+                icon.isTemplate = true
+                let iconAttachment = NSTextAttachment()
+                iconAttachment.image = icon
+                iconAttachment.bounds = CGRect(x: 0, y: -2, width: 12, height: 12)
+                attributedString.append(NSAttributedString(attachment: iconAttachment))
+            }
 
-        // Add time if running
-        if isRunning && !timeText.isEmpty {
-            attributedString.append(NSAttributedString(string: " \(timeText)", attributes: [
+            // Add current timer time
+            let displayTime = (isRunning && !timeText.isEmpty) ? timeText : "00:00"
+            attributedString.append(NSAttributedString(string: " \(displayTime)", attributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
                 .foregroundColor: NSColor.controlTextColor
             ]))
+
+            // Add current timer earnings
+            let earningsText = String(format: " - $%.2f", currentEarnings)
+            attributedString.append(NSAttributedString(string: earningsText, attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .regular),
+                .foregroundColor: NSColor.controlTextColor
+            ]))
         } else {
-            attributedString.append(NSAttributedString(string: " 00:00:00", attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular),
+            // TODAY MODE: Show today's total time and earnings (including current timer)
+            let todayBaseTime = dashboardViewModel.earnings?.today.duration ?? 0
+            let currentTime = timerViewModel.isRunning ? timerViewModel.elapsedTime : 0
+            let todayTotalTime = todayBaseTime + currentTime
+            let todayTotalEarnings = dashboardViewModel.calculateTodayTotalEarnings(
+                currentTimerEarnings: timerViewModel.currentTimerLiveEarnings
+            )
+
+            // Add calendar icon
+            if let icon = NSImage(systemSymbolName: "calendar", accessibilityDescription: nil) {
+                icon.isTemplate = true
+                let iconAttachment = NSTextAttachment()
+                iconAttachment.image = icon
+                iconAttachment.bounds = CGRect(x: 0, y: -2, width: 12, height: 12)
+                attributedString.append(NSAttributedString(attachment: iconAttachment))
+            }
+
+            // Add today's total time - show HH:MM:SS when over 1 hour
+            let hours = todayTotalTime / 3600
+            let minutes = (todayTotalTime % 3600) / 60
+            let seconds = todayTotalTime % 60
+            let displayTime = hours > 0 ? String(format: "%d:%02d:%02d", hours, minutes, seconds) : String(format: "%d:%02d", minutes, seconds)
+            attributedString.append(NSAttributedString(string: " \(displayTime)", attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+                .foregroundColor: NSColor.controlTextColor
+            ]))
+
+            // Add today's total earnings
+            let earningsText = String(format: " - $%.2f", todayTotalEarnings)
+            attributedString.append(NSAttributedString(string: earningsText, attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .regular),
                 .foregroundColor: NSColor.controlTextColor
             ]))
         }

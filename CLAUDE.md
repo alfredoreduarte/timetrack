@@ -106,21 +106,34 @@ npm run test         # Run Vitest tests with Testing Library
 - Custom hooks abstract complex logic
 - Testing with Vitest + Testing Library + MSW
 
-### Native macOS App (packages/mac-app)
-**Tech Stack**: SwiftUI, MVVM, URLSession, UserDefaults
+### Native Swift Apps (packages/mac-app & packages/ios-app)
+**Tech Stack**: SwiftUI, MVVM, URLSession, UserDefaults, Combine
 
-**Architecture**:
+**Shared Architecture Patterns**:
 - **Models**: Codable structs matching API schema
 - **ViewModels**: @MainActor ObservableObject classes with @Published properties
 - **Views**: SwiftUI components reactive to ViewModel changes
 - **Services**: APIClient (async/await), AuthService (JWT), TimerService (real-time)
-- **Menu Bar**: Live timer display with popover controls
+- **@MainActor**: All ViewModels use @MainActor for UI isolation with proper deinit cleanup
 
-**macOS-Specific Patterns** (from .cursorrules):
+**Live Data Synchronization Pattern**:
+- For real-time UI updates, use Combine reactive subscriptions instead of polling timers
+- Subscribe to `@Published` properties with `.debounce(for: .milliseconds(10))` to avoid race conditions
+- Pattern: `viewModel.$property.debounce(for: .milliseconds(10), scheduler: RunLoop.main).sink { update() }.store(in: &cancellables)`
+- This ensures all main actor tasks complete before reading updated values
+- Prevents race conditions when `@Published` properties update via async `Task { @MainActor }` closures
+- Example: MenuBarManager subscribes to TimerViewModel.$elapsedTime for instant updates
+
+**macOS-Specific** (packages/mac-app):
+- Menu bar app with live timer display and popover controls
 - NO iOS modifiers (keyboardType, autocapitalization)
 - Use NSColor instead of UIColor
 - Window-based thinking, not screen-based
-- @MainActor for UI isolation with proper deinit cleanup
+
+**iOS/watchOS-Specific** (packages/ios-app):
+- Native iOS app with watchOS companion
+- Watch complications for at-a-glance time tracking
+- iOS-specific modifiers and UIColor are appropriate here
 
 ### Shared Package (packages/shared)
 Provides TypeScript types, API constants, and utilities used by both API and UI to ensure type safety across the stack.
