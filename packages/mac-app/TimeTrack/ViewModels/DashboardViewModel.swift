@@ -28,9 +28,18 @@ class DashboardViewModel: ObservableObject {
 
     // MARK: - Computed Properties
 
-    var todayEarningsFormatted: String {
-        guard let earnings = earnings else { return "$0.00" }
-        return String(format: "$%.2f", earnings.today.earnings)
+    // Calculate today's total earnings including live running timer
+    func calculateTodayTotalEarnings(currentTimerEarnings: Double?) -> Double {
+        guard let earnings = earnings else { return 0.0 }
+        let baseEarnings = earnings.today.earnings
+        let liveEarnings = currentTimerEarnings ?? 0.0
+        return baseEarnings + liveEarnings
+    }
+
+    // Format today's total earnings as currency string
+    func todayEarningsWithLive(currentTimerEarnings: Double?) -> String {
+        let total = calculateTodayTotalEarnings(currentTimerEarnings: currentTimerEarnings)
+        return String(format: "$%.2f", total)
     }
 
     var thisWeekEarningsFormatted: String {

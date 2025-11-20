@@ -7,15 +7,19 @@ class MenuBarManager: ObservableObject {
     private var popover: NSPopover?
     private var timerViewModel: TimerViewModel
     private var authViewModel: AuthViewModel
+    private var dashboardViewModel: DashboardViewModel
     private var updateTimer: Timer?
+    private var earningsRefreshTimer: Timer?
     private var showMainWindowCallback: (() -> Void)?
 
     init(timerViewModel: TimerViewModel, authViewModel: AuthViewModel, showMainWindowCallback: @escaping () -> Void) {
         self.timerViewModel = timerViewModel
         self.authViewModel = authViewModel
+        self.dashboardViewModel = DashboardViewModel()
         self.showMainWindowCallback = showMainWindowCallback
 
         setupMenuBar()
+        setupEarningsRefresh()
     }
 
     private func setupMenuBar() {
@@ -46,6 +50,8 @@ class MenuBarManager: ObservableObject {
     private func cleanup() {
         updateTimer?.invalidate()
         updateTimer = nil
+        earningsRefreshTimer?.invalidate()
+        earningsRefreshTimer = nil
 
         if let statusItem = statusItem {
             NSStatusBar.system.removeStatusItem(statusItem)
@@ -81,6 +87,20 @@ class MenuBarManager: ObservableObject {
         updateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.updateStatusItemIcon()
+            }
+        }
+    }
+
+    private func setupEarningsRefresh() {
+        // Initial load of earnings
+        Task {
+            await dashboardViewModel.loadDashboardEarnings()
+        }
+
+        // Refresh earnings every 30 seconds to keep today's total updated
+        earningsRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.dashboardViewModel.loadDashboardEarnings()
             }
         }
     }
@@ -164,7 +184,12 @@ class MenuBarManager: ObservableObject {
         let isRunning = timerViewModel.isRunning
         let timeText = timerViewModel.formattedElapsedTime
 
-        // Create attributed string with icon and time
+        // Calculate today's total earnings using centralized method
+        let todayTotalEarnings = dashboardViewModel.calculateTodayTotalEarnings(
+            currentTimerEarnings: timerViewModel.currentTimerLiveEarnings
+        )
+
+        // Create attributed string with icon, time, and earnings
         let attributedString = NSMutableAttributedString()
 
         // Add icon
@@ -178,18 +203,19 @@ class MenuBarManager: ObservableObject {
             attributedString.append(NSAttributedString(attachment: iconAttachment))
         }
 
-        // Add time if running
-        if isRunning && !timeText.isEmpty {
-            attributedString.append(NSAttributedString(string: " \(timeText)", attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-                .foregroundColor: NSColor.controlTextColor
-            ]))
-        } else {
-            attributedString.append(NSAttributedString(string: " 00:00:00", attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular),
-                .foregroundColor: NSColor.controlTextColor
-            ]))
-        }
+        // Add time
+        let displayTime = (isRunning && !timeText.isEmpty) ? timeText : "00:00"
+        attributedString.append(NSAttributedString(string: " \(displayTime)", attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+            .foregroundColor: NSColor.controlTextColor
+        ]))
+
+        // Add earnings
+        let earningsText = String(format: " - $%.2f", todayTotalEarnings)
+        attributedString.append(NSAttributedString(string: earningsText, attributes: [
+            .font: NSFont.systemFont(ofSize: 11, weight: .regular),
+            .foregroundColor: NSColor.controlTextColor
+        ]))
 
         button.attributedTitle = attributedString
     }

@@ -62,10 +62,10 @@ struct DashboardView: View {
                             .padding()
                     } else {
                         HStack(spacing: 16) {
-                            // Today's Earnings Card
-                            EarningsCard(
+                            // Today's Earnings Card (with live updates)
+                            LiveEarningsCard(
                                 title: "Today",
-                                earnings: dashboardViewModel.todayEarningsFormatted,
+                                dashboardViewModel: dashboardViewModel,
                                 duration: dashboardViewModel.todayDurationFormatted
                             )
 
@@ -194,6 +194,47 @@ struct TimeEntryRow: View {
                 .help("Restart this timer")
             }
         }
+    }
+}
+
+struct LiveEarningsCard: View {
+    @EnvironmentObject var timerViewModel: TimerViewModel
+    let title: String
+    let dashboardViewModel: DashboardViewModel
+    let duration: String
+
+    // Computed property that recalculates when timerViewModel.elapsedTime changes
+    private var liveEarnings: String {
+        dashboardViewModel.todayEarningsWithLive(currentTimerEarnings: timerViewModel.currentTimerLiveEarnings)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(liveEarnings)
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
+
+                Text(duration)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+        )
     }
 }
 
