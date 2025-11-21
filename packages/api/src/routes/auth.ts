@@ -44,6 +44,12 @@ const registerSchema = z.object({
     .number()
     .positive("Hourly rate must be a positive number")
     .optional(),
+  idleTimeoutSeconds: z
+    .number()
+    .int("Idle timeout must be a whole number of seconds")
+    .min(60, "Idle timeout must be at least 60 seconds (1 minute)")
+    .max(7200, "Idle timeout cannot exceed 7200 seconds (120 minutes)")
+    .optional(),
   captchaId: z.string().min(1, "Captcha ID is required"),
   captchaValue: z.string().min(1, "Captcha value is required"),
 });
@@ -154,6 +160,10 @@ router.get(
  *               defaultHourlyRate:
  *                 type: number
  *                 minimum: 0
+ *               idleTimeoutSeconds:
+ *                 type: integer
+ *                 minimum: 60
+ *                 maximum: 7200
  *               captchaId:
  *                 type: string
  *                 description: Captcha session ID obtained from /auth/captcha
@@ -190,6 +200,7 @@ router.post(
       email,
       password,
       defaultHourlyRate,
+      idleTimeoutSeconds,
       captchaId,
       captchaValue,
     } = registerSchema.parse(req.body);
@@ -231,12 +242,14 @@ router.post(
         email,
         password: hashedPassword,
         defaultHourlyRate,
+        idleTimeoutSeconds,
       },
       select: {
         id: true,
         name: true,
         email: true,
         defaultHourlyRate: true,
+        idleTimeoutSeconds: true,
         createdAt: true,
       },
     });
@@ -344,6 +357,7 @@ router.post(
         name: user.name,
         email: user.email,
         defaultHourlyRate: user.defaultHourlyRate,
+        idleTimeoutSeconds: user.idleTimeoutSeconds,
       },
       token,
     });
@@ -377,6 +391,8 @@ router.post(
  *                       type: string
  *                     defaultHourlyRate:
  *                       type: number
+ *                     idleTimeoutSeconds:
+ *                       type: integer
  *       401:
  *         description: Unauthorized
  */
@@ -391,6 +407,7 @@ router.get(
         name: true,
         email: true,
         defaultHourlyRate: true,
+        idleTimeoutSeconds: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -596,6 +613,7 @@ router.post(
         name: true,
         email: true,
         defaultHourlyRate: true,
+        idleTimeoutSeconds: true,
       },
     });
 

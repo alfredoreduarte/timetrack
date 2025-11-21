@@ -6,6 +6,10 @@ struct MenuBarView: View {
     @EnvironmentObject var menuBarManager: MenuBarManager
     @StateObject private var dashboardViewModel = DashboardViewModel()
     @State private var refreshTimer: Timer?
+    @State private var idleTimeoutMinutes: String = String(AppConstants.defaultIdleTimeoutSeconds / 60)
+    @State private var isSavingIdleTimeout = false
+    @State private var idleTimeoutStatusMessage: String?
+    @State private var idleTimeoutErrorMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,9 +26,22 @@ struct MenuBarView: View {
                 await dashboardViewModel.loadDashboardEarnings()
             }
             startRefreshTimer()
+            loadIdleTimeoutMinutes()
         }
         .onDisappear {
             stopRefreshTimer()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .idleTimeoutUpdated)) { notification in
+            guard let seconds = notification.userInfo?["seconds"] as? Int else { return }
+            idleTimeoutMinutes = String(max(1, seconds / 60))
+        }
+        .onChange(of: idleTimeoutMinutes) { newValue in
+            let sanitized = sanitizeIdleTimeoutInput(newValue)
+            if sanitized != newValue {
+                idleTimeoutMinutes = sanitized
+            }
+            idleTimeoutStatusMessage = nil
+            idleTimeoutErrorMessage = nil
         }
     }
 
@@ -220,7 +237,7 @@ struct MenuBarView: View {
     }
 
     private var preferencesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Preferences")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.primary)
@@ -252,6 +269,57 @@ struct MenuBarView: View {
                         .foregroundColor(.secondary)
                 }
             }
+
+            Divider()
+                .background(Color.gray.opacity(0.3))
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Idle timeout (minutes):")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+
+                    Spacer()
+
+                    TextField("10", text: $idleTimeoutMinutes)
+                        .frame(width: 60)
+                        .multilineTextAlignment(.trailing)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(isSavingIdleTimeout)
+                }
+
+                HStack(spacing: 8) {
+                    Button(isSavingIdleTimeout ? "Saving..." : "Save") {
+                        Task {
+                            await saveIdleTimeoutPreference()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .font(.system(size: 11))
+                    .disabled(isSavingIdleTimeout)
+
+                    if isSavingIdleTimeout {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                    }
+
+                    Spacer()
+                }
+
+                if let status = idleTimeoutStatusMessage {
+                    Text(status)
+                        .font(.system(size: 11))
+                        .foregroundColor(AppTheme.success)
+                } else if let error = idleTimeoutErrorMessage {
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundColor(AppTheme.error)
+                }
+
+                Text("Automatically stop running timers after inactivity.")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -269,6 +337,38 @@ struct MenuBarView: View {
     private func stopRefreshTimer() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+    }
+
+    private func loadIdleTimeoutMinutes() {
+        let storedSeconds = UserDefaults.standard.integer(forKey: AppConstants.idleTimeoutSecondsKey)
+        let resolvedSeconds = storedSeconds > 0 ? storedSeconds : AppConstants.defaultIdleTimeoutSeconds
+        idleTimeoutMinutes = String(max(1, resolvedSeconds / 60))
+    }
+
+    private func sanitizeIdleTimeoutInput(_ value: String) -> String {
+        let filtered = value.filter { $0.isNumber }
+        return String(filtered.prefix(3))
+    }
+
+    private func saveIdleTimeoutPreference() async {
+        guard let minutes = Int(idleTimeoutMinutes), minutes >= 1, minutes <= 120 else {
+            idleTimeoutErrorMessage = "Enter between 1 and 120 minutes."
+            idleTimeoutStatusMessage = nil
+            return
+        }
+
+        isSavingIdleTimeout = true
+        idleTimeoutErrorMessage = nil
+        idleTimeoutStatusMessage = nil
+
+        do {
+            try await authViewModel.updateIdleTimeout(seconds: minutes * 60)
+            idleTimeoutStatusMessage = "Idle timeout saved."
+        } catch {
+            idleTimeoutErrorMessage = error.localizedDescription
+        }
+
+        isSavingIdleTimeout = false
     }
 }
 

@@ -6,6 +6,7 @@ export interface User {
   email: string;
   name: string;
   defaultHourlyRate?: number;
+  idleTimeoutSeconds?: number;
   avatar?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -131,6 +132,7 @@ export const updateProfile = createAsyncThunk(
       name?: string;
       email?: string;
       defaultHourlyRate?: number;
+      idleTimeoutSeconds?: number;
     },
     { rejectWithValue }
   ) => {

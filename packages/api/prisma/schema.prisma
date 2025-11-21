@@ -18,6 +18,7 @@ model User {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   defaultHourlyRate Float?
+  idleTimeoutSeconds Int? @default(600) @map("idle_timeout_seconds")
   passwordResetToken    String?
   passwordResetExpiresAt DateTime?
 

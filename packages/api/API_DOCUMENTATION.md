@@ -25,7 +25,8 @@ Content-Type: application/json
   "password": "password123",
   "captchaId": "captcha_session_id",
   "captchaValue": "captcha_answer",
-  "defaultHourlyRate": 75.00
+  "defaultHourlyRate": 75.00,
+  "idleTimeoutSeconds": 600
 }
 ```
 
@@ -69,6 +70,7 @@ Authorization: Bearer <your-jwt-token>
     "email": "john.doe@example.com",
     "password": "securePassword123",
     "defaultHourlyRate": 75.50,
+    "idleTimeoutSeconds": 600,
     "captchaId": "1642248000_abc123def456",
     "captchaValue": "ABC12"
   }
@@ -78,6 +80,7 @@ Authorization: Bearer <your-jwt-token>
   - `email`: Valid email address (case insensitive)
   - `password`: 6-100 characters
   - `defaultHourlyRate`: Optional positive number
+- `idleTimeoutSeconds`: Optional integer between 60 and 7200 seconds
   - `captchaId`: Required valid captcha session ID
   - `captchaValue`: Required captcha answer
 - **Success Response (201):**
@@ -89,6 +92,7 @@ Authorization: Bearer <your-jwt-token>
       "name": "John Doe",
       "email": "john.doe@example.com",
       "defaultHourlyRate": 75.50,
+      "idleTimeoutSeconds": 600,
       "createdAt": "2024-01-15T10:30:00.000Z"
     },
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -122,7 +126,8 @@ Authorization: Bearer <your-jwt-token>
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "name": "John Doe",
       "email": "john.doe@example.com",
-      "defaultHourlyRate": 75.50
+      "defaultHourlyRate": 75.50,
+      "idleTimeoutSeconds": 600
     },
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
   }
@@ -146,6 +151,7 @@ Authorization: Bearer <your-jwt-token>
       "name": "John Doe",
       "email": "john.doe@example.com",
       "defaultHourlyRate": 75.50,
+      "idleTimeoutSeconds": 600,
       "createdAt": "2024-01-15T10:30:00.000Z",
       "updatedAt": "2024-01-15T10:30:00.000Z"
     }
@@ -175,13 +181,15 @@ Authorization: Bearer <your-jwt-token>
   {
     "name": "John Smith",
     "email": "john.smith@example.com",
-    "defaultHourlyRate": 80.00
+    "defaultHourlyRate": 80.00,
+    "idleTimeoutSeconds": 900
   }
   ```
 - **Validation:**
   - `name`: Optional, 2+ characters if provided
   - `email`: Optional, valid email if provided
   - `defaultHourlyRate`: Optional, positive number if provided
+  - `idleTimeoutSeconds`: Optional integer between 60 and 7200 seconds
 - **Success Response (200):**
   ```json
   {
@@ -191,6 +199,7 @@ Authorization: Bearer <your-jwt-token>
       "name": "John Smith",
       "email": "john.smith@example.com",
       "defaultHourlyRate": 80.00,
+      "idleTimeoutSeconds": 900,
       "createdAt": "2024-01-15T10:30:00.000Z",
       "updatedAt": "2024-01-15T14:45:00.000Z"
     }

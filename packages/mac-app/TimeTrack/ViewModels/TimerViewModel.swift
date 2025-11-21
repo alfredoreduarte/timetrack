@@ -23,6 +23,8 @@ class TimerViewModel: ObservableObject {
     private let apiClient = APIClient.shared
     private var timer: Timer?
     private var idleMonitor: IdleMonitor?
+    private var idleTimeoutSeconds: Int
+    private var idleTimeoutObserver: NSObjectProtocol?
 
     var isRunning: Bool {
         currentEntry?.isRunning ?? false
@@ -53,6 +55,7 @@ class TimerViewModel: ObservableObject {
     }
 
     init() {
+        idleTimeoutSeconds = TimerViewModel.resolveIdleTimeoutSeconds()
         Task {
             await loadInitialData()
         }
@@ -61,16 +64,8 @@ class TimerViewModel: ObservableObject {
         setupAutoRefresh()
 
         // Set up idle monitoring to automatically stop running timers
-        idleMonitor = IdleMonitor(threshold: 600)
-        idleMonitor?.onIdle = { [weak self] in
-            Task { @MainActor in
-                guard let self = self else { return }
-                if self.isRunning {
-                    await self.stopTimer()
-                    self.showIdleAlert()
-                }
-            }
-        }
+        configureIdleMonitor()
+        observeIdleTimeoutChanges()
     }
 
     deinit {
@@ -83,6 +78,9 @@ class TimerViewModel: ObservableObject {
 
         // Remove notification observers
         NotificationCenter.default.removeObserver(self)
+        if let observer = idleTimeoutObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     // MARK: - Data Loading
@@ -414,6 +412,46 @@ class TimerViewModel: ObservableObject {
 
         // Keep strong reference
         idleAlertWindow = window
+    }
+
+    private func configureIdleMonitor() {
+        idleMonitor = nil
+        idleMonitor = IdleMonitor(threshold: TimeInterval(idleTimeoutSeconds))
+        idleMonitor?.onIdle = { [weak self] in
+            Task { @MainActor in
+                guard let self = self else { return }
+                if self.isRunning {
+                    await self.stopTimer()
+                    self.showIdleAlert()
+                }
+            }
+        }
+    }
+
+    private func observeIdleTimeoutChanges() {
+        idleTimeoutObserver = NotificationCenter.default.addObserver(
+            forName: .idleTimeoutUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard
+                let self = self,
+                let seconds = notification.userInfo?["seconds"] as? Int
+            else { return }
+            self.applyIdleTimeout(seconds: seconds)
+        }
+    }
+
+    private func applyIdleTimeout(seconds: Int) {
+        guard seconds > 0 else { return }
+        guard seconds != idleTimeoutSeconds else { return }
+        idleTimeoutSeconds = seconds
+        configureIdleMonitor()
+    }
+
+    private static func resolveIdleTimeoutSeconds() -> Int {
+        let storedValue = UserDefaults.standard.integer(forKey: AppConstants.idleTimeoutSecondsKey)
+        return storedValue > 0 ? storedValue : AppConstants.defaultIdleTimeoutSeconds
     }
 }
 

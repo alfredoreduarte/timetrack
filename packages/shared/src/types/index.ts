@@ -3,8 +3,10 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  defaultHourlyRate?: number;
   createdAt: string;
   updatedAt: string;
+  idleTimeoutSeconds?: number;
 }
 
 export interface LoginRequest {
