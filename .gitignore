@@ -178,9 +178,11 @@ storage/
 docker.env
 *.sql
 backup_*.sql
-# Allow specific init.sql files needed for container initialization
+# Allow specific SQL files needed for initialization and migrations
 !*/init.sql
 !init.sql
+!*/migrations/*/migration.sql
+!**/prisma/migrations/**/*.sql
 
 # Docker volumes and data
 postgres_data/
