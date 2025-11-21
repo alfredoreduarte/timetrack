@@ -137,6 +137,14 @@ deploy() {
         exit 1
     fi
 
+    # Export environment variables for docker-compose ${VAR} substitution
+    # The env_file directive loads vars into containers, but ${VAR} syntax
+    # in docker-compose.yml requires vars in the shell environment
+    log_info "Loading environment variables from $ENV_FILE"
+    set -a
+    source "$ENV_FILE"
+    set +a
+
     # Stop existing containers
     docker_compose -f "$compose_file" down
 
