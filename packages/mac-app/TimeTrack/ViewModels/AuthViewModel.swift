@@ -29,8 +29,7 @@ class AuthViewModel: ObservableObject {
 
             // Save token and user
             apiClient.saveToken(response.token)
-            currentUser = response.user
-            isAuthenticated = true
+            applyAuthenticatedUser(response.user)
 
         } catch {
             errorMessage = error.localizedDescription
@@ -55,8 +54,7 @@ class AuthViewModel: ObservableObject {
 
             // Save token and user
             apiClient.saveToken(response.token)
-            currentUser = response.user
-            isAuthenticated = true
+            applyAuthenticatedUser(response.user)
 
         } catch {
             errorMessage = error.localizedDescription
@@ -66,11 +64,17 @@ class AuthViewModel: ObservableObject {
         isLoading = false
     }
 
+    func updateIdleTimeout(seconds: Int) async throws {
+        let updatedUser = try await apiClient.updateProfile(idleTimeoutSeconds: seconds)
+        applyAuthenticatedUser(updatedUser)
+    }
+
     func logout() {
         apiClient.clearToken()
         currentUser = nil
         isAuthenticated = false
         errorMessage = nil
+        persistIdleTimeout(seconds: nil)
     }
 
     func refreshToken() async -> Bool {
@@ -93,16 +97,16 @@ class AuthViewModel: ObservableObject {
         }
 
         do {
-            currentUser = try await apiClient.getCurrentUser()
-            isAuthenticated = true
+            let user = try await apiClient.getCurrentUser()
+            applyAuthenticatedUser(user)
         } catch {
             // If getting current user fails, try to refresh the token
             let refreshSucceeded = await refreshToken()
             if refreshSucceeded {
                 // Try getting user again after refresh
                 do {
-                    currentUser = try await apiClient.getCurrentUser()
-                    isAuthenticated = true
+                    let user = try await apiClient.getCurrentUser()
+                    applyAuthenticatedUser(user)
                 } catch {
                     // If it still fails, logout
                     logout()
@@ -113,5 +117,21 @@ class AuthViewModel: ObservableObject {
 
     func clearError() {
         errorMessage = nil
+    }
+
+    private func applyAuthenticatedUser(_ user: User) {
+        currentUser = user
+        isAuthenticated = true
+        persistIdleTimeout(seconds: user.idleTimeoutSeconds)
+    }
+
+    private func persistIdleTimeout(seconds: Int?) {
+        let resolvedSeconds = seconds ?? AppConstants.defaultIdleTimeoutSeconds
+        UserDefaults.standard.set(resolvedSeconds, forKey: AppConstants.idleTimeoutSecondsKey)
+        NotificationCenter.default.post(
+            name: .idleTimeoutUpdated,
+            object: nil,
+            userInfo: ["seconds": resolvedSeconds]
+        )
     }
 }

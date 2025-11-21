@@ -144,6 +144,29 @@ class APIClient: ObservableObject {
         return response.user
     }
 
+    func updateProfile(idleTimeoutSeconds: Int) async throws -> User {
+        struct UpdateProfileRequest: Codable {
+            let idleTimeoutSeconds: Int
+        }
+
+        struct UpdateProfileResponse: Codable {
+            let message: String
+            let user: User
+        }
+
+        let requestBody = UpdateProfileRequest(idleTimeoutSeconds: idleTimeoutSeconds)
+        let body = try JSONEncoder().encode(requestBody)
+
+        let response = try await makeRequest(
+            endpoint: "/users/profile",
+            method: .PUT,
+            body: body,
+            responseType: UpdateProfileResponse.self
+        )
+
+        return response.user
+    }
+
     func requestPasswordReset(email: String) async throws -> String {
         struct PasswordResetRequest: Codable {
             let email: String

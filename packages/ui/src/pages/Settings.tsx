@@ -15,6 +15,7 @@ const Settings: React.FC = () => {
     name: "",
     email: "",
     defaultHourlyRate: "",
+    idleTimeoutMinutes: "",
   });
 
   const [hasChanges, setHasChanges] = useState(false);
@@ -22,10 +23,21 @@ const Settings: React.FC = () => {
   // Initialize form with user data
   useEffect(() => {
     if (user) {
+      const idleMinutes =
+        user.idleTimeoutSeconds !== null &&
+        user.idleTimeoutSeconds !== undefined
+          ? Math.round(user.idleTimeoutSeconds / 60).toString()
+          : "10";
+
       setFormData({
         name: user.name || "",
         email: user.email || "",
-        defaultHourlyRate: user.defaultHourlyRate !== null && user.defaultHourlyRate !== undefined ? user.defaultHourlyRate.toString() : "",
+        defaultHourlyRate:
+          user.defaultHourlyRate !== null &&
+          user.defaultHourlyRate !== undefined
+            ? user.defaultHourlyRate.toString()
+            : "",
+        idleTimeoutMinutes: idleMinutes,
       });
     }
   }, [user]);
@@ -37,9 +49,21 @@ const Settings: React.FC = () => {
       const hasEmailChange = formData.email !== (user.email || "");
       const hasRateChange =
         formData.defaultHourlyRate !==
-        (user.defaultHourlyRate !== null && user.defaultHourlyRate !== undefined ? user.defaultHourlyRate.toString() : "");
+        (user.defaultHourlyRate !== null &&
+        user.defaultHourlyRate !== undefined
+          ? user.defaultHourlyRate.toString()
+          : "");
+      const currentIdleMinutes =
+        user.idleTimeoutSeconds !== null &&
+        user.idleTimeoutSeconds !== undefined
+          ? Math.round(user.idleTimeoutSeconds / 60).toString()
+          : "10";
+      const hasIdleTimeoutChange =
+        formData.idleTimeoutMinutes !== currentIdleMinutes;
 
-      setHasChanges(hasNameChange || hasEmailChange || hasRateChange);
+      setHasChanges(
+        hasNameChange || hasEmailChange || hasRateChange || hasIdleTimeoutChange
+      );
     }
   }, [formData, user]);
 
@@ -63,6 +87,7 @@ const Settings: React.FC = () => {
       name?: string;
       email?: string;
       defaultHourlyRate?: number;
+      idleTimeoutSeconds?: number;
     } = {};
 
     if (formData.name !== (user?.name || "")) {
@@ -84,6 +109,25 @@ const Settings: React.FC = () => {
       }
     }
 
+    const userIdleMinutes =
+      user?.idleTimeoutSeconds !== null && user?.idleTimeoutSeconds !== undefined
+        ? Math.round(user.idleTimeoutSeconds / 60).toString()
+        : "10";
+
+    if (formData.idleTimeoutMinutes !== userIdleMinutes) {
+      const minutes = parseInt(formData.idleTimeoutMinutes, 10);
+      if (
+        isNaN(minutes) ||
+        minutes < 1 ||
+        minutes > 120 ||
+        formData.idleTimeoutMinutes === ""
+      ) {
+        toast.error("Idle timeout must be between 1 and 120 minutes.");
+        return;
+      }
+      updateData.idleTimeoutSeconds = minutes * 60;
+    }
+
     try {
       await dispatch(updateProfile(updateData)).unwrap();
       toast.success("Profile updated successfully!");
@@ -94,10 +138,20 @@ const Settings: React.FC = () => {
 
   const resetForm = () => {
     if (user) {
+      const idleMinutes =
+        user.idleTimeoutSeconds !== null &&
+        user.idleTimeoutSeconds !== undefined
+          ? Math.round(user.idleTimeoutSeconds / 60).toString()
+          : "10";
       setFormData({
         name: user.name || "",
         email: user.email || "",
-        defaultHourlyRate: user.defaultHourlyRate !== null && user.defaultHourlyRate !== undefined ? user.defaultHourlyRate.toString() : "",
+        defaultHourlyRate:
+          user.defaultHourlyRate !== null &&
+          user.defaultHourlyRate !== undefined
+            ? user.defaultHourlyRate.toString()
+            : "",
+        idleTimeoutMinutes: idleMinutes,
       });
     }
   };
@@ -171,6 +225,27 @@ const Settings: React.FC = () => {
               </div>
               <p className="mt-1 text-xs text-gray-500">
                 This will be used as the default rate for new projects and tasks
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Idle Timeout (minutes)
+              </label>
+              <input
+                type="number"
+                name="idleTimeoutMinutes"
+                value={formData.idleTimeoutMinutes}
+                onChange={handleInputChange}
+                className="input-field mt-1"
+                placeholder="10"
+                min="1"
+                max="120"
+                step="1"
+                required
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Stop running timers automatically after this many minutes of inactivity.
               </p>
             </div>
 

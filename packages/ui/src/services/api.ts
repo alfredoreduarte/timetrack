@@ -127,6 +127,7 @@ class APIClient {
       name?: string;
       email?: string;
       defaultHourlyRate?: number;
+      idleTimeoutSeconds?: number;
     }) => {
       const response = await this.request<{ message: string; user: User }>(
         "PUT",

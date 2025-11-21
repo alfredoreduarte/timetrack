@@ -1,11 +1,21 @@
 import Foundation
 
+enum AppConstants {
+    static let idleTimeoutSecondsKey = "timetrack_idle_timeout_seconds"
+    static let defaultIdleTimeoutSeconds = 600
+}
+
+extension Notification.Name {
+    static let idleTimeoutUpdated = Notification.Name("IdleTimeoutUpdated")
+}
+
 // MARK: - User Models
 struct User: Codable, Identifiable {
     let id: String
     let name: String
     let email: String
     let defaultHourlyRate: Double?
+    let idleTimeoutSeconds: Int?
     let createdAt: String?
     let updatedAt: String?
 }
@@ -184,13 +194,13 @@ struct TimeEntry: Codable, Identifiable {
             return String(format: "%02d:%02d", minutes, seconds)
         }
     }
-    
+
     var formattedDurationShort: String {
         let durationValue = safeDuration
         let hours = durationValue / 3600
         let minutes = (durationValue % 3600) / 60
         let seconds = durationValue % 60
-        
+
         // Show seconds for entries under 1 minute
         if hours == 0 && minutes == 0 {
             if seconds == 0 {
@@ -199,7 +209,7 @@ struct TimeEntry: Codable, Identifiable {
                 return "\(seconds)s"
             }
         }
-        
+
         // Show minutes and hours in MM:SS or HH:MM format
         if hours == 0 {
             return String(format: "%d:%02d", minutes, seconds)

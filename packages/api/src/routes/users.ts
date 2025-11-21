@@ -68,6 +68,12 @@ const updateProfileSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").optional(),
   email: z.string().email("Invalid email address").optional(),
   defaultHourlyRate: z.number().nonnegative().optional(),
+  idleTimeoutSeconds: z
+    .number()
+    .int("Idle timeout must be a whole number of seconds")
+    .min(60, "Idle timeout must be at least 60 seconds (1 minute)")
+    .max(7200, "Idle timeout cannot exceed 7200 seconds (120 minutes)")
+    .optional(),
 });
 
 const changePasswordSchema = z.object({
@@ -99,6 +105,10 @@ const changePasswordSchema = z.object({
  *               defaultHourlyRate:
  *                 type: number
  *                 minimum: 0
+ *               idleTimeoutSeconds:
+ *                 type: integer
+ *                 minimum: 60
+ *                 maximum: 7200
  *     responses:
  *       200:
  *         description: Profile updated successfully
@@ -129,6 +139,7 @@ router.put(
         name: true,
         email: true,
         defaultHourlyRate: true,
+        idleTimeoutSeconds: true,
         createdAt: true,
         updatedAt: true,
       },
