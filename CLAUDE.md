@@ -141,16 +141,67 @@ Provides TypeScript types, API constants, and utilities used by both API and UI 
 ## Database Schema
 
 PostgreSQL database managed by Prisma with these core entities:
-- **User**: Authentication, default hourly rate, password reset tokens
+- **User**: Authentication, default hourly rate, password reset tokens, idle timeout
 - **Project**: Name, description, color, optional hourly rate, active status
 - **Task**: Belongs to project, optional hourly rate, completion tracking
 - **TimeEntry**: Start/end times, duration, hourly rate snapshot, running status
 
-Migration workflow:
-1. Modify `packages/api/prisma/schema.prisma`
-2. Run `npx prisma migrate dev` to create migration
-3. Run `npm run migrate` to apply in development
-4. Run `npm run migrate:prod` for production deployment
+### Migration Workflow
+
+**CRITICAL: When modifying the database schema, follow these steps exactly to avoid runtime errors:**
+
+1. **Modify the Prisma schema** (`packages/api/prisma/schema.prisma`)
+   - Add/modify fields with proper types
+   - Use `@map("snake_case_name")` to map camelCase fields to snake_case database columns
+   - Example: `idleTimeoutSeconds Int? @default(600) @map("idle_timeout_seconds")`
+
+2. **Create the migration locally**
+   ```bash
+   cd packages/api
+   npx prisma migrate dev --name descriptive_migration_name
+   ```
+
+3. **Apply migration in Docker development environment**
+   ```bash
+   npm run migrate  # Applies migration to Docker containers
+   ```
+
+4. **Regenerate Prisma Client in Docker containers**
+   ```bash
+   docker exec timetrack-api npm run db:generate
+   docker restart timetrack-api
+   ```
+   - **Why?** The `prisma/` directory is NOT mounted as a volume in Docker
+   - Schema changes on host don't automatically sync to containers
+   - Must manually copy or regenerate inside containers
+
+5. **Update TypeScript types in shared package** (`packages/shared/src/types/index.ts`)
+   - Add new fields to interfaces that cross API boundaries
+   - Ensure field names match schema (camelCase in code)
+
+6. **Test the migration**
+   - Verify database column exists: `docker exec timetrack-postgres psql -U timetrack_user -d timetrack_db -c "\d table_name"`
+   - Test API endpoints that use the new field
+   - Verify client apps can read/write the new field
+
+7. **Production deployment**
+   ```bash
+   npm run migrate:prod
+   ```
+
+### Common Migration Pitfalls
+
+**Problem**: "Column does not exist" error after adding field to schema
+**Cause**: Prisma Client in Docker container wasn't regenerated
+**Solution**: Run `docker exec timetrack-api npm run db:generate && docker restart timetrack-api`
+
+**Problem**: Prisma schema changes not reflected in container
+**Cause**: `prisma/` directory is not volume-mounted (only `src/` is mounted)
+**Solution**: Copy schema to container or regenerate client inside container
+
+**Problem**: Field name mismatch between code and database
+**Cause**: Missing `@map()` attribute for snake_case columns
+**Solution**: Add `@map("snake_case_column_name")` to camelCase fields
 
 ## Security Implementation
 
@@ -257,6 +308,66 @@ Common pitfalls to avoid:
 5. Add Redux slice in `packages/ui/src/store/slices/`
 6. Create React components in `packages/ui/src/components/`
 7. Update native apps if needed
+
+### Git Commit and PR Guidelines
+
+**Commit Messages:**
+- Keep commit messages short and concise
+- Use imperative mood ("Add feature" not "Added feature")
+- No emojis in commit messages
+- Format:
+  ```
+  Short descriptive title
+
+  Brief explanation of changes if needed.
+  Technical details if necessary.
+
+  Closes #issue_number
+
+  Generated with [Claude Code](https://claude.com/claude-code)
+
+  Co-Authored-By: Claude <noreply@anthropic.com>
+  ```
+
+**Pull Request Descriptions:**
+- Keep PR descriptions focused and concise
+- No emojis in PR descriptions
+- Include only essential information:
+  - Summary: 1-2 sentences describing the change
+  - Key changes: Bulleted list of main modifications
+  - Technical details: Only if complexity requires explanation
+  - Test plan: Checklist of what was tested
+- Avoid unnecessary elaboration or marketing language
+- Reference the issue number with "Closes #XX"
+
+**Example Good Commit:**
+```
+Add customizable idle timeout setting
+
+Users can now set idle timeout between 1-120 minutes instead of hardcoded 10 minutes.
+
+Technical details:
+- Database: Added idle_timeout_seconds column with default 600s
+- API: Zod validation in auth/users routes
+- macOS: Real-time updates via NotificationCenter
+- Web: Settings page with minute-based input
+
+Closes #44
+
+Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+**Example Bad Commit:**
+```
+✨ Add amazing new idle timeout feature! 🎉
+
+This is such a cool feature that will make users super happy! 😊
+Now everyone can customize their idle timeout! 🚀
+
+[Long unnecessary explanation with multiple paragraphs and emojis]
+```
 
 ## Important Files
 
