@@ -75,6 +75,9 @@ class AuthViewModel: ObservableObject {
         isAuthenticated = false
         errorMessage = nil
         persistIdleTimeout(seconds: nil)
+
+        // Notify other components to clear their data
+        NotificationCenter.default.post(name: .userDidLogout, object: nil)
     }
 
     func refreshToken() async -> Bool {
@@ -123,6 +126,9 @@ class AuthViewModel: ObservableObject {
         currentUser = user
         isAuthenticated = true
         persistIdleTimeout(seconds: user.idleTimeoutSeconds)
+
+        // Notify other components to reload their data
+        NotificationCenter.default.post(name: .userDidLogin, object: nil)
     }
 
     private func persistIdleTimeout(seconds: Int?) {

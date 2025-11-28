@@ -7,6 +7,8 @@ enum AppConstants {
 
 extension Notification.Name {
     static let idleTimeoutUpdated = Notification.Name("IdleTimeoutUpdated")
+    static let userDidLogout = Notification.Name("UserDidLogout")
+    static let userDidLogin = Notification.Name("UserDidLogin")
 }
 
 // MARK: - User Models
