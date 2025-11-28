@@ -311,6 +311,8 @@ router.post(
         duration: true,
         isRunning: true,
         hourlyRateSnapshot: true,
+        projectId: true,
+        taskId: true,
         project: {
           select: {
             id: true,
@@ -410,6 +412,8 @@ router.post(
         duration: true,
         isRunning: true,
         hourlyRateSnapshot: true,
+        projectId: true,
+        taskId: true,
         project: {
           select: {
             id: true,
@@ -467,6 +471,8 @@ router.get(
         duration: true,
         isRunning: true,
         hourlyRateSnapshot: true,
+        projectId: true,
+        taskId: true,
         project: {
           select: {
             id: true,
