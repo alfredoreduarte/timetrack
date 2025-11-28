@@ -3,77 +3,122 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @Environment(\.dismiss) var dismiss
-    
+
     @State private var showingProfileEdit = false
     @State private var showingLegalDocuments = false
     @State private var showingLogoutAlert = false
     @State private var showingDeleteAccountAlert = false
     @State private var showingExportData = false
+    @State private var showingUnsavedChangesAlert = false
 
-    // App preferences
+    // App preferences - Local storage only (TODO: Add backend support)
     @AppStorage("showNotifications") private var showNotifications = true
     @AppStorage("soundEnabled") private var soundEnabled = true
     @AppStorage("autoStartTimer") private var autoStartTimer = false
-    @AppStorage("defaultHourlyRate") private var defaultHourlyRate: Double = 0.0
     @AppStorage("reminderInterval") private var reminderInterval = 30 // minutes
 
-    // Idle timeout state
-    @State private var idleTimeoutMinutes: String = String(AppConstants.defaultIdleTimeoutSeconds / 60)
-    @State private var isSavingIdleTimeout = false
-    @State private var idleTimeoutStatusMessage: String?
-    @State private var idleTimeoutErrorMessage: String?
-    
+    // Editable profile fields
+    @State private var editedDefaultHourlyRate: String = ""
+    @State private var editedIdleTimeoutMinutes: String = ""
+
+    // Save state
+    @State private var isSaving = false
+    @State private var saveError: String?
+    @State private var hasUnsavedChanges = false
+
     var body: some View {
         NavigationView {
-            List {
-                // User Profile Section
-                if let user = authViewModel.currentUser {
-                    profileSection(user: user)
-                }
-                
-                // Timer Preferences
-                timerPreferencesSection
-                
-                // Notifications
-                notificationsSection
-                
-                // Data Management
-                dataManagementSection
-                
-                // App Information
-                appInformationSection
-                
-                // Legal & Privacy
-                legalSection
-                
-                // Account Actions
-                accountActionsSection
-            }
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
+            ZStack {
+                List {
+                    // User Profile Section
+                    if let user = authViewModel.currentUser {
+                        profileSection(user: user)
                     }
+
+                    // Timer Preferences
+                    timerPreferencesSection
+
+                    // Notifications (TODO: Backend support needed)
+                    // notificationsSection
+
+                    // Data Management
+                    dataManagementSection
+
+                    // App Information
+                    appInformationSection
+
+                    // Legal & Privacy
+                    legalSection
+
+                    // Account Actions
+                    accountActionsSection
+                }
+                .navigationTitle("Settings")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            if hasUnsavedChanges {
+                                Task {
+                                    await saveChanges()
+                                }
+                            } else {
+                                dismiss()
+                            }
+                        }
+                        .fontWeight(hasUnsavedChanges ? .semibold : .regular)
+                    }
+                }
+                .disabled(isSaving)
+                .blur(radius: isSaving ? 2 : 0)
+
+                // Loading overlay
+                if isSaving {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                        .overlay {
+                            ProgressView("Saving...")
+                                .padding()
+                                .background(Color(.systemBackground))
+                                .cornerRadius(10)
+                                .shadow(radius: 5)
+                        }
                 }
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
         .onAppear {
-            loadIdleTimeoutMinutes()
+            loadCurrentValues()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .idleTimeoutUpdated)) { notification in
-            guard let seconds = notification.userInfo?["seconds"] as? Int else { return }
-            idleTimeoutMinutes = String(max(1, seconds / 60))
+        .onChange(of: editedDefaultHourlyRate) { _ in
+            checkForUnsavedChanges()
         }
-        .onChange(of: idleTimeoutMinutes) { newValue in
+        .onChange(of: editedIdleTimeoutMinutes) { newValue in
             let sanitized = sanitizeIdleTimeoutInput(newValue)
             if sanitized != newValue {
-                idleTimeoutMinutes = sanitized
+                editedIdleTimeoutMinutes = sanitized
             }
-            idleTimeoutStatusMessage = nil
-            idleTimeoutErrorMessage = nil
+            checkForUnsavedChanges()
+        }
+        .alert("Save Error", isPresented: .constant(saveError != nil)) {
+            Button("OK") {
+                saveError = nil
+            }
+        } message: {
+            Text(saveError ?? "An error occurred while saving.")
+        }
+        .alert("Unsaved Changes", isPresented: $showingUnsavedChangesAlert) {
+            Button("Discard", role: .destructive) {
+                dismiss()
+            }
+            Button("Save") {
+                Task {
+                    await saveChanges()
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("You have unsaved changes. Do you want to save them before leaving?")
         }
         .sheet(isPresented: $showingProfileEdit) {
             ProfileEditView()
@@ -98,7 +143,7 @@ struct SettingsView: View {
             Text("This action cannot be undone. All your data will be permanently deleted.")
         }
     }
-    
+
     // MARK: - Profile Section
     private func profileSection(user: User) -> some View {
         Section {
@@ -112,14 +157,14 @@ struct SettingsView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(.white)
                     }
-                
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(user.name)
                         .font(.headline)
                     Text(user.email)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
-                    
+
                     if let rate = user.defaultHourlyRate {
                         Text("$\(rate, specifier: "%.2f")/hour")
                             .font(.caption)
@@ -130,9 +175,9 @@ struct SettingsView: View {
                             .cornerRadius(4)
                     }
                 }
-                
+
                 Spacer()
-                
+
                 Button("Edit") {
                     showingProfileEdit = true
                 }
@@ -143,7 +188,7 @@ struct SettingsView: View {
             Text("Profile")
         }
     }
-    
+
     // MARK: - Timer Preferences Section
     private var timerPreferencesSection: some View {
         Section {
@@ -151,36 +196,40 @@ struct SettingsView: View {
                 Image(systemName: "clock")
                     .foregroundColor(.blue)
                     .frame(width: 24)
-                
+
                 VStack(alignment: .leading) {
                     Text("Default Hourly Rate")
-                    Text("$\(defaultHourlyRate, specifier: "%.2f")")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    if !editedDefaultHourlyRate.isEmpty {
+                        Text("$\(editedDefaultHourlyRate)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
-                
+
                 Spacer()
-                
-                TextField("Rate", value: $defaultHourlyRate, format: .currency(code: "USD"))
+
+                TextField("0.00", text: $editedDefaultHourlyRate)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .keyboardType(.decimalPad)
                     .frame(width: 80)
             }
-            
+
+            // TODO: Add backend support for reminder intervals to notify users periodically while timer is running
+            /*
             HStack {
                 Image(systemName: "bell")
                     .foregroundColor(.orange)
                     .frame(width: 24)
-                
+
                 VStack(alignment: .leading) {
                     Text("Reminder Interval")
                     Text("Every \(reminderInterval) minutes")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
+
                 Spacer()
-                
+
                 Picker("Minutes", selection: $reminderInterval) {
                     Text("15 min").tag(15)
                     Text("30 min").tag(30)
@@ -189,7 +238,10 @@ struct SettingsView: View {
                 }
                 .pickerStyle(MenuPickerStyle())
             }
-            
+            */
+
+            // TODO: Add automatic timer start feature when opening app or selecting project
+            /*
             Toggle(isOn: $autoStartTimer) {
                 HStack {
                     Image(systemName: "play.circle")
@@ -204,72 +256,56 @@ struct SettingsView: View {
                     }
                 }
             }
+            */
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Image(systemName: "moon.zzz")
-                        .foregroundColor(.indigo)
-                        .frame(width: 24)
+            HStack {
+                Image(systemName: "moon.zzz")
+                    .foregroundColor(.indigo)
+                    .frame(width: 24)
 
-                    VStack(alignment: .leading) {
-                        Text("Idle Timeout")
-                        Text("Auto-stop timer after inactivity")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-
-                    Spacer()
-
-                    TextField("10", text: $idleTimeoutMinutes)
-                        .frame(width: 60)
-                        .multilineTextAlignment(.trailing)
-                        .textFieldStyle(.roundedBorder)
-                        .keyboardType(.numberPad)
-                        .disabled(isSavingIdleTimeout)
-
-                    Text("min")
+                VStack(alignment: .leading) {
+                    Text("Idle Timeout")
+                    Text("Auto-stop timer after inactivity")
+                        .font(.caption)
                         .foregroundColor(.secondary)
-                        .font(.caption)
                 }
 
-                HStack {
-                    Spacer()
+                Spacer()
 
-                    Button("Save") {
-                        Task {
-                            await saveIdleTimeoutPreference()
-                        }
-                    }
-                    .disabled(isSavingIdleTimeout)
+                TextField("10", text: $editedIdleTimeoutMinutes)
+                    .frame(width: 60)
+                    .multilineTextAlignment(.trailing)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.numberPad)
+
+                Text("min")
+                    .foregroundColor(.secondary)
                     .font(.caption)
-                }
-
-                if let status = idleTimeoutStatusMessage {
-                    Text(status)
-                        .font(.caption)
-                        .foregroundColor(.green)
-                } else if let error = idleTimeoutErrorMessage {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
             }
         } header: {
             Text("Timer Settings")
         } footer: {
-            Text("Timer will automatically stop when app is backgrounded for more than the idle timeout duration (1-120 minutes).")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Timer will automatically stop when app is backgrounded for more than the idle timeout duration (1-120 minutes).")
+                if hasUnsavedChanges {
+                    Text("Tap Done to save your changes.")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                }
+            }
         }
     }
-    
-    // MARK: - Notifications Section
+
+    // MARK: - Notifications Section (TODO: Backend support needed)
     private var notificationsSection: some View {
         Section {
+            // TODO: Integrate with iOS push notifications for timer reminders and important updates
             Toggle(isOn: $showNotifications) {
                 HStack {
                     Image(systemName: "bell.badge")
                         .foregroundColor(.red)
                         .frame(width: 24)
-                    
+
                     VStack(alignment: .leading) {
                         Text("Notifications")
                         Text("Timer reminders and updates")
@@ -278,13 +314,14 @@ struct SettingsView: View {
                     }
                 }
             }
-            
+
+            // TODO: Add sound effects for timer start/stop events for better user feedback
             Toggle(isOn: $soundEnabled) {
                 HStack {
                     Image(systemName: "speaker.wave.2")
                         .foregroundColor(.purple)
                         .frame(width: 24)
-                    
+
                     VStack(alignment: .leading) {
                         Text("Sound Effects")
                         Text("Timer start/stop sounds")
@@ -300,7 +337,7 @@ struct SettingsView: View {
             Text("You can manage notification permissions in iOS Settings.")
         }
     }
-    
+
     // MARK: - Data Management Section
     private var dataManagementSection: some View {
         Section {
@@ -311,7 +348,7 @@ struct SettingsView: View {
                     Image(systemName: "square.and.arrow.up")
                         .foregroundColor(.blue)
                         .frame(width: 24)
-                    
+
                     VStack(alignment: .leading) {
                         Text("Export Data")
                             .foregroundColor(.primary)
@@ -319,15 +356,17 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    
+
                     Spacer()
-                    
+
                     Image(systemName: "chevron.right")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
-            
+
+            // TODO: Implement automatic data sync across devices using CloudKit or similar
+            /*
             Button(action: {
                 // TODO: Implement data sync
             }) {
@@ -335,7 +374,7 @@ struct SettingsView: View {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .foregroundColor(.green)
                         .frame(width: 24)
-                    
+
                     VStack(alignment: .leading) {
                         Text("Sync Data")
                             .foregroundColor(.primary)
@@ -343,19 +382,20 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    
+
                     Spacer()
-                    
+
                     Image(systemName: "chevron.right")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
+            */
         } header: {
             Text("Data Management")
         }
     }
-    
+
     // MARK: - App Information Section
     private var appInformationSection: some View {
         Section {
@@ -365,14 +405,14 @@ struct SettingsView: View {
                 Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
                     .foregroundColor(.secondary)
             }
-            
+
             HStack {
                 Text("Build")
                 Spacer()
                 Text(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1")
                     .foregroundColor(.secondary)
             }
-            
+
             Button(action: {
                 if let url = URL(string: "https://apps.apple.com/app/timetrack/id[APP_ID]") {
                     UIApplication.shared.open(url)
@@ -386,7 +426,7 @@ struct SettingsView: View {
                         .foregroundColor(.orange)
                 }
             }
-            
+
             Button(action: {
                 if let url = URL(string: "mailto:support@timetrack.app?subject=Feedback") {
                     UIApplication.shared.open(url)
@@ -404,7 +444,7 @@ struct SettingsView: View {
             Text("About TimeTrack")
         }
     }
-    
+
     // MARK: - Legal Section
     private var legalSection: some View {
         Section {
@@ -414,9 +454,9 @@ struct SettingsView: View {
                 HStack {
                     Text("Privacy & Legal")
                         .foregroundColor(.primary)
-                    
+
                     Spacer()
-                    
+
                     Image(systemName: "chevron.right")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -426,7 +466,7 @@ struct SettingsView: View {
             Text("Legal")
         }
     }
-    
+
     // MARK: - Account Actions Section
     private var accountActionsSection: some View {
         Section {
@@ -434,7 +474,7 @@ struct SettingsView: View {
                 showingLogoutAlert = true
             }
             .foregroundColor(.red)
-            
+
             Button("Delete Account") {
                 showingDeleteAccountAlert = true
             }
@@ -446,12 +486,21 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Idle Timeout Helpers
+    // MARK: - Helper Methods
 
-    private func loadIdleTimeoutMinutes() {
+    private func loadCurrentValues() {
+        guard let user = authViewModel.currentUser else { return }
+
+        // Load current user values
+        editedDefaultHourlyRate = user.defaultHourlyRate?.description ?? ""
+
+        // Load idle timeout
         let storedSeconds = UserDefaults.standard.integer(forKey: AppConstants.idleTimeoutSecondsKey)
-        let resolvedSeconds = storedSeconds > 0 ? storedSeconds : AppConstants.defaultIdleTimeoutSeconds
-        idleTimeoutMinutes = String(max(1, resolvedSeconds / 60))
+        let resolvedSeconds = storedSeconds > 0 ? storedSeconds : (user.idleTimeoutSeconds ?? AppConstants.defaultIdleTimeoutSeconds)
+        editedIdleTimeoutMinutes = String(max(1, resolvedSeconds / 60))
+
+        // Reset change tracking
+        hasUnsavedChanges = false
     }
 
     private func sanitizeIdleTimeoutInput(_ value: String) -> String {
@@ -459,25 +508,87 @@ struct SettingsView: View {
         return String(filtered.prefix(3))
     }
 
-    private func saveIdleTimeoutPreference() async {
-        guard let minutes = Int(idleTimeoutMinutes), minutes >= 1, minutes <= 120 else {
-            idleTimeoutErrorMessage = "Enter between 1 and 120 minutes."
-            idleTimeoutStatusMessage = nil
+    private func checkForUnsavedChanges() {
+        guard let user = authViewModel.currentUser else {
+            hasUnsavedChanges = false
             return
         }
 
-        isSavingIdleTimeout = true
-        idleTimeoutErrorMessage = nil
-        idleTimeoutStatusMessage = nil
-
-        do {
-            try await authViewModel.updateIdleTimeout(seconds: minutes * 60)
-            idleTimeoutStatusMessage = "Idle timeout saved."
-        } catch {
-            idleTimeoutErrorMessage = error.localizedDescription
+        // Check if default hourly rate changed
+        let currentRate = user.defaultHourlyRate?.description ?? ""
+        if editedDefaultHourlyRate != currentRate {
+            hasUnsavedChanges = true
+            return
         }
 
-        isSavingIdleTimeout = false
+        // Check if idle timeout changed
+        let storedSeconds = UserDefaults.standard.integer(forKey: AppConstants.idleTimeoutSecondsKey)
+        let currentSeconds = storedSeconds > 0 ? storedSeconds : (user.idleTimeoutSeconds ?? AppConstants.defaultIdleTimeoutSeconds)
+        let currentMinutes = String(max(1, currentSeconds / 60))
+        if editedIdleTimeoutMinutes != currentMinutes {
+            hasUnsavedChanges = true
+            return
+        }
+
+        hasUnsavedChanges = false
+    }
+
+    private func saveChanges() async {
+        // Validate idle timeout
+        guard let minutes = Int(editedIdleTimeoutMinutes), minutes >= 1, minutes <= 120 else {
+            saveError = "Idle timeout must be between 1 and 120 minutes."
+            return
+        }
+
+        isSaving = true
+        saveError = nil
+
+        do {
+            // Parse default hourly rate (can be empty)
+            let hourlyRate: Double? = editedDefaultHourlyRate.isEmpty ? nil : Double(editedDefaultHourlyRate)
+
+            // Only send changed values
+            var hasChanges = false
+            var name: String? = nil
+            var email: String? = nil
+            var defaultHourlyRate: Double? = nil
+            var idleTimeoutSeconds: Int? = nil
+
+            if let user = authViewModel.currentUser {
+                // Check hourly rate change
+                if hourlyRate != user.defaultHourlyRate {
+                    defaultHourlyRate = hourlyRate
+                    hasChanges = true
+                }
+
+                // Check idle timeout change
+                let storedSeconds = UserDefaults.standard.integer(forKey: AppConstants.idleTimeoutSecondsKey)
+                let currentSeconds = storedSeconds > 0 ? storedSeconds : (user.idleTimeoutSeconds ?? AppConstants.defaultIdleTimeoutSeconds)
+                let newSeconds = minutes * 60
+                if newSeconds != currentSeconds {
+                    idleTimeoutSeconds = newSeconds
+                    hasChanges = true
+                }
+            }
+
+            if hasChanges {
+                try await authViewModel.updateProfile(
+                    name: name,
+                    email: email,
+                    defaultHourlyRate: defaultHourlyRate,
+                    idleTimeoutSeconds: idleTimeoutSeconds
+                )
+            }
+
+            hasUnsavedChanges = false
+            // Dismiss immediately after successful save - this is the expected iOS behavior
+            dismiss()
+
+        } catch {
+            saveError = error.localizedDescription
+        }
+
+        isSaving = false
     }
 }
 
@@ -485,34 +596,39 @@ struct SettingsView: View {
 struct ProfileEditView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @Environment(\.dismiss) var dismiss
-    
+
     @State private var name = ""
     @State private var email = ""
     @State private var defaultHourlyRate: String = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
-    
+    @State private var hasUnsavedChanges = false
+
     var body: some View {
         NavigationView {
             Form {
                 Section {
                     TextField("Full Name", text: $name)
+                        .onChange(of: name) { _ in hasUnsavedChanges = true }
+
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
-                    
+                        .onChange(of: email) { _ in hasUnsavedChanges = true }
+
                     HStack {
                         Text("Default Hourly Rate")
                         TextField("$0.00", text: $defaultHourlyRate)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
+                            .onChange(of: defaultHourlyRate) { _ in hasUnsavedChanges = true }
                     }
                 } header: {
                     Text("Profile Information")
                 } footer: {
                     Text("Your email is used for account authentication and important notifications.")
                 }
-                
+
                 if let errorMessage = errorMessage {
                     Text(errorMessage)
                         .foregroundColor(.red)
@@ -527,32 +643,56 @@ struct ProfileEditView: View {
                         dismiss()
                     }
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
-                        saveProfile()
+                        Task {
+                            await saveProfile()
+                        }
                     }
-                    .disabled(isLoading || name.isEmpty || email.isEmpty)
+                    .disabled(isLoading || !hasUnsavedChanges || name.isEmpty || email.isEmpty)
+                    .fontWeight(hasUnsavedChanges ? .semibold : .regular)
                 }
             }
+            .disabled(isLoading)
         }
         .navigationViewStyle(StackNavigationViewStyle())
         .onAppear {
             loadUserData()
         }
     }
-    
+
     private func loadUserData() {
         if let user = authViewModel.currentUser {
             name = user.name
             email = user.email
             defaultHourlyRate = user.defaultHourlyRate?.description ?? ""
         }
+        hasUnsavedChanges = false
     }
-    
-    private func saveProfile() {
-        // TODO: Implement profile update
-        dismiss()
+
+    private func saveProfile() async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            // Parse hourly rate
+            let hourlyRate: Double? = defaultHourlyRate.isEmpty ? nil : Double(defaultHourlyRate)
+
+            // Update profile
+            try await authViewModel.updateProfile(
+                name: name,
+                email: email,
+                defaultHourlyRate: hourlyRate
+            )
+
+            dismiss()
+
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
     }
 }
 

@@ -69,6 +69,21 @@ class AuthViewModel: ObservableObject {
         applyAuthenticatedUser(updatedUser)
     }
 
+    func updateProfile(
+        name: String? = nil,
+        email: String? = nil,
+        defaultHourlyRate: Double? = nil,
+        idleTimeoutSeconds: Int? = nil
+    ) async throws {
+        let updatedUser = try await apiClient.updateProfile(
+            name: name,
+            email: email,
+            defaultHourlyRate: defaultHourlyRate,
+            idleTimeoutSeconds: idleTimeoutSeconds
+        )
+        applyAuthenticatedUser(updatedUser)
+    }
+
     func logout() {
         apiClient.clearToken()
         currentUser = nil
