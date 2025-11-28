@@ -276,6 +276,15 @@ Socket.IO implementation:
 
 ## Development Workflow
 
+### Critical: Never Work Directly on Main
+**IMPORTANT**: NEVER commit or push directly to the `main` branch. Always:
+1. Create a feature branch from main: `git checkout -b feature/descriptive-name`
+2. Make commits on the feature branch
+3. Push the branch and create a Pull Request
+4. Merge via PR after review
+
+This ensures code review, maintains a clean history, and prevents accidental breakage of the main branch.
+
 ### Critical: Fix Root Causes, Not Symptoms
 **IMPORTANT**: When debugging issues between client and server, always fix the actual broken component rather than modifying working code to accommodate broken code.
 
