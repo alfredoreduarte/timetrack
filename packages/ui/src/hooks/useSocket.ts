@@ -48,7 +48,6 @@ export function useSocket() {
       // Timer events
       onTimeEntryStarted: (entry) => {
         dispatch(timerStartedFromSocket(entry));
-        dispatch(entryCreatedFromSocket(entry));
       },
       onTimeEntryStopped: (entry) => {
         dispatch(timerStoppedFromSocket());

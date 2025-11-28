@@ -157,6 +157,10 @@ const timeEntriesSlice = createSlice({
       const index = state.entries.findIndex((e) => e.id === entry.id);
       if (index !== -1) {
         state.entries[index] = entry;
+      } else {
+        // Entry not in list yet (e.g., timer stopped from another device)
+        // Add it to the beginning of the list
+        state.entries.unshift(entry);
       }
       if (state.currentEntry?.id === entry.id) {
         state.currentEntry = entry;
