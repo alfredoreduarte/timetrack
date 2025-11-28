@@ -209,8 +209,8 @@ class TimerViewModel: ObservableObject {
 
     func restartTimer(fromEntry entry: TimeEntry) async {
         await startTimer(
-            projectId: entry.projectId,
-            taskId: entry.taskId,
+            projectId: entry.project?.id,
+            taskId: entry.task?.id,
             description: entry.description
         )
     }
@@ -275,7 +275,7 @@ class TimerViewModel: ObservableObject {
         if let project = entry.project {
             return project.name
         }
-        return getProjectName(for: entry.projectId)
+        return getProjectName(for: entry.project?.id)
     }
 
     func getProjectColor(for projectId: String?) -> Color {
@@ -294,7 +294,7 @@ class TimerViewModel: ObservableObject {
         if let project = entry.project, let colorString = project.color {
             return Color(hex: colorString) ?? .gray
         }
-        return getProjectColor(for: entry.projectId)
+        return getProjectColor(for: entry.project?.id)
     }
 
     func getTaskName(for taskId: String?) -> String {
@@ -310,7 +310,7 @@ class TimerViewModel: ObservableObject {
         if let task = entry.task {
             return task.name
         }
-        return getTaskName(for: entry.taskId)
+        return getTaskName(for: entry.task?.id)
     }
 
     func getTaskFromAllProjects(taskId: String?) async -> String {
