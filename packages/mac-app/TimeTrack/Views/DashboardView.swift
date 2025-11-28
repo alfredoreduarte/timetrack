@@ -169,22 +169,18 @@ struct SimpleTimeEntryRow: View {
     @EnvironmentObject var timerViewModel: TimerViewModel
     let entry: TimeEntry
 
-    @State private var pulseOpacity = 1.0
+    // Check against the central running entry to keep in sync
+    private var isCurrentlyRunning: Bool {
+        timerViewModel.currentEntry?.id == entry.id && timerViewModel.isRunning
+    }
 
     var body: some View {
         HStack(spacing: AppTheme.spacingMD) {
             // Project color indicator
-            Circle()
-                .fill(timerViewModel.getProjectColor(for: entry))
-                .frame(width: 8, height: 8)
-                .opacity(entry.isRunning ? pulseOpacity : 1.0)
-                .onAppear {
-                    if entry.isRunning {
-                        withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
-                            pulseOpacity = 0.3
-                        }
-                    }
-                }
+            PulsingCircle(
+                color: timerViewModel.getProjectColor(for: entry),
+                isActive: isCurrentlyRunning
+            )
 
             // Entry details
             VStack(alignment: .leading, spacing: 2) {
@@ -213,7 +209,7 @@ struct SimpleTimeEntryRow: View {
             Spacer()
 
             // Duration
-            if !entry.isRunning {
+            if !isCurrentlyRunning {
                 Text(entry.formattedDurationShort)
                     .font(.system(size: 14, weight: .medium, design: .monospaced))
                     .foregroundColor(AppTheme.primary)
@@ -237,8 +233,43 @@ struct SimpleTimeEntryRow: View {
         .padding(AppTheme.spacingMD)
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD)
-                .stroke(entry.isRunning ? AppTheme.success.opacity(pulseOpacity) : AppTheme.border, lineWidth: 1)
+                .stroke(isCurrentlyRunning ? AppTheme.success : AppTheme.border, lineWidth: 1)
         )
+    }
+}
+
+// MARK: - Pulsing Circle Component
+struct PulsingCircle: View {
+    let color: Color
+    let isActive: Bool
+
+    var body: some View {
+        Group {
+            if isActive {
+                PulsingCircleAnimated(color: color)
+            } else {
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+            }
+        }
+    }
+}
+
+struct PulsingCircleAnimated: View {
+    let color: Color
+    @State private var opacity: Double = 1.0
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 8, height: 8)
+            .opacity(opacity)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
+                    opacity = 0.3
+                }
+            }
     }
 }
 
