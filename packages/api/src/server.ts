@@ -12,6 +12,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { sanitizeInputs } from "./middleware/sanitization";
 import { logger } from "./utils/logger";
 import { prisma } from "./utils/database";
+import jwt from "jsonwebtoken";
 
 // Import routes
 import authRoutes from "./routes/auth";
@@ -414,17 +415,77 @@ app.use("/tasks", taskRoutes);
 app.use("/time-entries", timeEntryRoutes);
 app.use("/reports", reportRoutes);
 
+// Socket.IO authentication middleware
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+
+    if (!token) {
+      logger.warn(`Socket connection rejected: No token provided`);
+      return next(new Error("Authentication required"));
+    }
+
+    if (!process.env.JWT_SECRET) {
+      logger.error("JWT_SECRET not configured for socket auth");
+      return next(new Error("Server configuration error"));
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET) as {
+      userId: string;
+      email: string;
+    };
+
+    // Verify user exists in database
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, email: true, name: true },
+    });
+
+    if (!user) {
+      logger.warn(`Socket connection rejected: User not found for token`);
+      return next(new Error("User not found"));
+    }
+
+    // Attach user data to socket for later use
+    (socket as any).user = user;
+    next();
+  } catch (error) {
+    if (error instanceof jwt.JsonWebTokenError) {
+      logger.warn(`Socket connection rejected: Invalid token`);
+      return next(new Error("Invalid token"));
+    } else if (error instanceof jwt.TokenExpiredError) {
+      logger.warn(`Socket connection rejected: Token expired`);
+      return next(new Error("Token expired"));
+    }
+    logger.error(`Socket auth error: ${error}`);
+    return next(new Error("Authentication failed"));
+  }
+});
+
 // Socket.IO for real-time updates
 io.on("connection", (socket) => {
-  logger.info(`User connected: ${socket.id}`);
+  const user = (socket as any).user;
+  logger.info(`User connected: ${socket.id} (userId: ${user.id})`);
 
+  // Automatically join user to their room on authenticated connection
+  socket.join(`user-${user.id}`);
+  logger.info(`User ${user.id} auto-joined their room`);
+
+  // Keep legacy event for backwards compatibility (no-op since already joined)
   socket.on("join-user-room", (userId: string) => {
-    socket.join(`user-${userId}`);
-    logger.info(`User ${userId} joined their room`);
+    // Verify the userId matches the authenticated user
+    if (userId !== user.id) {
+      logger.warn(
+        `User ${user.id} attempted to join room for user ${userId} - denied`
+      );
+      return;
+    }
+    // Already joined via auto-join, so this is a no-op
+    logger.info(`User ${userId} re-joined their room (already joined)`);
   });
 
   socket.on("disconnect", () => {
-    logger.info(`User disconnected: ${socket.id}`);
+    logger.info(`User disconnected: ${socket.id} (userId: ${user.id})`);
   });
 });
 
