@@ -105,12 +105,14 @@ class SocketService: ObservableObject {
         ]
 
         manager = SocketManager(socketURL: url, config: config)
-
-        // Configure the socket with auth data for handshake
         socket = manager?.defaultSocket
-        socket?.connect(withPayload: ["token": token])
 
+        // Set up event handlers BEFORE connecting
         setupEventHandlers(token: token)
+
+        // Now connect with auth payload
+        print("🔌 Socket: Initiating connection...")
+        socket?.connect(withPayload: ["token": token])
     }
 
     private func setupEventHandlers(token: String) {

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Combine
 
 @MainActor
 class TimerViewModel: ObservableObject {
@@ -21,6 +22,7 @@ class TimerViewModel: ObservableObject {
     private var backgroundTime: Date?
     private var idleTimeoutSeconds: Int
     private var idleTimeoutObserver: NSObjectProtocol?
+    private var socketCancellables = Set<AnyCancellable>()
 
     var isRunning: Bool {
         currentEntry?.isRunning ?? false
@@ -62,11 +64,18 @@ class TimerViewModel: ObservableObject {
         // Set up idle monitoring to automatically stop running timers
         setupIdleMonitoring()
         observeIdleTimeoutChanges()
+
+        // Set up Socket.IO event subscriptions for real-time updates
+        setupSocketSubscriptions()
+
+        // Set up fallback polling notifications
+        observePollFallback()
     }
 
     deinit {
         timer?.invalidate()
         timer = nil
+        socketCancellables.removeAll()
 
         // Remove notification observers
         NotificationCenter.default.removeObserver(self)
@@ -413,6 +422,310 @@ class TimerViewModel: ObservableObject {
         } else {
             // Just refresh the timer state
             await loadCurrentEntry()
+        }
+    }
+
+    // MARK: - Socket.IO Subscriptions
+
+    private func setupSocketSubscriptions() {
+        let socketService = SocketService.shared
+
+        // Timer started remotely
+        socketService.timerStartedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] entry in
+                Task { @MainActor in
+                    self?.handleRemoteTimerStarted(entry)
+                }
+            }
+            .store(in: &socketCancellables)
+
+        // Timer stopped remotely
+        socketService.timerStoppedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] entry in
+                Task { @MainActor in
+                    self?.handleRemoteTimerStopped(entry)
+                }
+            }
+            .store(in: &socketCancellables)
+
+        // Entry created remotely
+        socketService.entryCreatedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] entry in
+                Task { @MainActor in
+                    self?.handleRemoteEntryCreated(entry)
+                }
+            }
+            .store(in: &socketCancellables)
+
+        // Entry updated remotely
+        socketService.entryUpdatedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] entry in
+                Task { @MainActor in
+                    self?.handleRemoteEntryUpdated(entry)
+                }
+            }
+            .store(in: &socketCancellables)
+
+        // Entry deleted remotely
+        socketService.entryDeletedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] entryId in
+                Task { @MainActor in
+                    self?.handleRemoteEntryDeleted(entryId)
+                }
+            }
+            .store(in: &socketCancellables)
+
+        // Project events
+        socketService.projectCreatedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] project in
+                Task { @MainActor in
+                    self?.handleRemoteProjectCreated(project)
+                }
+            }
+            .store(in: &socketCancellables)
+
+        socketService.projectUpdatedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] project in
+                Task { @MainActor in
+                    self?.handleRemoteProjectUpdated(project)
+                }
+            }
+            .store(in: &socketCancellables)
+
+        socketService.projectDeletedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] projectId in
+                Task { @MainActor in
+                    self?.handleRemoteProjectDeleted(projectId)
+                }
+            }
+            .store(in: &socketCancellables)
+
+        // Task events
+        socketService.taskCreatedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] task in
+                Task { @MainActor in
+                    self?.handleRemoteTaskCreated(task)
+                }
+            }
+            .store(in: &socketCancellables)
+
+        socketService.taskUpdatedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] task in
+                Task { @MainActor in
+                    self?.handleRemoteTaskUpdated(task)
+                }
+            }
+            .store(in: &socketCancellables)
+
+        socketService.taskDeletedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] taskId in
+                Task { @MainActor in
+                    self?.handleRemoteTaskDeleted(taskId)
+                }
+            }
+            .store(in: &socketCancellables)
+    }
+
+    // MARK: - Remote Timer Event Handlers
+
+    private func handleRemoteTimerStarted(_ entry: TimeEntry) {
+        print("⏱️ Remote timer started: \(entry.id)")
+
+        // Update current entry if we don't already have it running
+        guard currentEntry?.id != entry.id else { return }
+
+        currentEntry = entry
+        if entry.isRunning {
+            calculateElapsedTime(from: entry.startTime)
+            startElapsedTimer()
+        }
+    }
+
+    private func handleRemoteTimerStopped(_ entry: TimeEntry) {
+        print("⏹️ Remote timer stopped: \(entry.id)")
+
+        // If the stopped entry is our current running entry
+        if currentEntry?.id == entry.id {
+            currentEntry = entry
+            stopElapsedTimer()
+            elapsedTime = 0
+        }
+
+        // Refresh recent entries list
+        Task {
+            await loadRecentEntries()
+        }
+    }
+
+    private func handleRemoteEntryCreated(_ entry: TimeEntry) {
+        print("📝 Remote entry created: \(entry.id)")
+
+        // Add to recent entries if not already present
+        if !recentEntries.contains(where: { $0.id == entry.id }) {
+            recentEntries.insert(entry, at: 0)
+            // Keep only recent 10
+            if recentEntries.count > 10 {
+                recentEntries.removeLast()
+            }
+        }
+    }
+
+    private func handleRemoteEntryUpdated(_ entry: TimeEntry) {
+        print("📝 Remote entry updated: \(entry.id)")
+
+        // Update in recent entries list
+        if let index = recentEntries.firstIndex(where: { $0.id == entry.id }) {
+            recentEntries[index] = entry
+        }
+
+        // Update current entry if it matches
+        if currentEntry?.id == entry.id {
+            let wasRunning = currentEntry?.isRunning ?? false
+            currentEntry = entry
+
+            // Handle running state changes
+            if entry.isRunning && !wasRunning {
+                calculateElapsedTime(from: entry.startTime)
+                startElapsedTimer()
+            } else if !entry.isRunning && wasRunning {
+                stopElapsedTimer()
+                elapsedTime = 0
+            }
+        }
+    }
+
+    private func handleRemoteEntryDeleted(_ entryId: String) {
+        print("🗑️ Remote entry deleted: \(entryId)")
+
+        // Remove from recent entries
+        recentEntries.removeAll { $0.id == entryId }
+
+        // Clear current entry if it was deleted
+        if currentEntry?.id == entryId {
+            currentEntry = nil
+            stopElapsedTimer()
+            elapsedTime = 0
+        }
+    }
+
+    // MARK: - Remote Project Event Handlers
+
+    private func handleRemoteProjectCreated(_ project: Project) {
+        print("📁 Remote project created: \(project.id)")
+
+        // Add to projects list if not already present
+        if !projects.contains(where: { $0.id == project.id }) {
+            projects.append(project)
+        }
+    }
+
+    private func handleRemoteProjectUpdated(_ project: Project) {
+        print("📁 Remote project updated: \(project.id)")
+
+        // Update in projects list
+        if let index = projects.firstIndex(where: { $0.id == project.id }) {
+            projects[index] = project
+        }
+    }
+
+    private func handleRemoteProjectDeleted(_ projectId: String) {
+        print("🗑️ Remote project deleted: \(projectId)")
+
+        // Remove from projects list
+        projects.removeAll { $0.id == projectId }
+
+        // Clear selected project if it was deleted
+        if selectedProjectId == projectId {
+            selectedProjectId = nil
+            selectedTaskId = nil
+            tasks = []
+        }
+    }
+
+    // MARK: - Remote Task Event Handlers
+
+    private func handleRemoteTaskCreated(_ task: TimeTrackTask) {
+        print("📋 Remote task created: \(task.id)")
+
+        // Add to tasks list if it belongs to the currently selected project
+        if let project = task.project, project.id == selectedProjectId {
+            if !tasks.contains(where: { $0.id == task.id }) {
+                tasks.append(task)
+            }
+        }
+    }
+
+    private func handleRemoteTaskUpdated(_ task: TimeTrackTask) {
+        print("📋 Remote task updated: \(task.id)")
+
+        // Update in tasks list
+        if let index = tasks.firstIndex(where: { $0.id == task.id }) {
+            tasks[index] = task
+        }
+    }
+
+    private func handleRemoteTaskDeleted(_ taskId: String) {
+        print("🗑️ Remote task deleted: \(taskId)")
+
+        // Remove from tasks list
+        tasks.removeAll { $0.id == taskId }
+
+        // Clear selected task if it was deleted
+        if selectedTaskId == taskId {
+            selectedTaskId = nil
+        }
+    }
+
+    // MARK: - Polling Fallback
+
+    private func observePollFallback() {
+        NotificationCenter.default.addObserver(
+            forName: .timerStatePollReceived,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                if let entry = notification.userInfo?["currentEntry"] as? TimeEntry? {
+                    self?.handlePolledTimerState(entry)
+                }
+            }
+        }
+    }
+
+    private func handlePolledTimerState(_ entry: TimeEntry?) {
+        // Only update if state differs from current
+        let currentId = currentEntry?.id
+        let currentRunning = currentEntry?.isRunning ?? false
+        let newId = entry?.id
+        let newRunning = entry?.isRunning ?? false
+
+        // State changed
+        if currentId != newId || currentRunning != newRunning {
+            currentEntry = entry
+
+            if let entry = entry, entry.isRunning {
+                calculateElapsedTime(from: entry.startTime)
+                startElapsedTimer()
+            } else {
+                stopElapsedTimer()
+                elapsedTime = 0
+            }
+
+            // Also refresh recent entries
+            Task {
+                await loadRecentEntries()
+            }
         }
     }
 }

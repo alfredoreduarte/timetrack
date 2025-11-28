@@ -85,6 +85,9 @@ class AuthViewModel: ObservableObject {
     }
 
     func logout() {
+        // Disconnect Socket.IO
+        SocketService.shared.disconnect()
+
         apiClient.clearToken()
         currentUser = nil
         isAuthenticated = false
@@ -112,16 +115,16 @@ class AuthViewModel: ObservableObject {
         }
 
         do {
-            currentUser = try await apiClient.getCurrentUser()
-            isAuthenticated = true
+            let user = try await apiClient.getCurrentUser()
+            applyAuthenticatedUser(user)
         } catch {
             // If getting current user fails, try to refresh the token
             let refreshSucceeded = await refreshToken()
             if refreshSucceeded {
                 // Try getting user again after refresh
                 do {
-                    currentUser = try await apiClient.getCurrentUser()
-                    isAuthenticated = true
+                    let user = try await apiClient.getCurrentUser()
+                    applyAuthenticatedUser(user)
                 } catch {
                     // If it still fails, logout
                     logout()
@@ -147,6 +150,14 @@ class AuthViewModel: ObservableObject {
         currentUser = user
         isAuthenticated = true
         persistIdleTimeout(seconds: user.idleTimeoutSeconds)
+
+        // Connect to Socket.IO for real-time timer sync
+        if let token = apiClient.authToken {
+            SocketService.shared.connect(token: token)
+
+            // Initialize polling fallback service (it auto-monitors socket state)
+            _ = PollingFallbackService.shared
+        }
     }
 
     private func persistIdleTimeout(seconds: Int?) {
