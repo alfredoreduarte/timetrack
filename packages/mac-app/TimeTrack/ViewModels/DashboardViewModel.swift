@@ -8,6 +8,37 @@ class DashboardViewModel: ObservableObject {
 
     private let apiClient = APIClient.shared
 
+    init() {
+        observeAuthChanges()
+    }
+
+    private func observeAuthChanges() {
+        NotificationCenter.default.addObserver(
+            forName: .userDidLogout,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.clearAllData()
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .userDidLogin,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.loadDashboardEarnings()
+            }
+        }
+    }
+
+    func clearAllData() {
+        earnings = nil
+        errorMessage = nil
+    }
+
     // MARK: - Public Methods
 
     func loadDashboardEarnings() async {

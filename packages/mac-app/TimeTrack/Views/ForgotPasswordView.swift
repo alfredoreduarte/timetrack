@@ -35,9 +35,14 @@ struct ForgotPasswordView: View {
                     Text("Email Address")
                         .font(.headline)
                         .foregroundColor(.primary)
-                    
+
                     TextField("Enter your email", text: $email)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .onSubmit {
+                            if isFormValid && !isLoading {
+                                requestPasswordReset()
+                            }
+                        }
                 }
                 
                 if let errorMessage = errorMessage {
@@ -60,6 +65,7 @@ struct ForgotPasswordView: View {
                             .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
+                    .frame(height: 20) // Fixed height to prevent layout shift when spinner appears
                     .padding()
                     .background(isFormValid ? Color.blue : Color.gray)
                     .foregroundColor(.white)
