@@ -445,6 +445,40 @@ struct SettingsView: View {
             Text("Account deletion is permanent and cannot be undone.")
         }
     }
+
+    // MARK: - Idle Timeout Helpers
+
+    private func loadIdleTimeoutMinutes() {
+        let storedSeconds = UserDefaults.standard.integer(forKey: AppConstants.idleTimeoutSecondsKey)
+        let resolvedSeconds = storedSeconds > 0 ? storedSeconds : AppConstants.defaultIdleTimeoutSeconds
+        idleTimeoutMinutes = String(max(1, resolvedSeconds / 60))
+    }
+
+    private func sanitizeIdleTimeoutInput(_ value: String) -> String {
+        let filtered = value.filter { $0.isNumber }
+        return String(filtered.prefix(3))
+    }
+
+    private func saveIdleTimeoutPreference() async {
+        guard let minutes = Int(idleTimeoutMinutes), minutes >= 1, minutes <= 120 else {
+            idleTimeoutErrorMessage = "Enter between 1 and 120 minutes."
+            idleTimeoutStatusMessage = nil
+            return
+        }
+
+        isSavingIdleTimeout = true
+        idleTimeoutErrorMessage = nil
+        idleTimeoutStatusMessage = nil
+
+        do {
+            try await authViewModel.updateIdleTimeout(seconds: minutes * 60)
+            idleTimeoutStatusMessage = "Idle timeout saved."
+        } catch {
+            idleTimeoutErrorMessage = error.localizedDescription
+        }
+
+        isSavingIdleTimeout = false
+    }
 }
 
 // MARK: - Profile Edit View
@@ -519,40 +553,6 @@ struct ProfileEditView: View {
     private func saveProfile() {
         // TODO: Implement profile update
         dismiss()
-    }
-
-    // MARK: - Idle Timeout Helpers
-
-    private func loadIdleTimeoutMinutes() {
-        let storedSeconds = UserDefaults.standard.integer(forKey: AppConstants.idleTimeoutSecondsKey)
-        let resolvedSeconds = storedSeconds > 0 ? storedSeconds : AppConstants.defaultIdleTimeoutSeconds
-        idleTimeoutMinutes = String(max(1, resolvedSeconds / 60))
-    }
-
-    private func sanitizeIdleTimeoutInput(_ value: String) -> String {
-        let filtered = value.filter { $0.isNumber }
-        return String(filtered.prefix(3))
-    }
-
-    private func saveIdleTimeoutPreference() async {
-        guard let minutes = Int(idleTimeoutMinutes), minutes >= 1, minutes <= 120 else {
-            idleTimeoutErrorMessage = "Enter between 1 and 120 minutes."
-            idleTimeoutStatusMessage = nil
-            return
-        }
-
-        isSavingIdleTimeout = true
-        idleTimeoutErrorMessage = nil
-        idleTimeoutStatusMessage = nil
-
-        do {
-            try await authViewModel.updateIdleTimeout(seconds: minutes * 60)
-            idleTimeoutStatusMessage = "Idle timeout saved."
-        } catch {
-            idleTimeoutErrorMessage = error.localizedDescription
-        }
-
-        isSavingIdleTimeout = false
     }
 }
 
