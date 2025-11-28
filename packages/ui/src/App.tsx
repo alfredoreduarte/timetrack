@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { RootState, AppDispatch } from "./store";
 import { getCurrentUser } from "./store/slices/authSlice";
 import { useTimer } from "./hooks/useTimer";
+import { useSocket } from "./hooks/useSocket";
 import { fetchProjects } from "./store/slices/projectsSlice";
 import { fetchCurrentEntry, syncTimer } from "./store/slices/timerSlice";
 import { isElectron } from "./utils/platform";
@@ -151,6 +152,9 @@ function AppContent() {
   const { token, user, hasCheckedAuth, isAuthenticated } = useSelector(
     (state: RootState) => state.auth
   );
+
+  // Initialize Socket.IO connection for real-time sync
+  useSocket();
 
   useEffect(() => {
     // Check if user is authenticated on app start
