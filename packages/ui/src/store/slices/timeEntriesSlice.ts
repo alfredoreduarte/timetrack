@@ -144,6 +144,35 @@ const timeEntriesSlice = createSlice({
         state.currentEntry.duration = action.payload;
       }
     },
+    // Socket event reducers
+    entryCreatedFromSocket: (state, action: PayloadAction<TimeEntry>) => {
+      const entry = action.payload;
+      // Only add if not already present (avoid duplicates)
+      if (!state.entries.find((e) => e.id === entry.id)) {
+        state.entries.unshift(entry);
+      }
+    },
+    entryUpdatedFromSocket: (state, action: PayloadAction<TimeEntry>) => {
+      const entry = action.payload;
+      const index = state.entries.findIndex((e) => e.id === entry.id);
+      if (index !== -1) {
+        state.entries[index] = entry;
+      } else {
+        // Entry not in list yet (e.g., timer stopped from another device)
+        // Add it to the beginning of the list
+        state.entries.unshift(entry);
+      }
+      if (state.currentEntry?.id === entry.id) {
+        state.currentEntry = entry;
+      }
+    },
+    entryDeletedFromSocket: (state, action: PayloadAction<{ id: string }>) => {
+      const { id } = action.payload;
+      state.entries = state.entries.filter((e) => e.id !== id);
+      if (state.currentEntry?.id === id) {
+        state.currentEntry = null;
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -198,6 +227,11 @@ const timeEntriesSlice = createSlice({
   },
 });
 
-export const { clearError, updateCurrentEntryDuration } =
-  timeEntriesSlice.actions;
+export const {
+  clearError,
+  updateCurrentEntryDuration,
+  entryCreatedFromSocket,
+  entryUpdatedFromSocket,
+  entryDeletedFromSocket,
+} = timeEntriesSlice.actions;
 export default timeEntriesSlice.reducer;

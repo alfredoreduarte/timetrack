@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { projectsAPI, tasksAPI } from "../../services/api";
 import { fetchDashboardEarnings } from "./dashboardSlice";
 
@@ -139,6 +139,42 @@ const projectsSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
+    // Socket event reducers for projects
+    projectCreatedFromSocket: (state, action: PayloadAction<Project>) => {
+      const project = action.payload;
+      if (!state.projects.find((p) => p.id === project.id)) {
+        state.projects.push(project);
+      }
+    },
+    projectUpdatedFromSocket: (state, action: PayloadAction<Project>) => {
+      const project = action.payload;
+      const index = state.projects.findIndex((p) => p.id === project.id);
+      if (index !== -1) {
+        state.projects[index] = project;
+      }
+    },
+    projectDeletedFromSocket: (state, action: PayloadAction<{ id: string }>) => {
+      const { id } = action.payload;
+      state.projects = state.projects.filter((p) => p.id !== id);
+    },
+    // Socket event reducers for tasks
+    taskCreatedFromSocket: (state, action: PayloadAction<Task>) => {
+      const task = action.payload;
+      if (!state.tasks.find((t) => t.id === task.id)) {
+        state.tasks.push(task);
+      }
+    },
+    taskUpdatedFromSocket: (state, action: PayloadAction<Task>) => {
+      const task = action.payload;
+      const index = state.tasks.findIndex((t) => t.id === task.id);
+      if (index !== -1) {
+        state.tasks[index] = task;
+      }
+    },
+    taskDeletedFromSocket: (state, action: PayloadAction<{ id: string }>) => {
+      const { id } = action.payload;
+      state.tasks = state.tasks.filter((t) => t.id !== id);
+    },
   },
   extraReducers: (builder) => {
     // Projects
@@ -197,5 +233,13 @@ const projectsSlice = createSlice({
   },
 });
 
-export const { clearError } = projectsSlice.actions;
+export const {
+  clearError,
+  projectCreatedFromSocket,
+  projectUpdatedFromSocket,
+  projectDeletedFromSocket,
+  taskCreatedFromSocket,
+  taskUpdatedFromSocket,
+  taskDeletedFromSocket,
+} = projectsSlice.actions;
 export default projectsSlice.reducer;

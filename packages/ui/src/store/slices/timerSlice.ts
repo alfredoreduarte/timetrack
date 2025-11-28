@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { timeEntriesAPI } from "../../services/api";
 import { TimeEntry } from "./timeEntriesSlice";
 
@@ -114,6 +114,29 @@ const timerSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
+    // Socket event reducers
+    timerStartedFromSocket: (state, action: PayloadAction<TimeEntry>) => {
+      const entry = action.payload;
+      state.isRunning = true;
+      state.currentEntry = entry;
+      // Calculate elapsed time from start time
+      if (entry.startTime) {
+        const startTime = new Date(entry.startTime).getTime();
+        const now = new Date().getTime();
+        if (!isNaN(startTime) && !isNaN(now) && startTime <= now) {
+          state.elapsedTime = Math.floor((now - startTime) / 1000);
+        } else {
+          state.elapsedTime = entry.duration || 0;
+        }
+      } else {
+        state.elapsedTime = entry.duration || 0;
+      }
+    },
+    timerStoppedFromSocket: (state) => {
+      state.isRunning = false;
+      state.currentEntry = null;
+      state.elapsedTime = 0;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -180,5 +203,12 @@ const timerSlice = createSlice({
   },
 });
 
-export const { tick, syncTimer, resetTimer, clearError } = timerSlice.actions;
+export const {
+  tick,
+  syncTimer,
+  resetTimer,
+  clearError,
+  timerStartedFromSocket,
+  timerStoppedFromSocket,
+} = timerSlice.actions;
 export default timerSlice.reducer;
