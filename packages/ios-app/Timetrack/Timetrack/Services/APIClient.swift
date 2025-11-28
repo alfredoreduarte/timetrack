@@ -275,9 +275,17 @@ class APIClient: ObservableObject {
         return response.token
     }
 
-    func updateProfile(idleTimeoutSeconds: Int) async throws -> User {
+    func updateProfile(
+        name: String? = nil,
+        email: String? = nil,
+        defaultHourlyRate: Double? = nil,
+        idleTimeoutSeconds: Int? = nil
+    ) async throws -> User {
         struct UpdateProfileRequest: Codable {
-            let idleTimeoutSeconds: Int
+            let name: String?
+            let email: String?
+            let defaultHourlyRate: Double?
+            let idleTimeoutSeconds: Int?
         }
 
         struct UpdateProfileResponse: Codable {
@@ -285,7 +293,12 @@ class APIClient: ObservableObject {
             let user: User
         }
 
-        let requestBody = UpdateProfileRequest(idleTimeoutSeconds: idleTimeoutSeconds)
+        let requestBody = UpdateProfileRequest(
+            name: name,
+            email: email,
+            defaultHourlyRate: defaultHourlyRate,
+            idleTimeoutSeconds: idleTimeoutSeconds
+        )
         let body = try JSONEncoder().encode(requestBody)
 
         let response = try await makeRequest(
