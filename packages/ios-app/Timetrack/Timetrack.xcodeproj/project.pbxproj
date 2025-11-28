@@ -9,6 +9,9 @@
 /* Begin PBXBuildFile section */
 		3885950F2E6F4A0A006C87A0 /* Timetrack Watch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 388594EF2E6F4A07006C87A0 /* Timetrack Watch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		38B143C32EDA224A00889CD9 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 38A1B5012FFFFFF000000002 /* SocketIO */; };
+		38B144C72EDA42BC00889CD9 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 38B144C62EDA42BC00889CD9 /* WidgetKit.framework */; };
+		38B144C92EDA42BC00889CD9 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 38B144C82EDA42BC00889CD9 /* SwiftUI.framework */; };
+		38B144DA2EDA42BE00889CD9 /* TimetrackLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 38B144C42EDA42BC00889CD9 /* TimetrackLiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,6 +35,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 388594EE2E6F4A07006C87A0;
 			remoteInfo = "Timetrack Watch Watch App";
+		};
+		38B144D82EDA42BE00889CD9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 38DFB9CC2E6A78420062C8CC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 38B144C32EDA42BC00889CD9;
+			remoteInfo = TimetrackLiveActivityExtension;
 		};
 		38DFB9E22E6A78440062C8CC /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -61,16 +71,40 @@
 			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		38B144DF2EDA42BE00889CD9 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				38B144DA2EDA42BE00889CD9 /* TimetrackLiveActivityExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		388594EF2E6F4A07006C87A0 /* Timetrack Watch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Timetrack Watch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		388594FB2E6F4A0A006C87A0 /* Timetrack Watch Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Timetrack Watch Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		388595052E6F4A0A006C87A0 /* Timetrack Watch Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Timetrack Watch Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		38B144C42EDA42BC00889CD9 /* TimetrackLiveActivityExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TimetrackLiveActivityExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		38B144C62EDA42BC00889CD9 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		38B144C82EDA42BC00889CD9 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		38DFB9D42E6A78420062C8CC /* Timetrack.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Timetrack.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		38DFB9E12E6A78440062C8CC /* TimetrackTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TimetrackTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		38DFB9EB2E6A78440062C8CC /* TimetrackUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TimetrackUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		38B144DB2EDA42BE00889CD9 /* Exceptions for "TimetrackLiveActivity" folder in "TimetrackLiveActivityExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 38B144C32EDA42BC00889CD9 /* TimetrackLiveActivityExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		388594F02E6F4A07006C87A0 /* Timetrack Watch Watch App */ = {
@@ -86,6 +120,14 @@
 		388595082E6F4A0A006C87A0 /* Timetrack Watch Watch AppUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Timetrack Watch Watch AppUITests";
+			sourceTree = "<group>";
+		};
+		38B144CA2EDA42BC00889CD9 /* TimetrackLiveActivity */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				38B144DB2EDA42BE00889CD9 /* Exceptions for "TimetrackLiveActivity" folder in "TimetrackLiveActivityExtension" target */,
+			);
+			path = TimetrackLiveActivity;
 			sourceTree = "<group>";
 		};
 		38DFB9D62E6A78420062C8CC /* Timetrack */ = {
@@ -127,6 +169,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		38B144C12EDA42BC00889CD9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				38B144C92EDA42BC00889CD9 /* SwiftUI.framework in Frameworks */,
+				38B144C72EDA42BC00889CD9 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		38DFB9D12E6A78420062C8CC /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -152,6 +203,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		38B144C52EDA42BC00889CD9 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				38B144C62EDA42BC00889CD9 /* WidgetKit.framework */,
+				38B144C82EDA42BC00889CD9 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		38DFB9CB2E6A78420062C8CC = {
 			isa = PBXGroup;
 			children = (
@@ -161,6 +221,8 @@
 				388594F02E6F4A07006C87A0 /* Timetrack Watch Watch App */,
 				388594FE2E6F4A0A006C87A0 /* Timetrack Watch Watch AppTests */,
 				388595082E6F4A0A006C87A0 /* Timetrack Watch Watch AppUITests */,
+				38B144CA2EDA42BC00889CD9 /* TimetrackLiveActivity */,
+				38B144C52EDA42BC00889CD9 /* Frameworks */,
 				38DFB9D52E6A78420062C8CC /* Products */,
 			);
 			sourceTree = "<group>";
@@ -174,6 +236,7 @@
 				388594EF2E6F4A07006C87A0 /* Timetrack Watch Watch App.app */,
 				388594FB2E6F4A0A006C87A0 /* Timetrack Watch Watch AppTests.xctest */,
 				388595052E6F4A0A006C87A0 /* Timetrack Watch Watch AppUITests.xctest */,
+				38B144C42EDA42BC00889CD9 /* TimetrackLiveActivityExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -249,6 +312,28 @@
 			productReference = 388595052E6F4A0A006C87A0 /* Timetrack Watch Watch AppUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		38B144C32EDA42BC00889CD9 /* TimetrackLiveActivityExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 38B144DC2EDA42BE00889CD9 /* Build configuration list for PBXNativeTarget "TimetrackLiveActivityExtension" */;
+			buildPhases = (
+				38B144C02EDA42BC00889CD9 /* Sources */,
+				38B144C12EDA42BC00889CD9 /* Frameworks */,
+				38B144C22EDA42BC00889CD9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				38B144CA2EDA42BC00889CD9 /* TimetrackLiveActivity */,
+			);
+			name = TimetrackLiveActivityExtension;
+			packageProductDependencies = (
+			);
+			productName = TimetrackLiveActivityExtension;
+			productReference = 38B144C42EDA42BC00889CD9 /* TimetrackLiveActivityExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		38DFB9D32E6A78420062C8CC /* Timetrack */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 38DFB9F52E6A78440062C8CC /* Build configuration list for PBXNativeTarget "Timetrack" */;
@@ -257,11 +342,13 @@
 				38DFB9D12E6A78420062C8CC /* Frameworks */,
 				38DFB9D22E6A78420062C8CC /* Resources */,
 				388595102E6F4A0A006C87A0 /* Embed Watch Content */,
+				38B144DF2EDA42BE00889CD9 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				3885950E2E6F4A0A006C87A0 /* PBXTargetDependency */,
+				38B144D92EDA42BE00889CD9 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				38DFB9D62E6A78420062C8CC /* Timetrack */,
@@ -327,7 +414,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1640;
+				LastSwiftUpdateCheck = 2610;
 				LastUpgradeCheck = 1640;
 				TargetAttributes = {
 					388594EE2E6F4A07006C87A0 = {
@@ -340,6 +427,9 @@
 					388595042E6F4A0A006C87A0 = {
 						CreatedOnToolsVersion = 16.4;
 						TestTargetID = 388594EE2E6F4A07006C87A0;
+					};
+					38B144C32EDA42BC00889CD9 = {
+						CreatedOnToolsVersion = 26.1.1;
 					};
 					38DFB9D32E6A78420062C8CC = {
 						CreatedOnToolsVersion = 16.4;
@@ -377,6 +467,7 @@
 				388594EE2E6F4A07006C87A0 /* Timetrack Watch Watch App */,
 				388594FA2E6F4A0A006C87A0 /* Timetrack Watch Watch AppTests */,
 				388595042E6F4A0A006C87A0 /* Timetrack Watch Watch AppUITests */,
+				38B144C32EDA42BC00889CD9 /* TimetrackLiveActivityExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -397,6 +488,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		388595032E6F4A0A006C87A0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		38B144C22EDA42BC00889CD9 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -448,6 +546,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		38B144C02EDA42BC00889CD9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		38DFB9D02E6A78420062C8CC /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -486,6 +591,11 @@
 			isa = PBXTargetDependency;
 			target = 388594EE2E6F4A07006C87A0 /* Timetrack Watch Watch App */;
 			targetProxy = 3885950D2E6F4A0A006C87A0 /* PBXContainerItemProxy */;
+		};
+		38B144D92EDA42BE00889CD9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 38B144C32EDA42BC00889CD9 /* TimetrackLiveActivityExtension */;
+			targetProxy = 38B144D82EDA42BE00889CD9 /* PBXContainerItemProxy */;
 		};
 		38DFB9E32E6A78440062C8CC /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -638,6 +748,66 @@
 			};
 			name = Release;
 		};
+		38B144DD2EDA42BE00889CD9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = TimetrackLiveActivity/TimetrackLiveActivity.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BCFAZ48S56;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TimetrackLiveActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TimetrackLiveActivity;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.timetrack.ios.Timetrack.TimetrackLiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		38B144DE2EDA42BE00889CD9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = TimetrackLiveActivity/TimetrackLiveActivity.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BCFAZ48S56;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TimetrackLiveActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TimetrackLiveActivity;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.timetrack.ios.Timetrack.TimetrackLiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		38DFB9F32E6A78440062C8CC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -770,6 +940,7 @@
 				DEVELOPMENT_TEAM = BCFAZ48S56;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -799,6 +970,7 @@
 				DEVELOPMENT_TEAM = BCFAZ48S56;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -915,6 +1087,15 @@
 			buildConfigurations = (
 				388595152E6F4A0A006C87A0 /* Debug */,
 				388595162E6F4A0A006C87A0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		38B144DC2EDA42BE00889CD9 /* Build configuration list for PBXNativeTarget "TimetrackLiveActivityExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				38B144DD2EDA42BE00889CD9 /* Debug */,
+				38B144DE2EDA42BE00889CD9 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
