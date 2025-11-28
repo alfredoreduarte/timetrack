@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		3885950F2E6F4A0A006C87A0 /* Timetrack Watch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 388594EF2E6F4A07006C87A0 /* Timetrack Watch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		38B143C32EDA224A00889CD9 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 38A1B5012FFFFFF000000002 /* SocketIO */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -130,6 +131,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				38B143C32EDA224A00889CD9 /* SocketIO in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -266,6 +268,7 @@
 			);
 			name = Timetrack;
 			packageProductDependencies = (
+				38A1B5012FFFFFF000000002 /* SocketIO */,
 			);
 			productName = Timetrack;
 			productReference = 38DFB9D42E6A78420062C8CC /* Timetrack.app */;
@@ -360,6 +363,9 @@
 			);
 			mainGroup = 38DFB9CB2E6A78420062C8CC;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				38A1B5002FFFFFF000000001 /* XCRemoteSwiftPackageReference "socket" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 38DFB9D52E6A78420062C8CC /* Products */;
 			projectDirPath = "";
@@ -950,6 +956,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		38A1B5002FFFFFF000000001 /* XCRemoteSwiftPackageReference "socket" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/socketio/socket.io-client-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 16.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		38A1B5012FFFFFF000000002 /* SocketIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 38A1B5002FFFFFF000000001 /* XCRemoteSwiftPackageReference "socket" */;
+			productName = SocketIO;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 38DFB9CC2E6A78420062C8CC /* Project object */;
 }

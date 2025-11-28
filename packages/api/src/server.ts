@@ -418,7 +418,22 @@ app.use("/reports", reportRoutes);
 // Socket.IO authentication middleware
 io.use(async (socket, next) => {
   try {
-    const token = socket.handshake.auth.token;
+    // Try to get token from multiple sources:
+    // 1. socket.handshake.auth.token (standard Socket.IO v3+ auth)
+    // 2. Authorization header (for clients that use headers)
+    // 3. Query params (fallback)
+    let token = socket.handshake.auth?.token;
+
+    if (!token) {
+      const authHeader = socket.handshake.headers.authorization;
+      if (authHeader?.startsWith("Bearer ")) {
+        token = authHeader.substring(7);
+      }
+    }
+
+    if (!token) {
+      token = socket.handshake.query?.token as string;
+    }
 
     if (!token) {
       logger.warn(`Socket connection rejected: No token provided`);
