@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import ActivityKit
 
 @MainActor
 class TimerViewModel: ObservableObject {
@@ -110,10 +111,18 @@ class TimerViewModel: ObservableObject {
                 print("⏱️ Found running timer, starting elapsed time counter")
                 calculateElapsedTime(from: entry.startTime)
                 startElapsedTimer()
+
+                // Start Live Activity if not already active
+                if !LiveActivityManager.shared.hasActiveActivity(for: entry.id) {
+                    await LiveActivityManager.shared.startActivity(entry: entry)
+                }
             } else {
                 print("⏹️ No running timer found")
                 stopElapsedTimer()
                 elapsedTime = 0
+
+                // End any stale Live Activities
+                await LiveActivityManager.shared.endAllActivities()
             }
         } catch {
             print("❌ Error loading current entry: \(error)")
@@ -176,6 +185,9 @@ class TimerViewModel: ObservableObject {
             calculateElapsedTime(from: entry.startTime)
             startElapsedTimer()
 
+            // Start Live Activity
+            await LiveActivityManager.shared.startActivity(entry: entry)
+
             // Refresh recent entries
             await loadRecentEntries()
 
@@ -197,6 +209,9 @@ class TimerViewModel: ObservableObject {
             currentEntry = stoppedEntry
             stopElapsedTimer()
             elapsedTime = 0
+
+            // Stop Live Activity
+            await LiveActivityManager.shared.stopActivity()
 
             // Refresh recent entries
             await loadRecentEntries()
@@ -549,6 +564,11 @@ class TimerViewModel: ObservableObject {
         if entry.isRunning {
             calculateElapsedTime(from: entry.startTime)
             startElapsedTimer()
+
+            // Start Live Activity for remote timer start
+            Task {
+                await LiveActivityManager.shared.startActivity(entry: entry)
+            }
         }
     }
 
@@ -560,6 +580,11 @@ class TimerViewModel: ObservableObject {
             currentEntry = entry
             stopElapsedTimer()
             elapsedTime = 0
+
+            // Stop Live Activity for remote timer stop
+            Task {
+                await LiveActivityManager.shared.stopActivity()
+            }
         }
 
         // Refresh recent entries list
