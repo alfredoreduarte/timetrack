@@ -72,12 +72,10 @@ services:
       target: development
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:3011}
-        REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:3011}
     container_name: timetrack-web
     restart: unless-stopped
     env_file: docker.env
     environment:
-      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:3011}
       VITE_API_URL: ${VITE_API_URL:-http://localhost:3011}
     ports:
       - "${WEB_PORT:-3010}:5173"

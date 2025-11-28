@@ -128,7 +128,7 @@ JWT_SECRET=your_long_secret_key
 
 # Optional
 ALLOWED_ORIGINS=http://localhost:3010
-REACT_APP_API_URL=http://localhost:3011
+VITE_API_URL=http://localhost:3011
 APPLICATION_URL=http://localhost:3010  # Frontend URL for emails
 ```
 

@@ -69,12 +69,10 @@ services:
       target: production
       args:
         VITE_API_URL: ${VITE_API_URL}
-        REACT_APP_API_URL: ${REACT_APP_API_URL}
     container_name: timetrack-web-prod
     restart: unless-stopped
     env_file: docker.env
-    environment:
-      REACT_APP_API_URL: ${REACT_APP_API_URL}
+    # Environment variables handled at build time for production
     ports:
       - "${WEB_PORT:-3010}:80"
     depends_on:
