@@ -276,6 +276,26 @@ Socket.IO implementation:
 
 ## Development Workflow
 
+### Critical: Fix Root Causes, Not Symptoms
+**IMPORTANT**: When debugging issues between client and server, always fix the actual broken component rather than modifying working code to accommodate broken code.
+
+Common anti-pattern to avoid:
+- Client expects data in format X
+- API provides data in format Y (correctly, per design)
+- **Wrong**: Modify API to return format X to "fix" the client
+- **Right**: Fix the client to read format Y
+
+Why this matters:
+- Modifying working code to accommodate broken code creates technical debt
+- It masks the real bug and may cause issues elsewhere
+- Other clients depending on the original format will break
+- The "quick fix" often takes longer to unwind than the proper fix
+
+Before changing an API response or data format:
+1. Verify which component is actually wrong (check specs, other clients, tests)
+2. Fix the component that deviates from the expected contract
+3. If the contract itself is wrong, fix it everywhere consistently
+
 ### Critical: Environment Variable Verification
 **IMPORTANT**: NEVER use an environment variable in code without first verifying it exists. Always check:
 1. Check if the variable is defined in `docker.env`, `.env`, or the deployment environment
