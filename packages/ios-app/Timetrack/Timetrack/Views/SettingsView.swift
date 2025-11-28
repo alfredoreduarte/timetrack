@@ -9,13 +9,19 @@ struct SettingsView: View {
     @State private var showingLogoutAlert = false
     @State private var showingDeleteAccountAlert = false
     @State private var showingExportData = false
-    
+
     // App preferences
     @AppStorage("showNotifications") private var showNotifications = true
     @AppStorage("soundEnabled") private var soundEnabled = true
     @AppStorage("autoStartTimer") private var autoStartTimer = false
     @AppStorage("defaultHourlyRate") private var defaultHourlyRate: Double = 0.0
     @AppStorage("reminderInterval") private var reminderInterval = 30 // minutes
+
+    // Idle timeout state
+    @State private var idleTimeoutMinutes: String = String(AppConstants.defaultIdleTimeoutSeconds / 60)
+    @State private var isSavingIdleTimeout = false
+    @State private var idleTimeoutStatusMessage: String?
+    @State private var idleTimeoutErrorMessage: String?
     
     var body: some View {
         NavigationView {
@@ -54,6 +60,21 @@ struct SettingsView: View {
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
+        .onAppear {
+            loadIdleTimeoutMinutes()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .idleTimeoutUpdated)) { notification in
+            guard let seconds = notification.userInfo?["seconds"] as? Int else { return }
+            idleTimeoutMinutes = String(max(1, seconds / 60))
+        }
+        .onChange(of: idleTimeoutMinutes) { newValue in
+            let sanitized = sanitizeIdleTimeoutInput(newValue)
+            if sanitized != newValue {
+                idleTimeoutMinutes = sanitized
+            }
+            idleTimeoutStatusMessage = nil
+            idleTimeoutErrorMessage = nil
+        }
         .sheet(isPresented: $showingProfileEdit) {
             ProfileEditView()
         }
@@ -174,7 +195,7 @@ struct SettingsView: View {
                     Image(systemName: "play.circle")
                         .foregroundColor(.green)
                         .frame(width: 24)
-                    
+
                     VStack(alignment: .leading) {
                         Text("Auto-start Timer")
                         Text("Start timer when opening app")
@@ -183,8 +204,60 @@ struct SettingsView: View {
                     }
                 }
             }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "moon.zzz")
+                        .foregroundColor(.indigo)
+                        .frame(width: 24)
+
+                    VStack(alignment: .leading) {
+                        Text("Idle Timeout")
+                        Text("Auto-stop timer after inactivity")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    TextField("10", text: $idleTimeoutMinutes)
+                        .frame(width: 60)
+                        .multilineTextAlignment(.trailing)
+                        .textFieldStyle(.roundedBorder)
+                        .keyboardType(.numberPad)
+                        .disabled(isSavingIdleTimeout)
+
+                    Text("min")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                }
+
+                HStack {
+                    Spacer()
+
+                    Button("Save") {
+                        Task {
+                            await saveIdleTimeoutPreference()
+                        }
+                    }
+                    .disabled(isSavingIdleTimeout)
+                    .font(.caption)
+                }
+
+                if let status = idleTimeoutStatusMessage {
+                    Text(status)
+                        .font(.caption)
+                        .foregroundColor(.green)
+                } else if let error = idleTimeoutErrorMessage {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+            }
         } header: {
             Text("Timer Settings")
+        } footer: {
+            Text("Timer will automatically stop when app is backgrounded for more than the idle timeout duration (1-120 minutes).")
         }
     }
     
@@ -446,6 +519,40 @@ struct ProfileEditView: View {
     private func saveProfile() {
         // TODO: Implement profile update
         dismiss()
+    }
+
+    // MARK: - Idle Timeout Helpers
+
+    private func loadIdleTimeoutMinutes() {
+        let storedSeconds = UserDefaults.standard.integer(forKey: AppConstants.idleTimeoutSecondsKey)
+        let resolvedSeconds = storedSeconds > 0 ? storedSeconds : AppConstants.defaultIdleTimeoutSeconds
+        idleTimeoutMinutes = String(max(1, resolvedSeconds / 60))
+    }
+
+    private func sanitizeIdleTimeoutInput(_ value: String) -> String {
+        let filtered = value.filter { $0.isNumber }
+        return String(filtered.prefix(3))
+    }
+
+    private func saveIdleTimeoutPreference() async {
+        guard let minutes = Int(idleTimeoutMinutes), minutes >= 1, minutes <= 120 else {
+            idleTimeoutErrorMessage = "Enter between 1 and 120 minutes."
+            idleTimeoutStatusMessage = nil
+            return
+        }
+
+        isSavingIdleTimeout = true
+        idleTimeoutErrorMessage = nil
+        idleTimeoutStatusMessage = nil
+
+        do {
+            try await authViewModel.updateIdleTimeout(seconds: minutes * 60)
+            idleTimeoutStatusMessage = "Idle timeout saved."
+        } catch {
+            idleTimeoutErrorMessage = error.localizedDescription
+        }
+
+        isSavingIdleTimeout = false
     }
 }
 

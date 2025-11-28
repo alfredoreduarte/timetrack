@@ -29,8 +29,7 @@ class AuthViewModel: ObservableObject {
 
             // Save token and user
             apiClient.saveToken(response.token)
-            currentUser = response.user
-            isAuthenticated = true
+            applyAuthenticatedUser(response.user)
 
         } catch {
             errorMessage = error.localizedDescription
@@ -55,8 +54,7 @@ class AuthViewModel: ObservableObject {
 
             // Save token and user
             apiClient.saveToken(response.token)
-            currentUser = response.user
-            isAuthenticated = true
+            applyAuthenticatedUser(response.user)
 
         } catch {
             errorMessage = error.localizedDescription
@@ -66,11 +64,17 @@ class AuthViewModel: ObservableObject {
         isLoading = false
     }
 
+    func updateIdleTimeout(seconds: Int) async throws {
+        let updatedUser = try await apiClient.updateProfile(idleTimeoutSeconds: seconds)
+        applyAuthenticatedUser(updatedUser)
+    }
+
     func logout() {
         apiClient.clearToken()
         currentUser = nil
         isAuthenticated = false
         errorMessage = nil
+        persistIdleTimeout(seconds: nil)
     }
 
     func refreshToken() async -> Bool {
@@ -120,5 +124,26 @@ class AuthViewModel: ObservableObject {
         currentUser = user
         isAuthenticated = true
         errorMessage = nil
+    }
+
+    // MARK: - Private Helper Methods
+
+    private func applyAuthenticatedUser(_ user: User) {
+        currentUser = user
+        isAuthenticated = true
+        persistIdleTimeout(seconds: user.idleTimeoutSeconds)
+    }
+
+    private func persistIdleTimeout(seconds: Int?) {
+        if let seconds = seconds {
+            UserDefaults.standard.set(seconds, forKey: AppConstants.idleTimeoutSecondsKey)
+            NotificationCenter.default.post(
+                name: .idleTimeoutUpdated,
+                object: nil,
+                userInfo: ["seconds": seconds]
+            )
+        } else {
+            UserDefaults.standard.removeObject(forKey: AppConstants.idleTimeoutSecondsKey)
+        }
     }
 }
