@@ -70,6 +70,9 @@ class AuthViewModel: ObservableObject {
     }
 
     func logout() {
+        // Disconnect Socket.IO
+        SocketService.shared.disconnect()
+
         apiClient.clearToken()
         currentUser = nil
         isAuthenticated = false
@@ -126,6 +129,14 @@ class AuthViewModel: ObservableObject {
         currentUser = user
         isAuthenticated = true
         persistIdleTimeout(seconds: user.idleTimeoutSeconds)
+
+        // Connect to Socket.IO with JWT token
+        if let token = apiClient.authToken {
+            SocketService.shared.connect(token: token)
+
+            // Initialize polling fallback (auto-monitors socket state)
+            _ = PollingFallbackService.shared
+        }
 
         // Notify other components to reload their data
         NotificationCenter.default.post(name: .userDidLogin, object: nil)

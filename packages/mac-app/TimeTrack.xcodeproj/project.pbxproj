@@ -9,6 +9,9 @@
 /* Begin PBXBuildFile section */
 		38119BE92E06006100F46039 /* IdleAlertView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38119BE82E06006100F46039 /* IdleAlertView.swift */; };
 		38C566342DFD0D910013F6DF /* IdleMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C566332DFD0D910013F6DF /* IdleMonitor.swift */; };
+		38A1B5032FFFFFF000000003 /* SocketService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38A1B5042FFFFFF000000004 /* SocketService.swift */; };
+		38A1B5052FFFFFF000000005 /* PollingFallbackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38A1B5062FFFFFF000000006 /* PollingFallbackService.swift */; };
+		38A1B5072FFFFFF000000007 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 38A1B5012FFFFFF000000002 /* SocketIO */; };
 		D0000001000000000 /* TimeTrackApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000002000000000 /* TimeTrackApp.swift */; };
 		D0000003000000000 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000004000000000 /* ContentView.swift */; };
 		D0000005000000000 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000006000000000 /* LoginView.swift */; };
@@ -32,6 +35,8 @@
 /* Begin PBXFileReference section */
 		38119BE82E06006100F46039 /* IdleAlertView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleAlertView.swift; sourceTree = "<group>"; };
 		38C566332DFD0D910013F6DF /* IdleMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleMonitor.swift; sourceTree = "<group>"; };
+		38A1B5042FFFFFF000000004 /* SocketService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketService.swift; sourceTree = "<group>"; };
+		38A1B5062FFFFFF000000006 /* PollingFallbackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PollingFallbackService.swift; sourceTree = "<group>"; };
 		D0000001000000001 /* TimeTrack.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TimeTrack.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D0000002000000000 /* TimeTrackApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeTrackApp.swift; sourceTree = "<group>"; };
 		D0000004000000000 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -59,6 +64,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				38A1B5072FFFFFF000000007 /* SocketIO in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -129,6 +135,8 @@
 				D0000016000000000 /* AuthService.swift */,
 				D0000018000000000 /* TimerService.swift */,
 				D0000032000000000 /* MenuBarManager.swift */,
+				38A1B5042FFFFFF000000004 /* SocketService.swift */,
+				38A1B5062FFFFFF000000006 /* PollingFallbackService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -165,6 +173,9 @@
 			dependencies = (
 			);
 			name = TimeTrack;
+			packageProductDependencies = (
+				38A1B5012FFFFFF000000002 /* SocketIO */,
+			);
 			productName = TimeTrack;
 			productReference = D0000001000000001 /* TimeTrack.app */;
 			productType = "com.apple.product-type.application";
@@ -193,6 +204,9 @@
 				Base,
 			);
 			mainGroup = D0000001000000003;
+			packageReferences = (
+				38A1B5002FFFFFF000000001 /* XCRemoteSwiftPackageReference "socket.io-client-swift" */,
+			);
 			productRefGroup = D0000001000000005 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -237,6 +251,8 @@
 				D0000033000000000 /* MenuBarView.swift in Sources */,
 				D0000035000000000 /* SharedComponents.swift in Sources */,
 				D0000001000000000 /* TimeTrackApp.swift in Sources */,
+				38A1B5032FFFFFF000000003 /* SocketService.swift in Sources */,
+				38A1B5052FFFFFF000000005 /* PollingFallbackService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -433,6 +449,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		38A1B5002FFFFFF000000001 /* XCRemoteSwiftPackageReference "socket.io-client-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/socketio/socket.io-client-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 16.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		38A1B5012FFFFFF000000002 /* SocketIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 38A1B5002FFFFFF000000001 /* XCRemoteSwiftPackageReference "socket.io-client-swift" */;
+			productName = SocketIO;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = D0000001000000015 /* Project object */;
 }
