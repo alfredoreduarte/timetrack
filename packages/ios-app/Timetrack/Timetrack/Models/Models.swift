@@ -1,11 +1,21 @@
 import Foundation
 
+enum AppConstants {
+    static let idleTimeoutSecondsKey = "timetrack_idle_timeout_seconds"
+    static let defaultIdleTimeoutSeconds = 600
+}
+
+extension Notification.Name {
+    static let idleTimeoutUpdated = Notification.Name("IdleTimeoutUpdated")
+}
+
 // MARK: - User Models
 struct User: Codable, Identifiable {
     let id: String
     let name: String
     let email: String
     let defaultHourlyRate: Double?
+    let idleTimeoutSeconds: Int?
     let createdAt: String?
     let updatedAt: String?
 }

@@ -275,6 +275,29 @@ class APIClient: ObservableObject {
         return response.token
     }
 
+    func updateProfile(idleTimeoutSeconds: Int) async throws -> User {
+        struct UpdateProfileRequest: Codable {
+            let idleTimeoutSeconds: Int
+        }
+
+        struct UpdateProfileResponse: Codable {
+            let message: String
+            let user: User
+        }
+
+        let requestBody = UpdateProfileRequest(idleTimeoutSeconds: idleTimeoutSeconds)
+        let body = try JSONEncoder().encode(requestBody)
+
+        let response = try await makeRequest(
+            endpoint: "/users/profile",
+            method: .PUT,
+            body: body,
+            responseType: UpdateProfileResponse.self
+        )
+
+        return response.user
+    }
+
     // MARK: - Projects API
     func getProjects() async throws -> [Project] {
         let response = try await makeRequest(

@@ -18,6 +18,9 @@ class TimerViewModel: ObservableObject {
 
     private let apiClient = APIClient.shared
     private var timer: Timer?
+    private var backgroundTime: Date?
+    private var idleTimeoutSeconds: Int
+    private var idleTimeoutObserver: NSObjectProtocol?
 
     var isRunning: Bool {
         currentEntry?.isRunning ?? false
@@ -48,20 +51,28 @@ class TimerViewModel: ObservableObject {
     }
 
     init() {
+        idleTimeoutSeconds = TimerViewModel.resolveIdleTimeoutSeconds()
         Task {
             await loadInitialData()
         }
 
         // Set up automatic refresh on app lifecycle changes
         setupAutoRefresh()
+
+        // Set up idle monitoring to automatically stop running timers
+        setupIdleMonitoring()
+        observeIdleTimeoutChanges()
     }
 
     deinit {
         timer?.invalidate()
         timer = nil
-        
+
         // Remove notification observers
         NotificationCenter.default.removeObserver(self)
+        if let observer = idleTimeoutObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     // MARK: - Data Loading
@@ -335,6 +346,74 @@ class TimerViewModel: ObservableObject {
     private func refreshTimerState() async {
         // Lightweight refresh focused on timer state
         await loadCurrentEntry()
+    }
+
+    // MARK: - Idle Monitoring Setup
+
+    private static func resolveIdleTimeoutSeconds() -> Int {
+        let stored = UserDefaults.standard.integer(forKey: AppConstants.idleTimeoutSecondsKey)
+        return stored > 0 ? stored : AppConstants.defaultIdleTimeoutSeconds
+    }
+
+    private func setupIdleMonitoring() {
+        // Monitor when app goes to background
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleAppBackgrounded()
+            }
+        }
+
+        // Monitor when app comes to foreground
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.handleAppForegrounded()
+            }
+        }
+    }
+
+    private func observeIdleTimeoutChanges() {
+        idleTimeoutObserver = NotificationCenter.default.addObserver(
+            forName: .idleTimeoutUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let seconds = notification.userInfo?["seconds"] as? Int else { return }
+            Task { @MainActor in
+                self?.idleTimeoutSeconds = seconds
+            }
+        }
+    }
+
+    private func handleAppBackgrounded() {
+        if isRunning {
+            backgroundTime = Date()
+        }
+    }
+
+    private func handleAppForegrounded() async {
+        guard let backgroundTime = backgroundTime, isRunning else {
+            self.backgroundTime = nil
+            return
+        }
+
+        let timeInBackground = Date().timeIntervalSince(backgroundTime)
+        self.backgroundTime = nil
+
+        if timeInBackground >= Double(idleTimeoutSeconds) {
+            // Stop the timer due to idle timeout
+            await stopTimer()
+        } else {
+            // Just refresh the timer state
+            await loadCurrentEntry()
+        }
     }
 }
 
