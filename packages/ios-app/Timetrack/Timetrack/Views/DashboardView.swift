@@ -9,113 +9,123 @@ struct DashboardView: View {
 
     var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                // Fixed Timer Section at the top
-                TimerView(
-                    onRefresh: {
-                        Task {
-                            withAnimation(.linear(duration: 1)) {
-                                rotationDegrees = 360
-                            }
-                            await timerViewModel.loadInitialData()
-                            await dashboardViewModel.loadDashboardEarnings()
-                            // Reset without animation
-                            rotationDegrees = 0
-                        }
-                    },
-                    onSettings: {
-                        showingSettings = true
-                    },
-                    rotationDegrees: rotationDegrees,
-                    isRefreshing: timerViewModel.isRefreshing
-                )
-                .padding()
-                .background(AppTheme.background)
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
-                .padding(.horizontal)
-                .padding(.top)
+            ZStack {
+                // Dark background
+                AppTheme.background
+                    .ignoresSafeArea()
 
-                // Scrollable content below TimerView
-                ScrollView {
-                    VStack(spacing: 16) {
-                        // Earnings Cards Section
-                        if dashboardViewModel.isLoading {
-                            HStack(spacing: 16) {
-                                LoadingEarningsCard(title: "Today")
-                                LoadingEarningsCard(title: "This Week")
-                            }
-                        } else if let errorMessage = dashboardViewModel.errorMessage {
-                            Text("Failed to load earnings: \(errorMessage)")
-                                .foregroundColor(AppTheme.error)
-                                .font(.caption)
-                                .padding()
-                        } else {
-                            HStack(spacing: 16) {
-                                // Today's Earnings Card (with live updates)
-                                LiveEarningsCard(
-                                    title: "Today",
-                                    dashboardViewModel: dashboardViewModel,
-                                    duration: dashboardViewModel.todayDurationFormatted
-                                )
+                VStack(spacing: 0) {
+                    // Header
+                    HStack {
+                        Text("TimeTrack")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.primary)
 
-                                // This Week's Earnings Card
-                                EarningsCard(
-                                    title: "This Week",
-                                    earnings: dashboardViewModel.thisWeekEarningsFormatted,
-                                    duration: dashboardViewModel.thisWeekDurationFormatted
-                                )
-                            }
-                        }
+                        Spacer()
 
-                        // Recent Time Entries Section
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Recent Entries")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                            // Time entries list
-                            if timerViewModel.recentEntries.isEmpty {
-                                VStack(spacing: 12) {
-                                    Text("No time entries yet")
-                                        .font(.headline)
-                                        .foregroundColor(.secondary)
+                        HStack(spacing: AppTheme.spacingMD) {
+                            Button(action: {
+                                Task {
+                                    withAnimation(.linear(duration: 1)) {
+                                        rotationDegrees = 360
+                                    }
+                                    await timerViewModel.loadInitialData()
+                                    await dashboardViewModel.loadDashboardEarnings()
+                                    rotationDegrees = 0
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 20)
+                            }) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 18, weight: .medium))
+                                    .foregroundColor(AppTheme.secondary)
+                            }
+                            .rotationEffect(.degrees(rotationDegrees))
+                            .disabled(timerViewModel.isRefreshing)
+
+                            Button(action: {
+                                showingSettings = true
+                            }) {
+                                Image(systemName: "gearshape")
+                                    .font(.system(size: 18, weight: .medium))
+                                    .foregroundColor(AppTheme.secondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, AppTheme.spacingLG)
+                    .padding(.top, AppTheme.spacingMD)
+                    .padding(.bottom, AppTheme.spacingSM)
+
+                    // Fixed Timer Section at the top
+                    TimerView()
+                    .padding(AppTheme.spacingLG)
+                    .background(AppTheme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusLG))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.radiusLG)
+                            .stroke(AppTheme.border, lineWidth: 1)
+                    )
+                    .padding(.horizontal, AppTheme.spacingLG)
+                    .padding(.top, AppTheme.spacingSM)
+
+                    // Scrollable content below TimerView
+                    ScrollView {
+                        VStack(spacing: AppTheme.spacingLG) {
+                            // Earnings Cards Section
+                            if dashboardViewModel.isLoading {
+                                HStack(spacing: AppTheme.spacingMD) {
+                                    LoadingEarningsCard(title: "Today")
+                                    LoadingEarningsCard(title: "This Week")
+                                }
+                            } else if let errorMessage = dashboardViewModel.errorMessage {
+                                Text("Failed to load earnings: \(errorMessage)")
+                                    .foregroundColor(AppTheme.error)
+                                    .font(.system(size: 13))
+                                    .padding()
                             } else {
-                                LazyVStack(spacing: 12) {
-                                    ForEach(timerViewModel.recentEntries) { entry in
-                                        TimeEntryRow(entry: entry)
+                                HStack(spacing: AppTheme.spacingMD) {
+                                    // Today's Earnings Card (with live updates)
+                                    LiveEarningsCard(
+                                        title: "Today",
+                                        dashboardViewModel: dashboardViewModel,
+                                        duration: dashboardViewModel.todayDurationFormatted
+                                    )
+
+                                    // This Week's Earnings Card
+                                    EarningsCard(
+                                        title: "This Week",
+                                        earnings: dashboardViewModel.thisWeekEarningsFormatted,
+                                        duration: dashboardViewModel.thisWeekDurationFormatted
+                                    )
+                                }
+                            }
+
+                            // Recent Time Entries Section
+                            VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
+                                Text("Recent Entries")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(AppTheme.primary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                // Time entries list
+                                if timerViewModel.recentEntries.isEmpty {
+                                    PremiumEmptyState(
+                                        icon: "clock.arrow.circlepath",
+                                        title: "No time entries yet",
+                                        subtitle: "Start tracking to see your entries here"
+                                    )
+                                } else {
+                                    LazyVStack(spacing: AppTheme.spacingMD) {
+                                        ForEach(timerViewModel.recentEntries) { entry in
+                                            TimeEntryRow(entry: entry)
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    .padding()
-                }
-            }
-            .background(Color(UIColor.systemBackground))
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HStack {
-                        Text("TimeTrack")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                        
-                        Button(action: {
-                            authViewModel.logout()
-                        }) {
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                                .font(.title3)
-                                .foregroundColor(.secondary)
-                        }
+                        .padding(AppTheme.spacingLG)
                     }
                 }
             }
+            .navigationBarHidden(true)
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
             }
@@ -133,73 +143,86 @@ struct DashboardView: View {
 struct TimeEntryRow: View {
     @EnvironmentObject var timerViewModel: TimerViewModel
     let entry: TimeEntry
-    @State private var isBlinking = false
+    @State private var borderOpacity: Double = 0.5
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    // Use shared project display component
-                    ProjectTaskDisplayView(
-                        entry: entry,
-                        style: .full
-                    )
-                    .opacity(entry.isRunning ? (isBlinking ? 0.3 : 1.0) : 1.0)
-                    .onAppear {
-                        if entry.isRunning {
-                            withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
-                                isBlinking = true
-                            }
-                        }
-                    }
-                    .onChange(of: entry.isRunning) { newValue in
-                        if newValue {
-                            withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
-                                isBlinking = true
-                            }
-                        } else {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                isBlinking = false
-                            }
-                        }
-                    }
+        HStack(spacing: AppTheme.spacingMD) {
+            // Project color indicator
+            Circle()
+                .fill(timerViewModel.getProjectColor(for: entry))
+                .frame(width: 8, height: 8)
 
-                    Spacer()
+            // Project/task info and description
+            VStack(alignment: .leading, spacing: AppTheme.spacingXS) {
+                HStack(spacing: AppTheme.spacingSM) {
+                    Text(entry.project?.name ?? "No Project")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(AppTheme.primary)
+                        .lineLimit(1)
 
-                    // Duration display
-                    if !entry.isRunning {
-                        Text(entry.formattedDurationShort)
-                            .font(.headline)
-                            .fontWeight(.medium)
+                    if let task = entry.task {
+                        Text(task.name)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(AppTheme.tertiary)
+                            .lineLimit(1)
                     }
                 }
 
                 if let description = entry.description, !description.isEmpty {
                     Text(description)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 13))
+                        .foregroundColor(AppTheme.tertiary)
                         .lineLimit(1)
                 }
             }
-            .padding()
-            .frame(maxWidth: .infinity)
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(entry.isRunning ? AppTheme.success.opacity(0.5) : Color.primary.opacity(0.1), lineWidth: 0.5)
-            )
 
-            // Restart button
-            if !timerViewModel.isRunning {
+            Spacer()
+
+            // Duration display
+            Text(entry.formattedDurationShort)
+                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                .foregroundColor(AppTheme.primary)
+
+            // Play button (only when no timer running)
+            if !timerViewModel.isRunning && !entry.isRunning {
                 Button(action: {
                     Task {
                         await timerViewModel.restartTimer(fromEntry: entry)
                     }
                 }) {
-                    Image(systemName: "play.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(AppTheme.success)
+                    ZStack {
+                        Circle()
+                            .stroke(AppTheme.success, lineWidth: 2)
+                            .frame(width: 36, height: 36)
+
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(AppTheme.success)
+                    }
                 }
+            }
+        }
+        .padding(AppTheme.spacingMD)
+        .background(AppTheme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD)
+                .stroke(entry.isRunning ? AppTheme.success.opacity(borderOpacity) : AppTheme.border, lineWidth: entry.isRunning ? 2 : 1)
+        )
+        .onAppear {
+            if entry.isRunning {
+                withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
+                    borderOpacity = 1.0
+                }
+            }
+        }
+        .onChange(of: entry.isRunning) { newValue in
+            if newValue {
+                withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
+                    borderOpacity = 1.0
+                }
+            } else {
+                borderOpacity = 0.5
             }
         }
     }
@@ -211,59 +234,67 @@ struct EarningsCard: View {
     let duration: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(title)
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
-            }
+        VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AppTheme.secondary)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: AppTheme.spacingXS) {
                 Text(earnings)
-                    .font(.title)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primary)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.primary)
 
                 Text(duration)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 13))
+                    .foregroundColor(AppTheme.tertiary)
             }
         }
-        .padding()
+        .padding(AppTheme.spacingLG)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(12)
+        .background(AppTheme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD)
+                .stroke(AppTheme.border, lineWidth: 1)
+        )
     }
 }
 
 struct LoadingEarningsCard: View {
     let title: String
+    @State private var isShimmering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(title)
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
-            }
+        VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AppTheme.secondary)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("...")
-                    .font(.title)
-                    .fontWeight(.bold)
-                    .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: AppTheme.spacingXS) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(AppTheme.border)
+                    .frame(width: 80, height: 28)
+                    .opacity(isShimmering ? 0.5 : 1)
 
-                Text("Loading...")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(AppTheme.border)
+                    .frame(width: 60, height: 16)
+                    .opacity(isShimmering ? 0.5 : 1)
             }
         }
-        .padding()
+        .padding(AppTheme.spacingLG)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(12)
+        .background(AppTheme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD)
+                .stroke(AppTheme.border, lineWidth: 1)
+        )
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
+                isShimmering = true
+            }
+        }
     }
 }
 
@@ -279,29 +310,29 @@ struct LiveEarningsCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(title)
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
-            }
+        VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AppTheme.secondary)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: AppTheme.spacingXS) {
                 Text(liveEarnings)
-                    .font(.title)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primary)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.primary)
 
                 Text(duration)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 13))
+                    .foregroundColor(AppTheme.tertiary)
             }
         }
-        .padding()
+        .padding(AppTheme.spacingLG)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(12)
+        .background(AppTheme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD)
+                .stroke(AppTheme.border, lineWidth: 1)
+        )
     }
 }
 

@@ -12,118 +12,131 @@ struct RegisterView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Header
-                    VStack(spacing: 16) {
-                        Image(systemName: "person.crop.circle.fill.badge.plus")
-                            .font(.system(size: 60))
-                            .foregroundColor(.blue)
+            ZStack {
+                // Dark background
+                AppTheme.background
+                    .ignoresSafeArea()
 
-                        Text("Create your account")
-                            .font(.title)
-                            .fontWeight(.bold)
-                            .foregroundColor(.primary)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Header
+                        VStack(spacing: AppTheme.spacingLG) {
+                            // App icon with gradient
+                            ZStack {
+                                Circle()
+                                    .fill(AppTheme.accentGradient)
+                                    .frame(width: 80, height: 80)
+                                    .shadow(color: AppTheme.accent.opacity(0.4), radius: 15, x: 0, y: 8)
 
-                        Text("Start tracking your time today")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.bottom, 40)
-                    .padding(.top, 20)
-
-                    // Register Form
-                    VStack(spacing: 20) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Full Name")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-
-                            TextField("Enter your full name", text: $name)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .textInputAutocapitalization(.words)
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Email Address")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-
-                            TextField("Enter your email", text: $email)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .textInputAutocapitalization(.never)
-                                .keyboardType(.emailAddress)
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Password")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-
-                            SecureField("Enter your password", text: $password)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Confirm Password")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-
-                            SecureField("Confirm your password", text: $confirmPassword)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .border(showingPasswordMismatchError ? Color.red : Color.clear, width: 1)
-                        }
-
-                        if showingPasswordMismatchError {
-                            Text("Passwords do not match")
-                                .foregroundColor(.red)
-                                .font(.caption)
-                        }
-
-                        if let errorMessage = authViewModel.errorMessage {
-                            Text(errorMessage)
-                                .foregroundColor(.red)
-                                .font(.caption)
-                                .multilineTextAlignment(.center)
-                        }
-
-                        Button(action: {
-                            register()
-                        }) {
-                            HStack {
-                                if authViewModel.isLoading {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                }
-                                Text(authViewModel.isLoading ? "Creating Account..." : "Create Account")
-                                    .fontWeight(.semibold)
+                                Image(systemName: "person.crop.circle.badge.plus")
+                                    .font(.system(size: 36, weight: .medium))
+                                    .foregroundColor(.white)
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(isFormValid ? Color.blue : Color.gray)
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
-                        }
-                        .disabled(!isFormValid || authViewModel.isLoading)
 
-                        HStack {
+                            VStack(spacing: AppTheme.spacingSM) {
+                                Text("Create Account")
+                                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                                    .foregroundColor(AppTheme.primary)
+
+                                Text("Start tracking your time today")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(AppTheme.secondary)
+                            }
+                        }
+                        .padding(.top, 40)
+                        .padding(.bottom, 32)
+
+                        // Register Form Card
+                        VStack(spacing: AppTheme.spacingXL) {
+                            VStack(spacing: AppTheme.spacingLG) {
+                                PremiumInputField(
+                                    title: "Full Name",
+                                    placeholder: "Enter your full name",
+                                    text: $name,
+                                    autocapitalization: .words
+                                )
+
+                                PremiumInputField(
+                                    title: "Email",
+                                    placeholder: "Enter your email",
+                                    text: $email,
+                                    keyboardType: .emailAddress,
+                                    autocapitalization: .never
+                                )
+
+                                PremiumInputField(
+                                    title: "Password",
+                                    placeholder: "Enter your password",
+                                    text: $password,
+                                    isSecure: true
+                                )
+
+                                PremiumInputField(
+                                    title: "Confirm Password",
+                                    placeholder: "Confirm your password",
+                                    text: $confirmPassword,
+                                    isSecure: true,
+                                    errorMessage: showingPasswordMismatchError ? "Passwords do not match" : nil
+                                )
+                            }
+                            .onSubmit {
+                                if isFormValid && !authViewModel.isLoading {
+                                    register()
+                                }
+                            }
+
+                            if let errorMessage = authViewModel.errorMessage {
+                                Text(errorMessage)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(AppTheme.error)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal)
+                            }
+
+                            // Create Account Button
+                            Button(action: {
+                                register()
+                            }) {
+                                HStack(spacing: AppTheme.spacingSM) {
+                                    if authViewModel.isLoading {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    }
+                                    Text(authViewModel.isLoading ? "Creating Account..." : "Create Account")
+                                }
+                            }
+                            .buttonStyle(PremiumPrimaryButtonStyle())
+                            .disabled(!isFormValid || authViewModel.isLoading)
+                            .opacity((!isFormValid || authViewModel.isLoading) ? 0.6 : 1)
+                        }
+                        .padding(AppTheme.spacingXL)
+                        .background(AppTheme.cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusLG))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppTheme.radiusLG)
+                                .stroke(AppTheme.border, lineWidth: 1)
+                        )
+                        .padding(.horizontal, AppTheme.spacingLG)
+
+                        // Sign in link
+                        HStack(spacing: AppTheme.spacingXS) {
                             Text("Already have an account?")
-                                .foregroundColor(.secondary)
+                                .font(.system(size: 14))
+                                .foregroundColor(AppTheme.secondary)
 
                             Button("Sign in") {
                                 showingRegister = false
                             }
-                            .foregroundColor(.blue)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(AppTheme.accent)
                         }
-                        .padding(.top, 10)
+                        .padding(.top, AppTheme.spacingXL)
                     }
-                    .padding(.horizontal, 40)
-                    .frame(maxWidth: 400)
+                    .padding(.bottom, 40)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(UIColor.systemBackground))
+            .navigationBarHidden(true)
             .onAppear {
                 authViewModel.clearError()
             }

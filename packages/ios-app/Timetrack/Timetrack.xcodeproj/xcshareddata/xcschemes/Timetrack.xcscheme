@@ -54,7 +54,7 @@
          <EnvironmentVariable
             key = "TIMETRACK_API_URL"
             value = "http://localhost:3011"
-            isEnabled = "NO">
+            isEnabled = "YES">
          </EnvironmentVariable>
       </EnvironmentVariables>
    </LaunchAction>
