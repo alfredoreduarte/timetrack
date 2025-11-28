@@ -221,7 +221,7 @@ POSTGRES_PASSWORD     # Database password
 JWT_SECRET           # JWT signing secret
 EMAIL_HOST          # SMTP server for password reset
 ALLOWED_ORIGINS     # CORS origins (comma-separated)
-REACT_APP_API_URL   # API endpoint for UI
+VITE_API_URL        # API endpoint for UI
 ```
 
 ## Port Allocation

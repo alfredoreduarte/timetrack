@@ -35,7 +35,7 @@ JWT_SECRET=your_very_long_random_secret_key_here
 
 # Optional - Customize as needed
 ALLOWED_ORIGINS=http://localhost:3010,https://yourdomain.com
-REACT_APP_API_URL=http://localhost:3011
+VITE_API_URL=http://localhost:3011
 ```
 
 ### 3. Start Development Environment
@@ -116,7 +116,7 @@ JWT_SECRET=very_long_random_string_at_least_32_characters
 
 # Domain configuration
 ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
-REACT_APP_API_URL=https://api.yourdomain.com
+VITE_API_URL=https://api.yourdomain.com
 
 # Optional
 LOG_LEVEL=info
@@ -224,7 +224,7 @@ docker volume prune             # Clean up volumes
 | `POSTGRES_PASSWORD` | ✅ | - | Database password |
 | `JWT_SECRET` | ✅ | - | JWT signing secret (32+ chars) |
 | `ALLOWED_ORIGINS` | ❌ | `http://localhost:3010` | CORS allowed origins |
-| `REACT_APP_API_URL` | ❌ | `http://localhost:3011` | API URL for frontend |
+| `VITE_API_URL` | ❌ | `http://localhost:3011` | API URL for frontend |
 
 ### Port Reference
 
