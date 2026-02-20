@@ -41,14 +41,20 @@ jobs:
             ./deploy.sh prod
 
             echo "=== Verifying health ==="
-            sleep 10
             for service in "3011/health" "3010/health"; do
-              if curl -sf "http://localhost:${service}" > /dev/null; then
-                echo "✓ localhost:${service} is healthy"
-              else
-                echo "✗ localhost:${service} failed health check"
-                exit 1
-              fi
+              echo "Waiting for localhost:${service}..."
+              for i in $(seq 1 30); do
+                if curl -sf "http://localhost:${service}" > /dev/null 2>&1; then
+                  echo "✓ localhost:${service} is healthy"
+                  break
+                fi
+                if [ "$i" -eq 30 ]; then
+                  echo "✗ localhost:${service} failed health check after 30 attempts"
+                  docker logs timetrack-api-prod --tail 50 2>&1 || true
+                  exit 1
+                fi
+                sleep 2
+              done
             done
 
             echo "=== Deploy complete ==="
