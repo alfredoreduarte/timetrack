@@ -267,11 +267,6 @@ struct APIError: Codable {
     let message: String?
 }
 
-// MARK: - Generic Response
-struct GenericResponse: Codable {
-    let message: String
-}
-
 // MARK: - Captcha Models
 struct CaptchaResponse: Codable {
     let captchaId: String
