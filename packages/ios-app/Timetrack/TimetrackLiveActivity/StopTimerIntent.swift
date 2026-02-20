@@ -28,6 +28,7 @@ struct StopTimerIntent: LiveActivityIntent {
         let baseURL = sharedDefaults?.string(forKey: "timetrack_api_base_url")
             ?? "https://api.track.alfredo.re"
         guard let url = URL(string: "\(baseURL)/time-entries/\(entryId)/stop") else {
+            print("❌ StopTimerIntent: Invalid URL for entryId: \(entryId)")
             return .result()
         }
 
@@ -39,10 +40,14 @@ struct StopTimerIntent: LiveActivityIntent {
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
 
-            if let httpResponse = response as? HTTPURLResponse,
-               httpResponse.statusCode == 200 {
-                // End the Live Activity
-                await endActivity()
+            if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode == 200 {
+                    await endActivity()
+                } else if httpResponse.statusCode == 401 {
+                    // Token expired — end the orphaned Live Activity
+                    print("⚠️ StopTimerIntent: Auth token expired (401), ending activity")
+                    await endActivity()
+                }
             }
         } catch {
             print("Failed to stop timer: \(error)")
