@@ -458,6 +458,7 @@ struct MenuBarView: View {
     private func startRefreshTimer() {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
             Task { @MainActor in
+                guard timerViewModel.isRunning else { return }
                 await dashboardViewModel.loadDashboardEarnings()
             }
         }

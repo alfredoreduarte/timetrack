@@ -246,32 +246,15 @@ class TimerViewModel: ObservableObject {
 
     // MARK: - Elapsed Time Management
     private func calculateElapsedTime(from startTimeString: String) {
-        let formatters = [
-            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-            "yyyy-MM-dd'T'HH:mm:ss'Z'",
-            "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'"
-        ]
-
-        var startTime: Date?
-
-        for format in formatters {
-            let formatter = DateFormatter()
-            formatter.dateFormat = format
-            formatter.timeZone = TimeZone(identifier: "UTC")
-
-            if let date = formatter.date(from: startTimeString) {
-                startTime = date
-                break
-            }
-        }
-
-        guard let startTime = startTime else {
-            print("❌ Failed to parse start time: \(startTimeString)")
+        guard let startDate = DateUtils.parseISO8601(startTimeString) else {
+            #if DEBUG
+            print("Failed to parse start time: \(startTimeString)")
+            #endif
             elapsedTime = 0
             return
         }
 
-        let elapsed = Int(Date().timeIntervalSince(startTime))
+        let elapsed = Int(Date().timeIntervalSince(startDate))
         elapsedTime = max(0, elapsed)
     }
 

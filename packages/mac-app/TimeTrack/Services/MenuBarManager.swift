@@ -132,10 +132,11 @@ class MenuBarManager: ObservableObject {
             await dashboardViewModel.loadDashboardEarnings()
         }
 
-        // Refresh earnings every 30 seconds to keep today's total updated
+        // Refresh earnings every 30 seconds, but only when a timer is running
         earningsRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                await self?.dashboardViewModel.loadDashboardEarnings()
+                guard let self, self.timerViewModel.isRunning else { return }
+                await self.dashboardViewModel.loadDashboardEarnings()
             }
         }
     }
