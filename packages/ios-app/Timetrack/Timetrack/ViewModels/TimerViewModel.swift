@@ -233,26 +233,7 @@ class TimerViewModel: ObservableObject {
 
     // MARK: - Elapsed Time Management
     private func calculateElapsedTime(from startTimeString: String) {
-        let formatters = [
-            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-            "yyyy-MM-dd'T'HH:mm:ss'Z'",
-            "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'"
-        ]
-
-        var startTime: Date?
-
-        for format in formatters {
-            let formatter = DateFormatter()
-            formatter.dateFormat = format
-            formatter.timeZone = TimeZone(identifier: "UTC")
-
-            if let date = formatter.date(from: startTimeString) {
-                startTime = date
-                break
-            }
-        }
-
-        guard let startTime = startTime else {
+        guard let startTime = DateUtils.parseISO8601(startTimeString) else {
             print("❌ Failed to parse start time: \(startTimeString)")
             elapsedTime = 0
             return
@@ -836,30 +817,4 @@ struct AppTheme {
     static let radiusFull: CGFloat = 100
 }
 
-// MARK: - Color Extension
-extension Color {
-    init?(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            return nil
-        }
-
-        self.init(
-            .sRGB,
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue:  Double(b) / 255,
-            opacity: Double(a) / 255
-        )
-    }
-}
+// Color(hex:) extension is in Extensions/Color+Hex.swift

@@ -35,6 +35,7 @@ struct TimetrackLiveActivityLiveActivity: Widget {
                         .fontWeight(.bold)
                         .foregroundColor(.green)
                         .monospacedDigit()
+                        .privacySensitive()
                 }
 
                 DynamicIslandExpandedRegion(.center) {
@@ -134,6 +135,7 @@ struct LockScreenView: View {
                     .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.green)
                     .monospacedDigit()
+                    .privacySensitive()
             }
 
             // Stop button

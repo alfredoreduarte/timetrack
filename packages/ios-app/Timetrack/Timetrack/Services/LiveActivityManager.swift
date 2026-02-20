@@ -143,22 +143,6 @@ class LiveActivityManager: ObservableObject {
     }
 
     private func parseStartTime(_ startTimeString: String) -> Date? {
-        let formatters = [
-            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-            "yyyy-MM-dd'T'HH:mm:ss'Z'",
-            "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'"
-        ]
-
-        for format in formatters {
-            let formatter = DateFormatter()
-            formatter.dateFormat = format
-            formatter.timeZone = TimeZone(identifier: "UTC")
-
-            if let date = formatter.date(from: startTimeString) {
-                return date
-            }
-        }
-
-        return nil
+        DateUtils.parseISO8601(startTimeString)
     }
 }
