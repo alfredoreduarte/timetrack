@@ -74,8 +74,6 @@ The app follows the MVVM (Model-View-ViewModel) pattern with SwiftUI:
 
 ### Services
 - `APIClient` - HTTP client for API communication
-- `AuthService` - Authentication operations
-- `TimerService` - Timer and project operations
 - `MenuBarManager` - Menu bar status item and popover management
 
 ### ViewModels

@@ -19,8 +19,6 @@
 		D0000009000000000 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000010000000000 /* DashboardView.swift */; };
 		D0000011000000000 /* TimerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000012000000000 /* TimerView.swift */; };
 		D0000013000000000 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000014000000000 /* APIClient.swift */; };
-		D0000015000000000 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000016000000000 /* AuthService.swift */; };
-		D0000017000000000 /* TimerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000018000000000 /* TimerService.swift */; };
 		D0000019000000000 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000020000000000 /* Models.swift */; };
 		D0000021000000000 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000022000000000 /* AuthViewModel.swift */; };
 		D0000023000000000 /* TimerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000024000000000 /* TimerViewModel.swift */; };
@@ -45,8 +43,6 @@
 		D0000010000000000 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		D0000012000000000 /* TimerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerView.swift; sourceTree = "<group>"; };
 		D0000014000000000 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
-		D0000016000000000 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
-		D0000018000000000 /* TimerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerService.swift; sourceTree = "<group>"; };
 		D0000020000000000 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		D0000022000000000 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		D0000024000000000 /* TimerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerViewModel.swift; sourceTree = "<group>"; };
@@ -132,8 +128,6 @@
 			children = (
 				38C566332DFD0D910013F6DF /* IdleMonitor.swift */,
 				D0000014000000000 /* APIClient.swift */,
-				D0000016000000000 /* AuthService.swift */,
-				D0000018000000000 /* TimerService.swift */,
 				D0000032000000000 /* MenuBarManager.swift */,
 				38A1B5042FFFFFF000000004 /* SocketService.swift */,
 				38A1B5062FFFFFF000000006 /* PollingFallbackService.swift */,
@@ -239,8 +233,6 @@
 				D0000009000000000 /* DashboardView.swift in Sources */,
 				D0000011000000000 /* TimerView.swift in Sources */,
 				D0000013000000000 /* APIClient.swift in Sources */,
-				D0000015000000000 /* AuthService.swift in Sources */,
-				D0000017000000000 /* TimerService.swift in Sources */,
 				D0000019000000000 /* Models.swift in Sources */,
 				D0000021000000000 /* AuthViewModel.swift in Sources */,
 				D0000023000000000 /* TimerViewModel.swift in Sources */,
