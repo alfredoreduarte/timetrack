@@ -146,10 +146,26 @@ deploy() {
     set +a
 
     # Stop existing containers
-    docker_compose -f "$compose_file" down
+    docker_compose -f "$compose_file" down --remove-orphans
+
+    if [ "$mode" = "prod" ]; then
+        # Remove dangling images left by previous builds
+        log_info "Pruning dangling Docker images..."
+        docker image prune -f
+
+        # Remove old build cache (keeps recent layers for faster rebuilds)
+        log_info "Pruning Docker build cache older than 7 days..."
+        docker builder prune -f --filter "until=168h"
+    fi
 
     # Build and start services
     docker_compose -f "$compose_file" up -d --build
+
+    if [ "$mode" = "prod" ]; then
+        # Clean up old images that are no longer used by any container
+        log_info "Removing unused images from previous deployments..."
+        docker image prune -af --filter "until=24h"
+    fi
 
     log_info "$mode deployment complete!"
     log_info "Access the application at:"
