@@ -1,58 +1,31 @@
 import Foundation
+import Security
 
 // MARK: - API Client for Watch
 class WatchAPIClient: ObservableObject {
     static let shared = WatchAPIClient()
-    
+
     private let baseURL: String
     private let session = URLSession.shared
-    
+
     init() {
         self.baseURL = "https://api.track.alfredo.re"
     }
-    
+
+    // NOTE: Service, account, and access group must match KeychainHelper.swift in the main app target.
     private var authToken: String? {
-        // Test App Groups connectivity
-        if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared") {
-            print("📋 Watch: Successfully accessed shared UserDefaults")
-            
-            // Force synchronize to get latest data
-            sharedDefaults.synchronize()
-            print("📋 Watch: Synchronized shared UserDefaults")
-            
-            // Wait a moment for sync
-            Thread.sleep(forTimeInterval: 0.1)
-            
-            // Test if we can read the test value
-            if let testValue = sharedDefaults.string(forKey: "test-key") {
-                print("📋 Watch: Found test value in shared storage: \(testValue)")
-            } else {
-                print("❌ Watch: No test value found in shared storage")
-                
-                // List all keys in shared UserDefaults for debugging
-                let allKeys = sharedDefaults.dictionaryRepresentation().keys
-                print("📋 Watch: All keys in shared UserDefaults: \(Array(allKeys))")
-            }
-            
-            // Try to get the auth token
-            if let token = sharedDefaults.string(forKey: "timetrack_auth_token") {
-                print("🔑 Watch: Found token in shared UserDefaults: \(token.prefix(20))...")
-                return token
-            } else {
-                print("❌ Watch: No auth token found in shared UserDefaults")
-            }
-        } else {
-            print("❌ Watch: Failed to access shared UserDefaults")
-        }
-        
-        // Fallback to local UserDefaults
-        let localToken = UserDefaults.standard.string(forKey: "timetrack_auth_token")
-        if let token = localToken {
-            print("🔑 Watch: Found token in local UserDefaults: \(token.prefix(20))...")
-        } else {
-            print("❌ Watch: No token found in local UserDefaults either")
-        }
-        return localToken
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.timetrack.ios",
+            kSecAttrAccount as String: "timetrack_auth_token",
+            kSecAttrAccessGroup as String: "group.com.timetrack.shared",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
     }
     
     func hasAuthToken() -> Bool {

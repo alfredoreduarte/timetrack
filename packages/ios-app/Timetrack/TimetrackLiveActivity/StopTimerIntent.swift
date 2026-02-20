@@ -1,5 +1,6 @@
 import AppIntents
 import ActivityKit
+import Security
 
 struct StopTimerIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Stop Timer"
@@ -16,19 +17,39 @@ struct StopTimerIntent: LiveActivityIntent {
         self.entryId = entryId
     }
 
+    /// Read token from shared Keychain access group.
+    /// NOTE: Service, account, and access group must match KeychainHelper.swift in the main app target.
+    private func getTokenFromKeychain() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.timetrack.ios",
+            kSecAttrAccount as String: "timetrack_auth_token",
+            kSecAttrAccessGroup as String: "group.com.timetrack.shared",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     func perform() async throws -> some IntentResult {
-        // Get auth token from shared UserDefaults
-        let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared")
-        guard let token = sharedDefaults?.string(forKey: "timetrack_auth_token") else {
-            print("❌ StopTimerIntent: No auth token found in shared storage")
+        guard let token = getTokenFromKeychain() else {
+            #if DEBUG
+            print("StopTimerIntent: No auth token found in Keychain")
+            #endif
             return .result()
         }
 
-        // Read API URL from shared UserDefaults (written by main app's APIClient)
+        // Read API URL from shared UserDefaults (non-sensitive, written by main app)
+        let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared")
         let baseURL = sharedDefaults?.string(forKey: "timetrack_api_base_url")
             ?? "https://api.track.alfredo.re"
         guard let url = URL(string: "\(baseURL)/time-entries/\(entryId)/stop") else {
-            print("❌ StopTimerIntent: Invalid URL for entryId: \(entryId)")
+            #if DEBUG
+            print("StopTimerIntent: Invalid URL for entryId: \(entryId)")
+            #endif
             return .result()
         }
 
@@ -44,13 +65,13 @@ struct StopTimerIntent: LiveActivityIntent {
                 if httpResponse.statusCode == 200 {
                     await endActivity()
                 } else if httpResponse.statusCode == 401 {
-                    // Token expired — end the orphaned Live Activity
-                    print("⚠️ StopTimerIntent: Auth token expired (401), ending activity")
                     await endActivity()
                 }
             }
         } catch {
+            #if DEBUG
             print("Failed to stop timer: \(error)")
+            #endif
         }
 
         return .result()
