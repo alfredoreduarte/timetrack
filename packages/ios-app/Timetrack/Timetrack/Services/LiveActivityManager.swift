@@ -1,9 +1,8 @@
 import Foundation
 import ActivityKit
-import SwiftUI
 
 @MainActor
-class LiveActivityManager: ObservableObject {
+class LiveActivityManager {
     static let shared = LiveActivityManager()
 
     private var currentActivity: Activity<TimerActivityAttributes>?
@@ -49,9 +48,10 @@ class LiveActivityManager: ObservableObject {
         )
 
         do {
+            let staleDate = Date().addingTimeInterval(120)
             let activity = try Activity.request(
                 attributes: attributes,
-                content: ActivityContent(state: initialState, staleDate: nil),
+                content: ActivityContent(state: initialState, staleDate: staleDate),
                 pushType: nil
             )
             currentActivity = activity
@@ -91,8 +91,9 @@ class LiveActivityManager: ObservableObject {
             isRunning: true
         )
 
+        let staleDate = Date().addingTimeInterval(120)
         await activity.update(
-            ActivityContent(state: updatedState, staleDate: nil)
+            ActivityContent(state: updatedState, staleDate: staleDate)
         )
     }
 

@@ -1,5 +1,5 @@
 //
-//  TimetrackLiveActivityLiveActivity.swift
+//  TimerActivityWidget.swift
 //  TimetrackLiveActivity
 //
 //  Created by Alfredo Re on 2025-11-28.
@@ -9,7 +9,7 @@ import ActivityKit
 import WidgetKit
 import SwiftUI
 
-struct TimetrackLiveActivityLiveActivity: Widget {
+struct TimerActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TimerActivityAttributes.self) { context in
             // Lock Screen / Banner UI
@@ -198,7 +198,7 @@ extension Color {
     startTime: Date().addingTimeInterval(-3725),
     entryId: "preview-123"
 )) {
-    TimetrackLiveActivityLiveActivity()
+    TimerActivityWidget()
 } contentStates: {
     TimerActivityAttributes.ContentState(elapsedSeconds: 3725, isRunning: true)
 }
