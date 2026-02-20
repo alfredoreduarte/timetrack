@@ -505,13 +505,14 @@ router.post(
     if (user) {
       // Generate secure reset token
       const resetToken = crypto.randomBytes(32).toString('hex');
+      const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
       const resetExpiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
 
-      // Save reset token to database
+      // Save hashed token to database (raw token is sent via email)
       await prisma.user.update({
         where: { id: user.id },
         data: {
-          passwordResetToken: resetToken,
+          passwordResetToken: hashedToken,
           passwordResetExpiresAt: resetExpiresAt,
         },
       });
@@ -583,10 +584,13 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const { token, password } = resetPasswordSchema.parse(req.body);
 
+    // Hash the incoming token to compare against stored hash
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
     // Find user with valid reset token
     const user = await prisma.user.findFirst({
       where: {
-        passwordResetToken: token,
+        passwordResetToken: hashedToken,
         passwordResetExpiresAt: {
           gt: new Date(), // Token must not be expired
         },
