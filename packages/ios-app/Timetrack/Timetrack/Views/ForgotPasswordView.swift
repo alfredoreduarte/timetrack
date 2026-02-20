@@ -7,7 +7,7 @@ struct ForgotPasswordView: View {
     @State private var showingSuccessAlert = false
     @State private var errorMessage: String?
 
-    private let authService = AuthService()
+    private let apiClient = APIClient.shared
 
     var body: some View {
         NavigationView {
@@ -131,7 +131,7 @@ struct ForgotPasswordView: View {
                 errorMessage = nil
 
                 let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                _ = try await authService.requestPasswordReset(email: trimmedEmail)
+                _ = try await apiClient.requestPasswordReset(email: trimmedEmail)
 
                 // Always show success message for security
                 await MainActor.run {
