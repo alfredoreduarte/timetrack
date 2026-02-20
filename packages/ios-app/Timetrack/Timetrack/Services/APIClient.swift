@@ -40,6 +40,11 @@ class APIClient: ObservableObject {
         if let currentToken = self.authToken {
             ensureTokenInSharedStorage(currentToken)
         }
+
+        // Store base URL in shared UserDefaults for widget extension access
+        if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared") {
+            sharedDefaults.set(baseURL, forKey: "timetrack_api_base_url")
+        }
     }
     
     private func ensureTokenInSharedStorage(_ token: String) {

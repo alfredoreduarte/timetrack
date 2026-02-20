@@ -24,8 +24,9 @@ struct StopTimerIntent: LiveActivityIntent {
             return .result()
         }
 
-        // Call API to stop the timer
-        let baseURL = "https://api.track.alfredo.re"
+        // Read API URL from shared UserDefaults (written by main app's APIClient)
+        let baseURL = sharedDefaults?.string(forKey: "timetrack_api_base_url")
+            ?? "https://api.track.alfredo.re"
         guard let url = URL(string: "\(baseURL)/time-entries/\(entryId)/stop") else {
             return .result()
         }

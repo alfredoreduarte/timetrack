@@ -57,8 +57,8 @@ class LiveActivityManager: ObservableObject {
             currentActivity = activity
             print("✅ Started Live Activity: \(activity.id)")
 
-            // Start update timer
-            startUpdateTimer(startDate: startDate, hourlyRate: hourlyRate)
+            // Start periodic update timer for earnings refresh
+            startUpdateTimer(startDate: startDate)
         } catch {
             print("❌ Failed to start Live Activity: \(error)")
         }
@@ -123,10 +123,13 @@ class LiveActivityManager: ObservableObject {
 
     // MARK: - Private Methods
 
-    private func startUpdateTimer(startDate: Date, hourlyRate: Double?) {
+    private func startUpdateTimer(startDate: Date) {
         stopUpdateTimer()
 
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        // Update every 60s for earnings refresh only.
+        // Elapsed time is rendered by Text(date, style: .timer) in the widget,
+        // which the system updates automatically without IPC.
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 let elapsed = Int(Date().timeIntervalSince(startDate))
                 await self?.updateActivity(elapsedSeconds: max(0, elapsed))
