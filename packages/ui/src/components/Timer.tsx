@@ -52,8 +52,8 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
   // Set current project/task if timer is running
   useEffect(() => {
     if (currentEntry) {
-      setSelectedProjectId(currentEntry.projectId || "");
-      setSelectedTaskId(currentEntry.taskId || "");
+      setSelectedProjectId(currentEntry.project?.id || currentEntry.projectId || "");
+      setSelectedTaskId(currentEntry.task?.id || currentEntry.taskId || "");
       setDescription(currentEntry.description || "");
     } else {
       // Clear local state when timer is stopped (currentEntry becomes null)
@@ -118,17 +118,23 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
       {/* Timer Display */}
       <div className="text-center mb-6">
         <div className="timer-display mb-2">{formatTime(elapsedTime)}</div>
-        {currentEntry && selectedProject && (
-          <div className="text-sm text-gray-600">
-            <span className="font-medium">{selectedProject.name}</span>
-            {currentEntry.taskId && (
+        {currentEntry && (currentEntry.project || selectedProject) && (
+          <div className="text-sm text-gray-600 flex items-center justify-center gap-1.5">
+            {(currentEntry.project?.color || selectedProject?.color) && (
+              <span
+                className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: currentEntry.project?.color || selectedProject?.color }}
+              />
+            )}
+            <span className="font-medium">
+              {currentEntry.project?.name || selectedProject?.name}
+            </span>
+            {(currentEntry.task || currentEntry.taskId) && (
               <>
                 {" • "}
                 <span>
-                  {
-                    availableTasks.find((t) => t.id === currentEntry.taskId)
-                      ?.name
-                  }
+                  {currentEntry.task?.name ||
+                    availableTasks.find((t) => t.id === currentEntry.taskId)?.name}
                 </span>
               </>
             )}
