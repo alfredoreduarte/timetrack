@@ -6,6 +6,8 @@ class APIClient: ObservableObject {
     private let baseURL: String
     private let session = URLSession.shared
 
+    private static let tokenKey = "timetrack_auth_token"
+
     // Token storage
     @Published var authToken: String?
 
@@ -17,91 +19,51 @@ class APIClient: ObservableObject {
             self.baseURL = "https://api.track.alfredo.re"
         }
 
-        // Load saved token from shared UserDefaults (for Watch app sync)
-        if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared"),
-           let token = sharedDefaults.string(forKey: "timetrack_auth_token") {
+        // Load token from shared Keychain, migrating from UserDefaults if needed
+        if let token = KeychainHelper.get(forKey: Self.tokenKey) {
             self.authToken = token
-            print("📱 iOS: Loaded token from shared UserDefaults: \(token.prefix(20))...")
-            // Also ensure it's in local storage
-            UserDefaults.standard.set(token, forKey: "timetrack_auth_token")
         } else {
-            // Fallback to local UserDefaults and migrate if found
-            if let token = UserDefaults.standard.string(forKey: "timetrack_auth_token") {
-                self.authToken = token
-                print("📱 iOS: Found token in local UserDefaults, migrating to shared...")
-                // Migrate to shared UserDefaults
-                migrateTokenToShared(token)
-            } else {
-                print("📱 iOS: No token found")
-            }
-        }
-        
-        // Force write current token to shared storage if we have one
-        if let currentToken = self.authToken {
-            ensureTokenInSharedStorage(currentToken)
+            migrateTokenFromUserDefaults()
         }
 
-        // Store base URL in shared UserDefaults for widget extension access
+        // Store base URL in shared UserDefaults for widget extension access (non-sensitive)
         if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared") {
             sharedDefaults.set(baseURL, forKey: "timetrack_api_base_url")
         }
     }
-    
-    private func ensureTokenInSharedStorage(_ token: String) {
-        if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared") {
-            sharedDefaults.set(token, forKey: "timetrack_auth_token")
-            sharedDefaults.set("test-value-\(Date().timeIntervalSince1970)", forKey: "test-key")
-            sharedDefaults.synchronize()
-            print("📱 iOS: Ensured token is in shared storage: \(token.prefix(20))...")
-        }
-    }
-    
-    private func migrateTokenToShared(_ token: String) {
-        if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared") {
-            print("📱 iOS: About to write to shared UserDefaults...")
-            sharedDefaults.set(token, forKey: "timetrack_auth_token")
-            sharedDefaults.set("test-value", forKey: "test-key") // Test write
-            sharedDefaults.synchronize() // Force sync
-            print("✅ iOS: Migrated token to shared UserDefaults: \(token.prefix(20))...")
-            
-            // Verify it was written
-            if let retrievedToken = sharedDefaults.string(forKey: "timetrack_auth_token") {
-                print("✅ iOS: Verification - token retrieved from shared: \(retrievedToken.prefix(20))...")
-            } else {
-                print("❌ iOS: Verification failed - token not found in shared storage")
-            }
-            
-            if let testValue = sharedDefaults.string(forKey: "test-key") {
-                print("✅ iOS: Test value written and retrieved: \(testValue)")
-            } else {
-                print("❌ iOS: Test value write failed")
-            }
-        } else {
-            print("❌ iOS: Failed to access shared UserDefaults for migration")
+
+    /// One-time migration from UserDefaults to Keychain
+    private func migrateTokenFromUserDefaults() {
+        let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared")
+
+        // Check shared UserDefaults first, then local
+        let token = sharedDefaults?.string(forKey: Self.tokenKey)
+            ?? UserDefaults.standard.string(forKey: Self.tokenKey)
+
+        guard let token else { return }
+
+        self.authToken = token
+        if KeychainHelper.save(token: token, forKey: Self.tokenKey) {
+            // Clean up old UserDefaults entries only after confirmed Keychain write
+            sharedDefaults?.removeObject(forKey: Self.tokenKey)
+            sharedDefaults?.removeObject(forKey: "test-key")
+            UserDefaults.standard.removeObject(forKey: Self.tokenKey)
         }
     }
 
     // MARK: - Token Management
     func saveToken(_ token: String) {
         self.authToken = token
-        // Save to both local and shared UserDefaults
-        UserDefaults.standard.set(token, forKey: "timetrack_auth_token")
-        print("💾 iOS: Saved token to local UserDefaults: \(token.prefix(20))...")
-        
-        if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared") {
-            sharedDefaults.set(token, forKey: "timetrack_auth_token")
-            print("💾 iOS: Saved token to shared UserDefaults: \(token.prefix(20))...")
-        } else {
-            print("❌ iOS: Failed to access shared UserDefaults")
-        }
+        KeychainHelper.save(token: token, forKey: Self.tokenKey)
     }
 
     func clearToken() {
         self.authToken = nil
-        // Clear from both local and shared UserDefaults
-        UserDefaults.standard.removeObject(forKey: "timetrack_auth_token")
+        KeychainHelper.delete(forKey: Self.tokenKey)
+        // Also clean up any remaining UserDefaults entries from before migration
+        UserDefaults.standard.removeObject(forKey: Self.tokenKey)
         if let sharedDefaults = UserDefaults(suiteName: "group.com.timetrack.shared") {
-            sharedDefaults.removeObject(forKey: "timetrack_auth_token")
+            sharedDefaults.removeObject(forKey: Self.tokenKey)
         }
     }
 
@@ -143,8 +105,10 @@ class APIClient: ObservableObject {
                     let decodedResponse = try JSONDecoder().decode(responseType, from: data)
                     return decodedResponse
                 } catch {
+                    #if DEBUG
                     print("Decoding error: \(error)")
                     print("Raw response: \(String(data: data, encoding: .utf8) ?? "nil")")
+                    #endif
                     throw APIClientError.decodingError(error)
                 }
             case 401:

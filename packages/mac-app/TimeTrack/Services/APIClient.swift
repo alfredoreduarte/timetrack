@@ -9,6 +9,8 @@ class APIClient: ObservableObject {
     // Token storage
     @Published var authToken: String?
 
+    private static let tokenKey = "timetrack_auth_token"
+
     init() {
         // Use environment variable or fallback to production API
         if let apiURL = ProcessInfo.processInfo.environment["TIMETRACK_API_URL"] {
@@ -17,19 +19,28 @@ class APIClient: ObservableObject {
             self.baseURL = "https://api.track.alfredo.re"
         }
 
-        // Load saved token
-        self.authToken = UserDefaults.standard.string(forKey: "timetrack_auth_token")
+        // Load token from Keychain, migrating from UserDefaults if needed
+        if let token = KeychainHelper.get(forKey: Self.tokenKey) {
+            self.authToken = token
+        } else if let token = UserDefaults.standard.string(forKey: Self.tokenKey) {
+            // One-time migration from UserDefaults to Keychain
+            self.authToken = token
+            if KeychainHelper.save(token: token, forKey: Self.tokenKey) {
+                UserDefaults.standard.removeObject(forKey: Self.tokenKey)
+            }
+        }
     }
 
     // MARK: - Token Management
     func saveToken(_ token: String) {
         self.authToken = token
-        UserDefaults.standard.set(token, forKey: "timetrack_auth_token")
+        KeychainHelper.save(token: token, forKey: Self.tokenKey)
     }
 
     func clearToken() {
         self.authToken = nil
-        UserDefaults.standard.removeObject(forKey: "timetrack_auth_token")
+        KeychainHelper.delete(forKey: Self.tokenKey)
+        UserDefaults.standard.removeObject(forKey: Self.tokenKey)
     }
 
     // MARK: - Generic Request Method
@@ -70,8 +81,10 @@ class APIClient: ObservableObject {
                     let decodedResponse = try JSONDecoder().decode(responseType, from: data)
                     return decodedResponse
                 } catch {
+                    #if DEBUG
                     print("Decoding error: \(error)")
                     print("Raw response: \(String(data: data, encoding: .utf8) ?? "nil")")
+                    #endif
                     throw APIClientError.decodingError(error)
                 }
             case 401:

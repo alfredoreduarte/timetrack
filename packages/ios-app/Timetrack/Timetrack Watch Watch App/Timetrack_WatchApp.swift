@@ -1,6 +1,7 @@
 import SwiftUI
 import WatchKit
 import WatchConnectivity
+import Security
 
 @main
 struct TimeTrackWatchApp: App {
@@ -26,47 +27,91 @@ class WatchConnectivityManager: NSObject, ObservableObject {
     @Published var errorMessage: String?
     
     private var authToken: String?
-    
+
     override init() {
         super.init()
         setupWatchConnectivity()
         loadStoredData()
     }
-    
+
     private func setupWatchConnectivity() {
         if WCSession.isSupported() {
             let session = WCSession.default
             session.delegate = self
             session.activate()
-            print("⌚ Watch: WatchConnectivity activated")
+            #if DEBUG
+            print("Watch: WatchConnectivity activated")
+            #endif
         }
     }
-    
+
+    // NOTE: Service, account, and access group must match KeychainHelper.swift in the main app target.
+    private func getTokenFromKeychain() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.timetrack.ios",
+            kSecAttrAccount as String: "timetrack_auth_token",
+            kSecAttrAccessGroup as String: "group.com.timetrack.shared",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func saveTokenToKeychain(_ token: String) {
+        guard let data = token.data(using: .utf8) else { return }
+
+        // Delete existing item first
+        let deleteQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.timetrack.ios",
+            kSecAttrAccount as String: "timetrack_auth_token",
+            kSecAttrAccessGroup as String: "group.com.timetrack.shared"
+        ]
+        SecItemDelete(deleteQuery as CFDictionary)
+
+        let addQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.timetrack.ios",
+            kSecAttrAccount as String: "timetrack_auth_token",
+            kSecAttrAccessGroup as String: "group.com.timetrack.shared",
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+        ]
+        SecItemAdd(addQuery as CFDictionary, nil)
+    }
+
     private func loadStoredData() {
-        // Load cached data from UserDefaults
-        if let tokenData = UserDefaults.standard.data(forKey: "cached_auth_token"),
-           let token = String(data: tokenData, encoding: .utf8) {
+        // Load auth token from Keychain, migrating from UserDefaults if needed
+        if let token = getTokenFromKeychain() {
             authToken = token
-            print("⌚ Watch: Loaded cached auth token")
+        } else if let tokenData = UserDefaults.standard.data(forKey: "cached_auth_token"),
+                  let token = String(data: tokenData, encoding: .utf8) {
+            // One-time migration from UserDefaults to Keychain
+            authToken = token
+            saveTokenToKeychain(token)
+            UserDefaults.standard.removeObject(forKey: "cached_auth_token")
         }
-        
+
+        // Load non-sensitive cached data from UserDefaults
         if let projectsData = UserDefaults.standard.data(forKey: "cached_projects"),
            let projectsArray = try? JSONDecoder().decode([WatchProject].self, from: projectsData) {
             projects = projectsArray
-            print("⌚ Watch: Loaded \(projects.count) cached projects")
         }
-        
+
         if let entriesData = UserDefaults.standard.data(forKey: "cached_recent_entries"),
            let entriesArray = try? JSONDecoder().decode([WatchTimeEntry].self, from: entriesData) {
             recentEntries = entriesArray
-            print("⌚ Watch: Loaded \(recentEntries.count) cached entries")
         }
-        
+
         currentEarnings = UserDefaults.standard.double(forKey: "cached_earnings")
         todaysHours = UserDefaults.standard.double(forKey: "cached_todays_hours")
         isTimerRunning = UserDefaults.standard.bool(forKey: "cached_timer_running")
         currentProject = UserDefaults.standard.string(forKey: "cached_current_project") ?? "No Active Project"
-        
+
         // Request fresh data from iPhone
         requestDataFromiPhone()
     }
@@ -78,18 +123,20 @@ class WatchConnectivityManager: NSObject, ObservableObject {
         
         if WCSession.default.isReachable {
             WCSession.default.sendMessage(request, replyHandler: nil) { error in
-                print("⌚ Watch: Failed to request data: \(error)")
+                #if DEBUG
+                print("Watch: Failed to request data: \(error)")
+                #endif
             }
         }
     }
     
     private func saveDataToCache() {
-        // Cache auth token
+        // Save auth token to Keychain (not UserDefaults)
         if let token = authToken {
-            UserDefaults.standard.set(token.data(using: .utf8), forKey: "cached_auth_token")
+            saveTokenToKeychain(token)
         }
-        
-        // Cache projects
+
+        // Cache non-sensitive data in UserDefaults
         if let projectsData = try? JSONEncoder().encode(projects) {
             UserDefaults.standard.set(projectsData, forKey: "cached_projects")
         }
@@ -165,25 +212,23 @@ class WatchConnectivityManager: NSObject, ObservableObject {
 extension WatchConnectivityManager: WCSessionDelegate {
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         if let error = error {
-            print("⌚ Watch: WatchConnectivity activation failed: \(error)")
+            #if DEBUG
+            print("Watch: WatchConnectivity activation failed: \(error)")
+            #endif
         } else {
-            print("⌚ Watch: WatchConnectivity activated successfully")
             DispatchQueue.main.async {
                 self.requestDataFromiPhone()
             }
         }
     }
-    
+
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String : Any]) {
-        print("⌚ Watch: Received user info: \(userInfo.keys)")
-        
         DispatchQueue.main.async {
             // Handle auth token
             if let token = userInfo["auth_token"] as? String {
                 self.authToken = token
-                print("⌚ Watch: Received auth token from iPhone")
             }
-            
+
             // Handle projects data
             if let projectsData = userInfo["projects"] as? [[String: Any]] {
                 self.projects = projectsData.compactMap { dict in
@@ -192,18 +237,16 @@ extension WatchConnectivityManager: WCSessionDelegate {
                           let color = dict["color"] as? String else { return nil }
                     return WatchProject(id: id, name: name, color: color)
                 }
-                print("⌚ Watch: Received \(self.projects.count) projects from iPhone")
             }
-            
+
             // Handle dashboard data
             if let dashboardData = userInfo["dashboard"] as? [String: Any] {
                 self.currentEarnings = dashboardData["current_earnings"] as? Double ?? 0.0
                 self.isTimerRunning = dashboardData["is_timer_running"] as? Bool ?? false
                 self.todaysHours = dashboardData["todays_hours"] as? Double ?? 0.0
                 self.currentProject = dashboardData["current_project"] as? String ?? "No Active Project"
-                print("⌚ Watch: Received dashboard data from iPhone")
             }
-            
+
             // Handle recent entries
             if let entriesData = userInfo["recent_entries"] as? [[String: Any]] {
                 self.recentEntries = entriesData.compactMap { dict in
@@ -212,10 +255,10 @@ extension WatchConnectivityManager: WCSessionDelegate {
                           let duration = dict["duration"] as? Int,
                           let hourlyRate = dict["hourly_rate"] as? Double,
                           let startTime = dict["start_time"] as? String else { return nil }
-                    
+
                     let taskName = dict["task_name"] as? String
                     let date = self.parseDate(startTime)
-                    
+
                     return WatchTimeEntry(
                         id: id,
                         projectName: projectName,
@@ -225,9 +268,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
                         date: date
                     )
                 }
-                print("⌚ Watch: Received \(self.recentEntries.count) recent entries from iPhone")
             }
-            
+
             self.saveDataToCache()
             self.errorMessage = nil
             self.isLoading = false
