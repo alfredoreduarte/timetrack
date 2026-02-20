@@ -44,8 +44,16 @@ npm run status       # Check service status
 npm run migrate      # Run database migrations (development)
 npm run migrate:prod # Run production migrations
 npm run backup       # Create database backup
+npm run db:seed      # Seed test data (user, projects, tasks, time entries)
 npm run db:studio    # Open Prisma Studio (from api package)
 ```
+
+### Local Development Login
+After seeding, use these credentials to log in:
+- **Email**: `test@example.com`
+- **Password**: `123456`
+
+The seed creates 3 projects, 6 tasks, and 12 time entries across the last 7 days. See `packages/api/prisma/seed.ts` for details.
 
 ### Building and Testing
 ```bash
@@ -215,7 +223,7 @@ PostgreSQL database managed by Prisma with these core entities:
 
 ## Environment Configuration
 
-Development uses `docker.env` with these key variables:
+Development uses `docker.env` (gitignored) with these key variables:
 ```bash
 POSTGRES_PASSWORD     # Database password
 JWT_SECRET           # JWT signing secret
@@ -223,6 +231,8 @@ EMAIL_HOST          # SMTP server for password reset
 ALLOWED_ORIGINS     # CORS origins (comma-separated)
 VITE_API_URL        # API endpoint for UI
 ```
+
+**Important**: `VITE_API_URL` must be `http://localhost:3011` for local development (not `http://api:3011` which is the Docker-internal hostname). Vite bakes this value at build time, so after changing it you must rebuild the web container: `docker-compose up -d --build web`.
 
 ## Port Allocation
 
@@ -341,61 +351,38 @@ Common pitfalls to avoid:
 ### Git Commit and PR Guidelines
 
 **Commit Messages:**
-- Keep commit messages short and concise
-- Use imperative mood ("Add feature" not "Added feature")
-- No emojis in commit messages
-- Format:
-  ```
-  Short descriptive title
 
-  Brief explanation of changes if needed.
-  Technical details if necessary.
+Use concise, descriptive commit messages with this format:
 
-  Closes #issue_number
+```
+Brief summary line (what and why)
 
-  Generated with [Claude Code](https://claude.com/claude-code)
+- Bullet point for each key change
+- Keep bullets short and specific
+- Focus on the impact/purpose
+- Avoid implementation details
+```
 
-  Co-Authored-By: Claude <noreply@anthropic.com>
-  ```
+Example:
+```
+Fix profile data sync and unit/station field handling
+
+- Fetch fresh profile data on screen focus to get CMS updates
+- Merge API data with form changes to preserve admin fields
+- Fix unit/station field mapping (separate API fields)
+- Improve SSN field handling to prevent data loss
+```
+
+Do not include Claude Code credits in commit messages or PRs.
 
 **Pull Request Descriptions:**
-- Keep PR descriptions focused and concise
-- No emojis in PR descriptions
-- Include only essential information:
-  - Summary: 1-2 sentences describing the change
-  - Key changes: Bulleted list of main modifications
-  - Technical details: Only if complexity requires explanation
-  - Test plan: Checklist of what was tested
-- Avoid unnecessary elaboration or marketing language
-- Reference the issue number with "Closes #XX"
 
-**Example Good Commit:**
-```
-Add customizable idle timeout setting
+Do not include Claude Code credits or "Generated with Claude Code" in PR descriptions.
 
-Users can now set idle timeout between 1-120 minutes instead of hardcoded 10 minutes.
+Always use **rebase and merge** when merging PRs (not merge commits, not squash):
 
-Technical details:
-- Database: Added idle_timeout_seconds column with default 600s
-- API: Zod validation in auth/users routes
-- macOS: Real-time updates via NotificationCenter
-- Web: Settings page with minute-based input
-
-Closes #44
-
-Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-```
-
-**Example Bad Commit:**
-```
-✨ Add amazing new idle timeout feature! 🎉
-
-This is such a cool feature that will make users super happy! 😊
-Now everyone can customize their idle timeout! 🚀
-
-[Long unnecessary explanation with multiple paragraphs and emojis]
+```bash
+gh pr merge <number> --rebase --delete-branch
 ```
 
 ## Important Files
