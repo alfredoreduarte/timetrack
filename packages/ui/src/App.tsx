@@ -8,6 +8,7 @@ import { useSocket } from "./hooks/useSocket";
 import { fetchProjects } from "./store/slices/projectsSlice";
 import { fetchCurrentEntry, syncTimer } from "./store/slices/timerSlice";
 import { isElectron } from "./utils/platform";
+import { wasRecentlyIdleStopped } from "./hooks/useIdleMonitor";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -177,19 +178,17 @@ function AppContent() {
     if (!isAuthenticated) return;
 
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        // Use syncTimer for lightweight sync if timer is already running
+      if (!document.hidden && !wasRecentlyIdleStopped()) {
         dispatch(syncTimer());
-        // Also fetch current entry to ensure we have the latest data
         dispatch(fetchCurrentEntry());
       }
     };
 
     const handleFocus = () => {
-      // Use syncTimer for lightweight sync if timer is already running
-      dispatch(syncTimer());
-      // Also fetch current entry to ensure we have the latest data
-      dispatch(fetchCurrentEntry());
+      if (!wasRecentlyIdleStopped()) {
+        dispatch(syncTimer());
+        dispatch(fetchCurrentEntry());
+      }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
