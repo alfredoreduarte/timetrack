@@ -1,6 +1,32 @@
 import Foundation
 import Security
 
+// MARK: - Date Parsing (cached formatters)
+private enum WatchDateUtils {
+    static let isoFormatters: [DateFormatter] = {
+        let formats = [
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'"
+        ]
+        return formats.map { format in
+            let formatter = DateFormatter()
+            formatter.dateFormat = format
+            formatter.timeZone = TimeZone(identifier: "UTC")
+            return formatter
+        }
+    }()
+
+    static func parseISO8601(_ string: String) -> Date? {
+        for formatter in isoFormatters {
+            if let date = formatter.date(from: string) {
+                return date
+            }
+        }
+        return nil
+    }
+}
+
 // MARK: - API Client for Watch
 class WatchAPIClient: ObservableObject {
     static let shared = WatchAPIClient()
@@ -159,15 +185,7 @@ class WatchAPIClient: ObservableObject {
     }
     
     private func parseDate(_ dateString: String) -> Date {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
-        if let date = formatter.date(from: dateString) {
-            return date
-        }
-        
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: dateString) ?? Date()
+        WatchDateUtils.parseISO8601(dateString) ?? Date()
     }
 }
 
@@ -276,14 +294,9 @@ struct TimeEntry: Codable {
             return duration
         }
         
-        if isRunning {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            
-            if let startDate = formatter.date(from: startTime) {
-                let elapsed = Date().timeIntervalSince(startDate)
-                return max(0, Int(elapsed))
-            }
+        if isRunning, let startDate = WatchDateUtils.parseISO8601(startTime) {
+            let elapsed = Date().timeIntervalSince(startDate)
+            return max(0, Int(elapsed))
         }
         
         return 0
