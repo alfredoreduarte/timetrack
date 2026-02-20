@@ -88,6 +88,11 @@ class AuthViewModel: ObservableObject {
         // Disconnect Socket.IO
         SocketService.shared.disconnect()
 
+        // End any active Live Activities
+        Task {
+            await LiveActivityManager.shared.endAllActivities()
+        }
+
         apiClient.clearToken()
         currentUser = nil
         isAuthenticated = false
