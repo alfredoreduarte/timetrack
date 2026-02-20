@@ -119,29 +119,31 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
       <div className="text-center mb-6">
         <div className="timer-display mb-2">{formatTime(elapsedTime)}</div>
         {currentEntry && (currentEntry.project || selectedProject) && (
-          <div className="text-sm text-gray-600 flex items-center justify-center gap-1.5">
-            {(currentEntry.project?.color || selectedProject?.color) && (
-              <span
-                className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-                style={{ backgroundColor: currentEntry.project?.color || selectedProject?.color }}
-              />
-            )}
-            <span className="font-medium">
-              {currentEntry.project?.name || selectedProject?.name}
+          <div className="text-sm text-gray-600 line-clamp-2 max-w-xs mx-auto">
+            <span className="inline-flex items-center gap-1.5">
+              {(currentEntry.project?.color || selectedProject?.color) && (
+                <span
+                  className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: currentEntry.project?.color || selectedProject?.color }}
+                />
+              )}
+              <span className="font-medium">
+                {currentEntry.project?.name || selectedProject?.name}
+              </span>
+              {(currentEntry.task || currentEntry.taskId) && (
+                <>
+                  <span className="text-gray-400">•</span>
+                  <span>
+                    {currentEntry.task?.name ||
+                      availableTasks.find((t) => t.id === currentEntry.taskId)?.name}
+                  </span>
+                </>
+              )}
             </span>
-            {(currentEntry.task || currentEntry.taskId) && (
-              <>
-                {" • "}
-                <span>
-                  {currentEntry.task?.name ||
-                    availableTasks.find((t) => t.id === currentEntry.taskId)?.name}
-                </span>
-              </>
+            {description && (
+              <span className="block text-gray-500 mt-0.5">{description}</span>
             )}
           </div>
-        )}
-        {currentEntry && description && (
-          <div className="text-sm text-gray-500 mt-1">{description}</div>
         )}
       </div>
 
