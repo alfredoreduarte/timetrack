@@ -12,7 +12,7 @@ struct ResetPasswordView: View {
     @State private var showingPasswordMismatchError = false
     @State private var errorMessage: String?
     
-    private let authService = AuthService()
+    private let apiClient = APIClient.shared
     
     var body: some View {
         NavigationView {
@@ -130,7 +130,7 @@ struct ResetPasswordView: View {
                 isLoading = true
                 errorMessage = nil
                 
-                let response = try await authService.resetPassword(token: resetToken, password: password)
+                let response = try await apiClient.resetPassword(token: resetToken, password: password)
                 
                 await MainActor.run {
                     // Update auth state with new credentials

@@ -820,19 +820,14 @@ struct AppTheme {
 
     // Semantic colors - Rich and bold
     static let success = Color(hex: "#22C55E") ?? .green
-    static let successMuted = Color(hex: "#16A34A") ?? .green
     static let error = Color(hex: "#F43F5E") ?? .red  // Rose for premium feel
-    static let errorMuted = Color(hex: "#E11D48") ?? .red
     static let warning = Color(hex: "#F59E0B") ?? .orange
 
     // Earnings highlight - Green for live money display
     static let earnings = Color(hex: "#22C55E") ?? .green
-    static let earningsMuted = Color(hex: "#16A34A") ?? .green
 
     // Border colors
     static let border = Color(hex: "#27272A") ?? .gray
-    static let borderSubtle = Color(hex: "#1F1F23") ?? .gray
-    static let borderAccent = (Color(hex: "#6366F1") ?? .blue).opacity(0.3)
 
     // Gradients
     static let accentGradient = LinearGradient(
@@ -853,19 +848,6 @@ struct AppTheme {
         endPoint: .bottomTrailing
     )
 
-    static let cardGradient = LinearGradient(
-        colors: [Color(hex: "#18181B") ?? .gray, Color(hex: "#111113") ?? .black],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
-    // Typography weights
-    static let fontWeightLight: Font.Weight = .light
-    static let fontWeightRegular: Font.Weight = .regular
-    static let fontWeightMedium: Font.Weight = .medium
-    static let fontWeightSemibold: Font.Weight = .semibold
-    static let fontWeightBold: Font.Weight = .bold
-
     // Spacing system
     static let spacingXS: CGFloat = 4
     static let spacingSM: CGFloat = 8
@@ -879,7 +861,6 @@ struct AppTheme {
     static let radiusMD: CGFloat = 10
     static let radiusLG: CGFloat = 14
     static let radiusXL: CGFloat = 20
-    static let radiusFull: CGFloat = 100
 }
 
 // MARK: - Color Extension
