@@ -234,7 +234,9 @@ class TimerViewModel: ObservableObject {
     // MARK: - Elapsed Time Management
     private func calculateElapsedTime(from startTimeString: String) {
         guard let startTime = DateUtils.parseISO8601(startTimeString) else {
-            print("❌ Failed to parse start time: \(startTimeString)")
+            #if DEBUG
+            print("Failed to parse start time: \(startTimeString)")
+            #endif
             elapsedTime = 0
             return
         }

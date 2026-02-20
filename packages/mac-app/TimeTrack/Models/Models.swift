@@ -149,40 +149,9 @@ struct TimeEntry: Codable, Identifiable {
 
     // Calculate elapsed time for running timers
     private func calculateElapsedTime() -> Int {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        // Try multiple date formats for robust parsing
-        let formatters = [
-            formatter,
-            {
-                let f = ISO8601DateFormatter()
-                f.formatOptions = [.withInternetDateTime]
-                return f
-            }(),
-            {
-                let f = DateFormatter()
-                f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-                f.timeZone = TimeZone(identifier: "UTC")
-                return f
-            }(),
-            {
-                let f = DateFormatter()
-                f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
-                f.timeZone = TimeZone(identifier: "UTC")
-                return f
-            }()
-        ]
-
-        for formatter in formatters {
-            if let startDate = (formatter as? ISO8601DateFormatter)?.date(from: startTime) ??
-                              (formatter as? DateFormatter)?.date(from: startTime) {
-                let elapsed = Date().timeIntervalSince(startDate)
-                return max(0, Int(elapsed))
-            }
-        }
-
-        return 0
+        guard let startDate = DateUtils.parseISO8601(startTime) else { return 0 }
+        let elapsed = Date().timeIntervalSince(startDate)
+        return max(0, Int(elapsed))
     }
 
     var formattedDuration: String {
@@ -222,17 +191,8 @@ struct TimeEntry: Codable, Identifiable {
     }
 
     var formattedStartTime: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-
-        if let date = formatter.date(from: startTime) {
-            let displayFormatter = DateFormatter()
-            displayFormatter.dateStyle = .short
-            displayFormatter.timeStyle = .short
-            return displayFormatter.string(from: date)
-        }
-        return startTime
+        guard let date = DateUtils.parseISO8601(startTime) else { return startTime }
+        return DateUtils.displayFormatter.string(from: date)
     }
 }
 
