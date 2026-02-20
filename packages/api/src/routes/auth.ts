@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt, { SignOptions } from "jsonwebtoken";
+import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import svgCaptcha from "svg-captcha";
 import crypto from "crypto";
@@ -10,6 +11,15 @@ import { authenticate, AuthenticatedRequest } from "../middleware/auth";
 import { emailService } from "../utils/email";
 
 const router = express.Router();
+
+// Login-specific rate limiter for brute-force protection
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 login attempts per 15 minutes per IP
+  message: { error: "Too many login attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Store captcha sessions in memory (in production, use Redis or database)
 const captchaSessions = new Map<string, { text: string; expiresAt: number }>();
@@ -319,6 +329,7 @@ router.post(
  */
 router.post(
   "/login",
+  loginLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const { email, password } = loginSchema.parse(req.body);
 
