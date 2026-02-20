@@ -207,19 +207,18 @@ app.use(
 );
 
 // Rate limiting - more lenient for development
+const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000"); // 15 minutes default
+const rateLimitMax = parseInt(
+  process.env.RATE_LIMIT_MAX_REQUESTS ||
+    (process.env.NODE_ENV === "development" ? "1000" : "100")
+); // 1000 for dev, 100 for prod
+
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000"), // 15 minutes default
-  max: parseInt(
-    process.env.RATE_LIMIT_MAX_REQUESTS ||
-      process.env.NODE_ENV === "development"
-      ? "1000"
-      : "100"
-  ), // 1000 for dev, 100 for prod
+  windowMs: rateLimitWindowMs,
+  max: rateLimitMax,
   message: {
     error: "Too many requests from this IP, please try again later.",
-    retryAfter: Math.ceil(
-      parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000") / 1000
-    ),
+    retryAfter: Math.ceil(rateLimitWindowMs / 1000),
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -239,9 +238,9 @@ if (
 ) {
   app.use(limiter);
   logger.info(
-    `Rate limiting enabled: ${
-      process.env.NODE_ENV === "development" ? "1000" : "100"
-    } requests per 15 minutes`
+    `Rate limiting enabled: ${rateLimitMax} requests per ${Math.ceil(
+      rateLimitWindowMs / 60000
+    )} minutes`
   );
 } else {
   logger.info("Rate limiting disabled for development");
