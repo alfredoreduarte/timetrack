@@ -27,7 +27,8 @@
     "clean": "npm run clean --workspace=@timetrack/shared && npm run clean --workspace=@timetrack/api && npm run clean --workspace=timetrack-ui && rm -rf node_modules",
     "package:ui": "npm run package --workspace=timetrack-ui",
     "dev:landing": "npm run dev:ssr --workspace=timetrack-landing",
-    "start:landing": "npm run start --workspace=timetrack-landing"
+    "start:landing": "npm run start --workspace=timetrack-landing",
+    "db:seed": "npx esbuild packages/api/prisma/seed.ts --bundle --platform=node --outfile=/tmp/seed.js --external:@prisma/client --external:bcryptjs && docker cp /tmp/seed.js timetrack-api:/app/packages/api/prisma/seed.js && docker exec timetrack-api node prisma/seed.js"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.13.1",
