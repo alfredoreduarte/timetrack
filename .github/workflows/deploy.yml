@@ -1,0 +1,54 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
+          command_timeout: 12m
+          script: |
+            set -e
+            cd ~/websites/timetrack-monorepo
+
+            echo "=== Pulling latest changes ==="
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "=== Cleaning up Docker to free disk space ==="
+            # Remove dangling images (untagged leftovers from previous builds)
+            docker image prune -f
+            # Remove build cache older than 7 days
+            docker builder prune -f --filter "until=168h"
+
+            echo "=== Deploying ==="
+            ./deploy.sh prod
+
+            echo "=== Verifying health ==="
+            sleep 10
+            for service in "3011/health" "3010/health"; do
+              if curl -sf "http://localhost:${service}" > /dev/null; then
+                echo "✓ localhost:${service} is healthy"
+              else
+                echo "✗ localhost:${service} failed health check"
+                exit 1
+              fi
+            done
+
+            echo "=== Deploy complete ==="
