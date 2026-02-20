@@ -1,3 +1,7 @@
+// NOTE: This file is duplicated in Timetrack/Models/TimerActivityAttributes.swift
+// because each Xcode target requires its own copy with file-system-synchronized groups.
+// Keep both files in sync when making changes.
+
 import Foundation
 import ActivityKit
 

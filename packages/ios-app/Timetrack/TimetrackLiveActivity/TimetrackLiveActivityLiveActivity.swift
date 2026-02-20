@@ -38,9 +38,10 @@ struct TimetrackLiveActivityLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.center) {
-                    Text(context.state.formattedTime)
+                    Text(context.attributes.startTime, style: .timer)
                         .font(.system(size: 32, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
+                        .monospacedDigit()
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
@@ -76,7 +77,7 @@ struct TimetrackLiveActivityLiveActivity: Widget {
                         .frame(width: 10, height: 10)
                 }
             } compactTrailing: {
-                Text(context.state.compactTime)
+                Text(context.attributes.startTime, style: .timer)
                     .font(.system(size: 14, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
             } minimal: {
@@ -120,8 +121,8 @@ struct LockScreenView: View {
 
             // Timer and earnings row
             HStack {
-                // Elapsed time
-                Text(context.state.formattedTime)
+                // Elapsed time (system-managed, no IPC needed)
+                Text(context.attributes.startTime, style: .timer)
                     .font(.system(size: 36, weight: .bold, design: .monospaced))
                     .foregroundColor(.primary)
                     .monospacedDigit()
