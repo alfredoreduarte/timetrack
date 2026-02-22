@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 // MARK: - Date Parsing (cached formatters)
-private enum WatchDateUtils {
+enum WatchDateUtils {
     static let isoFormatters: [DateFormatter] = {
         let formats = [
             "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
@@ -12,6 +12,7 @@ private enum WatchDateUtils {
         return formats.map { format in
             let formatter = DateFormatter()
             formatter.dateFormat = format
+            formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.timeZone = TimeZone(identifier: "UTC")
             return formatter
         }
