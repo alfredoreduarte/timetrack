@@ -44,6 +44,9 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3010,https://yourdomain.com}
       LOG_LEVEL: info
       APPLICATION_URL: ${APPLICATION_URL:-http://localhost:3010}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_ID_MONTHLY: ${STRIPE_PRICE_ID_MONTHLY:-}
     ports:
       - "${API_PORT:-3011}:${API_PORT:-3011}"
     depends_on:

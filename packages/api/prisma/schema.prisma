@@ -22,6 +22,14 @@ model User {
   passwordResetToken    String?
   passwordResetExpiresAt DateTime?
 
+  // Stripe subscription fields
+  stripeCustomerId              String?   @unique @map("stripe_customer_id")
+  stripeSubscriptionId          String?   @unique @map("stripe_subscription_id")
+  subscriptionStatus            String?   @map("subscription_status")
+  subscriptionCurrentPeriodEnd  DateTime? @map("subscription_current_period_end")
+  subscriptionCancelAtPeriodEnd Boolean   @default(false) @map("subscription_cancel_at_period_end")
+  isSubscriptionExempt          Boolean   @default(false) @map("is_subscription_exempt")
+
   // Relations
   projects     Project[]
   timeEntries  TimeEntry[]

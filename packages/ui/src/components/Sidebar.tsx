@@ -8,6 +8,7 @@ import {
   ClockIcon,
   ChartBarIcon,
   CogIcon,
+  CreditCardIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 
@@ -17,6 +18,7 @@ const navigation = [
   { name: "Time Entries", href: "/time-entries", icon: ClockIcon },
   { name: "Reports", href: "/reports", icon: ChartBarIcon },
   { name: "Settings", href: "/settings", icon: CogIcon },
+  { name: "Billing", href: "/billing", icon: CreditCardIcon },
   { name: "API Test", href: "/api-test", icon: WrenchScrewdriverIcon },
 ];
 

@@ -261,6 +261,10 @@ router.post(
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
         createdAt: true,
+        subscriptionStatus: true,
+        subscriptionCurrentPeriodEnd: true,
+        subscriptionCancelAtPeriodEnd: true,
+        isSubscriptionExempt: true,
       },
     });
 
@@ -369,6 +373,10 @@ router.post(
         email: user.email,
         defaultHourlyRate: user.defaultHourlyRate,
         idleTimeoutSeconds: user.idleTimeoutSeconds,
+        subscriptionStatus: user.subscriptionStatus,
+        subscriptionCurrentPeriodEnd: user.subscriptionCurrentPeriodEnd,
+        subscriptionCancelAtPeriodEnd: user.subscriptionCancelAtPeriodEnd,
+        isSubscriptionExempt: user.isSubscriptionExempt,
       },
       token,
     });
@@ -421,6 +429,10 @@ router.get(
         idleTimeoutSeconds: true,
         createdAt: true,
         updatedAt: true,
+        subscriptionStatus: true,
+        subscriptionCurrentPeriodEnd: true,
+        subscriptionCancelAtPeriodEnd: true,
+        isSubscriptionExempt: true,
       },
     });
 

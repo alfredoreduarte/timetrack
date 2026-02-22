@@ -1,6 +1,16 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { authAPI } from "../../services/api";
 
+export type SubscriptionStatus =
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "trialing"
+  | "incomplete"
+  | "incomplete_expired"
+  | "unpaid"
+  | null;
+
 export interface User {
   id: string;
   email: string;
@@ -10,6 +20,10 @@ export interface User {
   avatar?: string;
   createdAt?: string;
   updatedAt?: string;
+  subscriptionStatus?: SubscriptionStatus;
+  subscriptionCurrentPeriodEnd?: string | null;
+  subscriptionCancelAtPeriodEnd?: boolean;
+  isSubscriptionExempt?: boolean;
 }
 
 interface AuthState {

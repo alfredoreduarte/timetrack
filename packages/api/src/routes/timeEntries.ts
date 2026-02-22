@@ -3,11 +3,14 @@ import { z } from "zod";
 import { prisma } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, AuthenticatedRequest } from "../middleware/auth";
+import { requireActiveSubscription } from "../middleware/subscriptionGuard";
 
 const router = express.Router();
 
-// Apply authentication to all routes
+// Apply authentication and subscription guard to all routes
+// Note: the guard allows POST /:id/stop regardless of subscription status
 router.use(authenticate);
+router.use(requireActiveSubscription);
 
 // Validation schemas
 const startTimeEntrySchema = z.object({

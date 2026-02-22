@@ -8,6 +8,10 @@ export interface AuthenticatedRequest extends Request {
     id: string;
     email: string;
     name: string;
+    subscriptionStatus: string | null;
+    subscriptionCurrentPeriodEnd: Date | null;
+    subscriptionCancelAtPeriodEnd: boolean;
+    isSubscriptionExempt: boolean;
   };
 }
 
@@ -40,6 +44,10 @@ export const authenticate = async (
         id: true,
         email: true,
         name: true,
+        subscriptionStatus: true,
+        subscriptionCurrentPeriodEnd: true,
+        subscriptionCancelAtPeriodEnd: true,
+        isSubscriptionExempt: true,
       },
     });
 
@@ -89,6 +97,10 @@ export const optionalAuth = async (
         id: true,
         email: true,
         name: true,
+        subscriptionStatus: true,
+        subscriptionCurrentPeriodEnd: true,
+        subscriptionCancelAtPeriodEnd: true,
+        isSubscriptionExempt: true,
       },
     });
 
