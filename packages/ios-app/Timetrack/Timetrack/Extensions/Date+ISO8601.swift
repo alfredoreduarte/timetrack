@@ -2,7 +2,7 @@ import Foundation
 
 enum DateUtils {
     // Cached formatters (DateFormatter is expensive to create)
-    private static let formatters: [DateFormatter] = {
+    private static let isoFormatters: [DateFormatter] = {
         let formats = [
             "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
             "yyyy-MM-dd'T'HH:mm:ss'Z'",
@@ -11,6 +11,7 @@ enum DateUtils {
         return formats.map { format in
             let formatter = DateFormatter()
             formatter.dateFormat = format
+            formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.timeZone = TimeZone(identifier: "UTC")
             return formatter
         }
@@ -24,7 +25,7 @@ enum DateUtils {
     }()
 
     static func parseISO8601(_ string: String) -> Date? {
-        for formatter in formatters {
+        for formatter in isoFormatters {
             if let date = formatter.date(from: string) {
                 return date
             }

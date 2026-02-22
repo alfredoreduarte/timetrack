@@ -11,6 +11,7 @@ enum DateUtils {
         return formats.map { format in
             let formatter = DateFormatter()
             formatter.dateFormat = format
+            formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.timeZone = TimeZone(identifier: "UTC")
             return formatter
         }
