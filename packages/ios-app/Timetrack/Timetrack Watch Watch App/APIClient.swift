@@ -105,7 +105,7 @@ class WatchAPIClient: ObservableObject {
     // MARK: - API Methods
     func fetchProjects() async throws -> [WatchProject] {
         let response = try await makeRequest(
-            endpoint: "/api/projects",
+            endpoint: "/projects",
             responseType: ProjectsResponse.self
         )
         return response.projects.map { project in
@@ -119,7 +119,7 @@ class WatchAPIClient: ObservableObject {
     
     func fetchRecentEntries() async throws -> [WatchTimeEntry] {
         let response = try await makeRequest(
-            endpoint: "/api/time-entries?limit=10",
+            endpoint: "/time-entries?limit=10",
             responseType: TimeEntriesResponse.self
         )
         return response.entries.map { entry in
@@ -136,7 +136,7 @@ class WatchAPIClient: ObservableObject {
     
     func fetchDashboardEarnings() async throws -> WatchDashboardData {
         let response = try await makeRequest(
-            endpoint: "/api/dashboard/earnings",
+            endpoint: "/users/dashboard-earnings",
             responseType: DashboardEarningsResponse.self
         )
         return WatchDashboardData(
@@ -149,7 +149,7 @@ class WatchAPIClient: ObservableObject {
     func getCurrentTimeEntry() async throws -> WatchTimeEntry? {
         do {
             let response = try await makeRequest(
-                endpoint: "/api/time-entries/current",
+                endpoint: "/time-entries/current",
                 responseType: CurrentTimeEntryResponse.self
             )
             let entry = response.timeEntry
@@ -170,7 +170,7 @@ class WatchAPIClient: ObservableObject {
         let request = StartTimerRequest(projectId: projectId, taskId: nil, description: nil)
         let body = try JSONEncoder().encode(request)
         _ = try await makeRequest(
-            endpoint: "/api/time-entries/start",
+            endpoint: "/time-entries/start",
             method: .POST,
             body: body,
             responseType: TimerResponse.self
@@ -178,8 +178,11 @@ class WatchAPIClient: ObservableObject {
     }
     
     func stopTimer() async throws {
+        guard let current = try await getCurrentTimeEntry() else {
+            throw APIClientError.clientError("No running timer")
+        }
         _ = try await makeRequest(
-            endpoint: "/api/time-entries/stop",
+            endpoint: "/time-entries/\(current.id)/stop",
             method: .POST,
             responseType: TimerResponse.self
         )
