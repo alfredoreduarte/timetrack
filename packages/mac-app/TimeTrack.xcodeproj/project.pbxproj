@@ -8,10 +8,14 @@
 
 /* Begin PBXBuildFile section */
 		38119BE92E06006100F46039 /* IdleAlertView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38119BE82E06006100F46039 /* IdleAlertView.swift */; };
-		38C566342DFD0D910013F6DF /* IdleMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C566332DFD0D910013F6DF /* IdleMonitor.swift */; };
 		38A1B5032FFFFFF000000003 /* SocketService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38A1B5042FFFFFF000000004 /* SocketService.swift */; };
 		38A1B5052FFFFFF000000005 /* PollingFallbackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38A1B5062FFFFFF000000006 /* PollingFallbackService.swift */; };
 		38A1B5072FFFFFF000000007 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 38A1B5012FFFFFF000000002 /* SocketIO */; };
+		38C00D3F2F4E947B0029DB1E /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C00D3D2F4E947B0029DB1E /* AppTheme.swift */; };
+		38C00D422F4E94880029DB1E /* Color+Hex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C00D402F4E94880029DB1E /* Color+Hex.swift */; };
+		38C00DAC2F4E97320029DB1E /* DateUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C00DAA2F4E97320029DB1E /* DateUtils.swift */; };
+		38C00DAE2F4E97660029DB1E /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C00DAD2F4E97660029DB1E /* KeychainHelper.swift */; };
+		38C566342DFD0D910013F6DF /* IdleMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C566332DFD0D910013F6DF /* IdleMonitor.swift */; };
 		D0000001000000000 /* TimeTrackApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000002000000000 /* TimeTrackApp.swift */; };
 		D0000003000000000 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000004000000000 /* ContentView.swift */; };
 		D0000005000000000 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000006000000000 /* LoginView.swift */; };
@@ -32,9 +36,13 @@
 
 /* Begin PBXFileReference section */
 		38119BE82E06006100F46039 /* IdleAlertView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleAlertView.swift; sourceTree = "<group>"; };
-		38C566332DFD0D910013F6DF /* IdleMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleMonitor.swift; sourceTree = "<group>"; };
 		38A1B5042FFFFFF000000004 /* SocketService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketService.swift; sourceTree = "<group>"; };
 		38A1B5062FFFFFF000000006 /* PollingFallbackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PollingFallbackService.swift; sourceTree = "<group>"; };
+		38C00D3D2F4E947B0029DB1E /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		38C00D402F4E94880029DB1E /* Color+Hex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Hex.swift"; sourceTree = "<group>"; };
+		38C00DAA2F4E97320029DB1E /* DateUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateUtils.swift; sourceTree = "<group>"; };
+		38C00DAD2F4E97660029DB1E /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		38C566332DFD0D910013F6DF /* IdleMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleMonitor.swift; sourceTree = "<group>"; };
 		D0000001000000001 /* TimeTrack.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TimeTrack.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D0000002000000000 /* TimeTrackApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeTrackApp.swift; sourceTree = "<group>"; };
 		D0000004000000000 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -67,6 +75,30 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		38C00D3E2F4E947B0029DB1E /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				38C00D3D2F4E947B0029DB1E /* AppTheme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		38C00D412F4E94880029DB1E /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				38C00D402F4E94880029DB1E /* Color+Hex.swift */,
+			);
+			path = Extensions;
+			sourceTree = "<group>";
+		};
+		38C00DAB2F4E97320029DB1E /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				38C00DAA2F4E97320029DB1E /* DateUtils.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
 		D0000001000000003 = {
 			isa = PBXGroup;
 			children = (
@@ -86,6 +118,9 @@
 				D0000001000000009 /* Models */,
 				D0000026000000000 /* Assets.xcassets */,
 				D0000030000000000 /* TimeTrack.entitlements */,
+				38C00DAB2F4E97320029DB1E /* Utilities */,
+				38C00D412F4E94880029DB1E /* Extensions */,
+				38C00D3E2F4E947B0029DB1E /* Theme */,
 				D0000001000000010 /* Preview Content */,
 			);
 			path = TimeTrack;
@@ -126,6 +161,7 @@
 		D0000001000000008 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				38C00DAD2F4E97660029DB1E /* KeychainHelper.swift */,
 				38C566332DFD0D910013F6DF /* IdleMonitor.swift */,
 				D0000014000000000 /* APIClient.swift */,
 				D0000032000000000 /* MenuBarManager.swift */,
@@ -199,7 +235,7 @@
 			);
 			mainGroup = D0000001000000003;
 			packageReferences = (
-				38A1B5002FFFFFF000000001 /* XCRemoteSwiftPackageReference "socket.io-client-swift" */,
+				38A1B5002FFFFFF000000001 /* XCRemoteSwiftPackageReference "socket" */,
 			);
 			productRefGroup = D0000001000000005 /* Products */;
 			projectDirPath = "";
@@ -229,8 +265,12 @@
 			files = (
 				D0000003000000000 /* ContentView.swift in Sources */,
 				D0000005000000000 /* LoginView.swift in Sources */,
+				38C00D3F2F4E947B0029DB1E /* AppTheme.swift in Sources */,
 				D0000007000000000 /* RegisterView.swift in Sources */,
+				38C00DAC2F4E97320029DB1E /* DateUtils.swift in Sources */,
+				38C00DAE2F4E97660029DB1E /* KeychainHelper.swift in Sources */,
 				D0000009000000000 /* DashboardView.swift in Sources */,
+				38C00D422F4E94880029DB1E /* Color+Hex.swift in Sources */,
 				D0000011000000000 /* TimerView.swift in Sources */,
 				D0000013000000000 /* APIClient.swift in Sources */,
 				D0000019000000000 /* Models.swift in Sources */,
@@ -443,7 +483,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		38A1B5002FFFFFF000000001 /* XCRemoteSwiftPackageReference "socket.io-client-swift" */ = {
+		38A1B5002FFFFFF000000001 /* XCRemoteSwiftPackageReference "socket" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/socketio/socket.io-client-swift";
 			requirement = {
@@ -456,7 +496,7 @@
 /* Begin XCSwiftPackageProductDependency section */
 		38A1B5012FFFFFF000000002 /* SocketIO */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 38A1B5002FFFFFF000000001 /* XCRemoteSwiftPackageReference "socket.io-client-swift" */;
+			package = 38A1B5002FFFFFF000000001 /* XCRemoteSwiftPackageReference "socket" */;
 			productName = SocketIO;
 		};
 /* End XCSwiftPackageProductDependency section */
