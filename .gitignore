@@ -208,3 +208,12 @@ DerivedData/
 timeline.xctimeline
 playground.xcworkspace
 .build/
+.worktrees
+
+# Local dev artifacts
+plans/
+todos/
+*.png
+*.jpg
+*.gif
+github_key_id_*

@@ -1,408 +1,106 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+TimeTrack is a time tracking app (monorepo) with web, Electron, macOS, and iOS clients backed by a Node.js API.
 
-## Project Overview
+## Packages
 
-TimeTrack is a comprehensive time tracking application built as a monorepo with multiple client platforms (web, Electron desktop, native macOS, iOS/watchOS) connecting to a centralized API. The system tracks time spent on projects and tasks, calculates earnings based on hierarchical hourly rates (Task > Project > User), and provides detailed reporting.
-
-## Architecture
-
-### Monorepo Structure
 ```
 packages/
-├── api/       # Node.js/Express API with Prisma ORM and PostgreSQL
-├── ui/        # React web app + Electron desktop app
-├── mac-app/   # Native macOS SwiftUI application
-├── ios-app/   # Native iOS & watchOS SwiftUI applications
-├── landing/   # SSR marketing page with React + Vite
+├── api/       # Node.js/Express API — see packages/api/CLAUDE.md
+├── ui/        # React web + Electron desktop — see packages/ui/CLAUDE.md
+├── mac-app/   # Native macOS SwiftUI — see packages/mac-app/CLAUDE.md
+├── ios-app/   # Native iOS & watchOS SwiftUI — see packages/ios-app/CLAUDE.md
+├── landing/   # SSR marketing page (React + Vite)
 └── shared/    # Shared TypeScript types and utilities
 ```
 
-### Key Architectural Patterns
-- **Docker-first development**: All services run in containers with volume mounts for hot reloading
-- **npm workspaces**: Monorepo management with centralized dependencies
-- **Layered API architecture**: Routes → Middleware → Controllers → Prisma → Database
-- **Redux Toolkit state management**: Normalized state with async thunks for API calls
-- **MVVM for native apps**: SwiftUI with @ObservableObject ViewModels
-- **Real-time updates**: Socket.IO for WebSocket connections, user-specific rooms
-- **Hierarchical hourly rates**: Task rate > Project rate > User default rate
+Core data model: **User → Projects → Tasks → TimeEntries**. Hourly rates cascade Task > Project > User.
 
-## Common Development Commands
+## Root Commands
 
-### Essential Daily Commands
 ```bash
-npm run dev          # Start development environment (all services)
-npm run logs         # View application logs
+npm run dev          # Start all services (Docker)
+npm run logs         # View logs
 npm run stop         # Stop all services
 npm run restart      # Restart all services
 npm run status       # Check service status
-```
-
-### Database Operations
-```bash
-npm run migrate      # Run database migrations (development)
-npm run migrate:prod # Run production migrations
-npm run backup       # Create database backup
-npm run db:seed      # Seed test data (user, projects, tasks, time entries)
-npm run db:studio    # Open Prisma Studio (from api package)
-```
-
-### Local Development Login
-After seeding, use these credentials to log in:
-- **Email**: `test@example.com`
-- **Password**: `123456`
-
-The seed creates 3 projects, 6 tasks, and 12 time entries across the last 7 days. See `packages/api/prisma/seed.ts` for details.
-
-### Building and Testing
-```bash
 npm run build:all    # Build all packages (shared → api → ui → landing)
-npm run test:all     # Run tests across api and ui packages
+npm run test:all     # Run tests across api and ui
 npm run lint:all     # Lint all packages
-npm run type-check:all # TypeScript type checking
-npm run package:ui   # Create Electron installer
+npm run type-check:all
+npm run migrate      # Run DB migrations (dev)
+npm run migrate:prod # Run DB migrations (prod)
+npm run backup       # Create DB backup
+npm run db:seed      # Seed test data
 ```
 
-### Package-Specific Commands
-```bash
-# In packages/api
-npm run dev          # Start with nodemon hot reload
-npm run db:generate  # Regenerate Prisma client after schema changes
-
-# In packages/ui
-npm run dev          # Start Vite dev server
-npm run test         # Run Vitest tests with Testing Library
-
-# In packages/mac-app
-./build_portable.sh  # Build portable Mac app
-./build_appstore.sh  # Build for App Store submission
-```
-
-## High-Level Code Architecture
-
-### API Server (packages/api)
-**Tech Stack**: Express.js, TypeScript, Prisma ORM, PostgreSQL, Socket.IO, JWT auth
-
-**Request Flow**:
-1. Request arrives at route handler with validation (express-validator)
-2. Auth middleware verifies JWT token
-3. Sanitization middleware cleans input (DOMPurify)
-4. Controller processes request with business logic
-5. Prisma ORM handles database operations
-6. Response sent with consistent format: `{ data: T }` or `{ error: string }`
-7. Socket.IO emits real-time updates to user-specific rooms
-
-**Key Endpoints**:
-- `/auth/*` - Registration, login, password reset
-- `/time-entries/*` - Timer operations (start/stop/current)
-- `/projects/*` and `/tasks/*` - Project/task CRUD
-- `/reports/*` - Time and earnings analytics
-
-### Web/Electron UI (packages/ui)
-**Tech Stack**: React 18, Redux Toolkit, TypeScript, Tailwind CSS, Vite, Electron
-
-**State Management Architecture**:
-- Redux store with slices: `auth`, `projects`, `tasks`, `timeEntries`, `dashboard`
-- Async thunks handle API calls with standardized error handling
-- Normalized state structure prevents duplication
-- Real-time Socket.IO updates dispatched to Redux
-
-**Component Structure**:
-- Pages (containers) connect to Redux store
-- Components are presentational and reusable
-- Custom hooks abstract complex logic
-- Testing with Vitest + Testing Library + MSW
-
-### Native Swift Apps (packages/mac-app & packages/ios-app)
-**Tech Stack**: SwiftUI, MVVM, URLSession, UserDefaults, Combine
-
-**Shared Architecture Patterns**:
-- **Models**: Codable structs matching API schema
-- **ViewModels**: @MainActor ObservableObject classes with @Published properties
-- **Views**: SwiftUI components reactive to ViewModel changes
-- **Services**: APIClient (async/await), AuthService (JWT), TimerService (real-time)
-- **@MainActor**: All ViewModels use @MainActor for UI isolation with proper deinit cleanup
-
-**Live Data Synchronization Pattern**:
-- For real-time UI updates, use Combine reactive subscriptions instead of polling timers
-- Subscribe to `@Published` properties with `.debounce(for: .milliseconds(10))` to avoid race conditions
-- Pattern: `viewModel.$property.debounce(for: .milliseconds(10), scheduler: RunLoop.main).sink { update() }.store(in: &cancellables)`
-- This ensures all main actor tasks complete before reading updated values
-- Prevents race conditions when `@Published` properties update via async `Task { @MainActor }` closures
-- Example: MenuBarManager subscribes to TimerViewModel.$elapsedTime for instant updates
-
-**macOS-Specific** (packages/mac-app):
-- Menu bar app with live timer display and popover controls
-- NO iOS modifiers (keyboardType, autocapitalization)
-- Use NSColor instead of UIColor
-- Window-based thinking, not screen-based
-
-**iOS/watchOS-Specific** (packages/ios-app):
-- Native iOS app with watchOS companion
-- Watch complications for at-a-glance time tracking
-- iOS-specific modifiers and UIColor are appropriate here
-
-### Shared Package (packages/shared)
-Provides TypeScript types, API constants, and utilities used by both API and UI to ensure type safety across the stack.
-
-## Database Schema
-
-PostgreSQL database managed by Prisma with these core entities:
-- **User**: Authentication, default hourly rate, password reset tokens, idle timeout
-- **Project**: Name, description, color, optional hourly rate, active status
-- **Task**: Belongs to project, optional hourly rate, completion tracking
-- **TimeEntry**: Start/end times, duration, hourly rate snapshot, running status
-
-### Migration Workflow
-
-**CRITICAL: When modifying the database schema, follow these steps exactly to avoid runtime errors:**
-
-1. **Modify the Prisma schema** (`packages/api/prisma/schema.prisma`)
-   - Add/modify fields with proper types
-   - Use `@map("snake_case_name")` to map camelCase fields to snake_case database columns
-   - Example: `idleTimeoutSeconds Int? @default(600) @map("idle_timeout_seconds")`
-
-2. **Create the migration locally**
-   ```bash
-   cd packages/api
-   npx prisma migrate dev --name descriptive_migration_name
-   ```
-
-3. **Apply migration in Docker development environment**
-   ```bash
-   npm run migrate  # Applies migration to Docker containers
-   ```
-
-4. **Regenerate Prisma Client in Docker containers**
-   ```bash
-   docker exec timetrack-api npm run db:generate
-   docker restart timetrack-api
-   ```
-   - **Why?** The `prisma/` directory is NOT mounted as a volume in Docker
-   - Schema changes on host don't automatically sync to containers
-   - Must manually copy or regenerate inside containers
-
-5. **Update TypeScript types in shared package** (`packages/shared/src/types/index.ts`)
-   - Add new fields to interfaces that cross API boundaries
-   - Ensure field names match schema (camelCase in code)
-
-6. **Test the migration**
-   - Verify database column exists: `docker exec timetrack-postgres psql -U timetrack_user -d timetrack_db -c "\d table_name"`
-   - Test API endpoints that use the new field
-   - Verify client apps can read/write the new field
-
-7. **Production deployment**
-   ```bash
-   npm run migrate:prod
-   ```
-
-### Common Migration Pitfalls
-
-**Problem**: "Column does not exist" error after adding field to schema
-**Cause**: Prisma Client in Docker container wasn't regenerated
-**Solution**: Run `docker exec timetrack-api npm run db:generate && docker restart timetrack-api`
-
-**Problem**: Prisma schema changes not reflected in container
-**Cause**: `prisma/` directory is not volume-mounted (only `src/` is mounted)
-**Solution**: Copy schema to container or regenerate client inside container
-
-**Problem**: Field name mismatch between code and database
-**Cause**: Missing `@map()` attribute for snake_case columns
-**Solution**: Add `@map("snake_case_column_name")` to camelCase fields
-
-## Security Implementation
-
-- **Authentication**: JWT tokens with secure httpOnly cookies (web) or UserDefaults (native)
-- **Password security**: bcryptjs hashing with salt rounds
-- **API protection**: Rate limiting, request size limits, Helmet security headers
-- **Input validation**: Zod schemas, express-validator, DOMPurify sanitization
-- **CORS**: Configurable allowed origins for cross-origin requests
-- **CSP headers**: Content Security Policy for XSS protection
-- **SQL injection**: Prevented via Prisma parameterized queries
-
-## Environment Configuration
-
-Development uses `docker.env` (gitignored) with these key variables:
-```bash
-POSTGRES_PASSWORD     # Database password
-JWT_SECRET           # JWT signing secret
-EMAIL_HOST          # SMTP server for password reset
-ALLOWED_ORIGINS     # CORS origins (comma-separated)
-VITE_API_URL        # API endpoint for UI
-```
-
-**Important**: `VITE_API_URL` must be `http://localhost:3011` for local development (not `http://api:3011` which is the Docker-internal hostname). Vite bakes this value at build time, so after changing it you must rebuild the web container: `docker-compose up -d --build web`.
+**Dev login** (after seeding): `test@example.com` / `123456`
 
 ## Port Allocation
 
-- **3010**: Web UI (nginx in Docker)
-- **3011**: API server
-- **3012**: PostgreSQL database
-- **3013**: Redis cache
-- **3014**: Landing page
-- **5173**: Vite dev server (UI development)
-- **5174**: Vite dev server (Landing development)
+| Port | Service |
+|------|---------|
+| 3010 | Web UI (nginx) |
+| 3011 | API server |
+| 3012 | PostgreSQL |
+| 3013 | Redis |
+| 3014 | Landing page |
+| 5173 | Vite dev (UI) |
+| 5174 | Vite dev (Landing) |
 
 ## Deployment
 
-The `deploy.sh` script handles both development and production deployments:
 ```bash
 ./deploy.sh dev   # Development with hot reload
-./deploy.sh prod  # Production with optimizations
+./deploy.sh prod  # Production (includes DB backup + migrations)
 ```
-
-Features:
-- Automatic Docker Compose detection
-- Health checks before declaring success
-- Database backup before production deployments
-- Automatic migration running
-- Log tailing and service status monitoring
-
-## Testing Strategy
-
-**API Testing** (packages/api):
-- Jest configured but minimal coverage currently
-- Test files in `src/__tests__/`
-
-**UI Testing** (packages/ui):
-- Vitest with Testing Library for component tests
-- MSW for API mocking
-- Test files in `src/components/__tests__/` and `src/pages/__tests__/`
-- Run with `npm run test` in ui package
-
-**Native Apps**:
-- XCTest framework for iOS/macOS
-- UI tests and unit tests via Xcode
-
-## Real-time Features
-
-Socket.IO implementation:
-1. Client connects on authentication
-2. Server creates user-specific room
-3. Timer updates broadcast to user's room
-4. Client Redux store updated via Socket.IO listeners
-5. Electron IPC for main/renderer communication
 
 ## Development Workflow
 
-### Critical: Never Work Directly on Main
-**IMPORTANT**: NEVER commit or push directly to the `main` branch. Always:
-1. Create a feature branch from main: `git checkout -b feature/descriptive-name`
-2. Make commits on the feature branch
-3. Push the branch and create a Pull Request
-4. Merge via PR after review
+### Never Work Directly on Main
+NEVER commit or push directly to `main`. Always:
+1. `git checkout -b feature/descriptive-name`
+2. Commit on the branch
+3. Push and open a PR
+4. Merge via PR after review — never skip the test plan if there is one
 
-This ensures code review, maintains a clean history, and prevents accidental breakage of the main branch.
+### Fix Root Causes, Not Symptoms
+When debugging client/server issues, fix the broken component — not the working one.
+- Client expects format X, API returns format Y (correctly) → fix the client
+- Modifying working code to accommodate broken code creates tech debt and breaks other clients
 
-### Critical: Fix Root Causes, Not Symptoms
-**IMPORTANT**: When debugging issues between client and server, always fix the actual broken component rather than modifying working code to accommodate broken code.
+### Environment Variable Verification
+NEVER use an env var in code without verifying it exists first:
+- Check `docker.env` / `.env` / deployment environment
+- Verify exact name (case-sensitive)
+- Provide a clear error if a required variable is missing
 
-Common anti-pattern to avoid:
-- Client expects data in format X
-- API provides data in format Y (correctly, per design)
-- **Wrong**: Modify API to return format X to "fix" the client
-- **Right**: Fix the client to read format Y
+### Hot Reload
+- **API**: Nodemon watches `src/` and `../shared/src/` (2s delay)
+- **UI**: Vite HMR
+- **Shared changes**: Rebuild with `npm run build:shared` to trigger reload in API and UI
 
-Why this matters:
-- Modifying working code to accommodate broken code creates technical debt
-- It masks the real bug and may cause issues elsewhere
-- Other clients depending on the original format will break
-- The "quick fix" often takes longer to unwind than the proper fix
-
-Before changing an API response or data format:
-1. Verify which component is actually wrong (check specs, other clients, tests)
-2. Fix the component that deviates from the expected contract
-3. If the contract itself is wrong, fix it everywhere consistently
-
-### Critical: Environment Variable Verification
-**IMPORTANT**: NEVER use an environment variable in code without first verifying it exists. Always check:
-1. Check if the variable is defined in `docker.env`, `.env`, or the deployment environment
-2. Verify the variable name matches exactly (case-sensitive)
-3. Check existing code for how similar variables are accessed
-4. Use proper fallbacks or throw clear errors if required variables are missing
-
-Common pitfalls to avoid:
-- Don't assume variables like `REACT_APP_*` exist without checking
-- Don't create new environment variables without documenting them
-- Don't hardcode values that should be environment variables
-- Always validate environment variables at startup, not at usage time
-
-### Hot Reload Configuration
-- **API**: Nodemon watches `src/` and `../shared/src/` with 2-second delay
-- **UI**: Vite HMR for instant updates
-- **Shared changes**: Trigger reload in both API and UI
-
-### Working with the Monorepo
-1. Changes to shared package require rebuilding: `npm run build:shared`
-2. API and UI will auto-reload when shared is rebuilt
-3. Use `npm run dev` at root for all services
-4. Individual package development possible with package-specific scripts
-
-### Adding New Features
+### Adding New Features (full-stack)
 1. Define types in `packages/shared/src/types/`
-2. Add database schema in `packages/api/prisma/schema.prisma`
-3. Create migration: `npx prisma migrate dev`
-4. Implement API endpoint in `packages/api/src/routes/`
-5. Add Redux slice in `packages/ui/src/store/slices/`
-6. Create React components in `packages/ui/src/components/`
-7. Update native apps if needed
+2. Add DB schema in `packages/api/prisma/schema.prisma` + run migration
+3. Implement API endpoint in `packages/api/src/routes/`
+4. Add Redux slice in `packages/ui/src/store/slices/`
+5. Create React components in `packages/ui/src/components/`
+6. Update native apps if needed
 
-### Git Commit and PR Guidelines
-
-**Commit Messages:**
-
-Use concise, descriptive commit messages with this format:
+### Git Commit Style
 
 ```
 Brief summary line (what and why)
 
-- Bullet point for each key change
+- Key change one
+- Key change two
 - Keep bullets short and specific
-- Focus on the impact/purpose
-- Avoid implementation details
 ```
 
-Example:
-```
-Fix profile data sync and unit/station field handling
+Do not include Claude Code credits in commit messages or PR descriptions.
 
-- Fetch fresh profile data on screen focus to get CMS updates
-- Merge API data with form changes to preserve admin fields
-- Fix unit/station field mapping (separate API fields)
-- Improve SSN field handling to prevent data loss
-```
-
-Do not include Claude Code credits in commit messages or PRs.
-
-**Pull Request Descriptions:**
-
-Do not include Claude Code credits or "Generated with Claude Code" in PR descriptions.
-
-Always use **rebase and merge** when merging PRs (not merge commits, not squash):
-
-```bash
-gh pr merge <number> --rebase --delete-branch
-```
-
-## Important Files
-
-**Configuration**:
-- `/docker-compose.yml` - Development Docker setup
-- `/docker-compose.prod.yml` - Production Docker setup
-- `/packages/api/prisma/schema.prisma` - Database schema
-- `/packages/ui/vite.config.ts` - Vite configuration
-
-**Entry Points**:
-- `/packages/api/src/server.ts` - API server
-- `/packages/ui/src/App.tsx` - React app
-- `/packages/ui/src/main.tsx` - Web entry
-- `/packages/ui/src/electron/main.ts` - Electron entry
-- `/packages/mac-app/TimeTrack/TimeTrackApp.swift` - macOS app
-- `/packages/ios-app/Timetrack/TimetracApp.swift` - iOS app
-
-**Key Services**:
-- `/packages/api/src/middleware/errorHandler.ts` - Centralized error handling
-- `/packages/api/src/utils/logger.ts` - Winston logging configuration
-- `/packages/ui/src/services/api.ts` - Axios API client
-- `/packages/ui/src/store/index.ts` - Redux store configuration
+### Pull Request Guidelines
+- Never merge without permission
+- Never skip the test plan if one exists
+- Always use **rebase and merge**: `gh pr merge <number> --rebase --delete-branch`
