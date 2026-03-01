@@ -208,11 +208,14 @@ DerivedData/
 timeline.xctimeline
 playground.xcworkspace
 .build/
-.worktrees
 
-# Local dev artifacts
+# Claude Code / multi-agent
+.claude/worktrees/
+.worktrees/
 plans/
 todos/
+
+# Local dev artifacts
 *.png
 *.jpg
 *.gif
