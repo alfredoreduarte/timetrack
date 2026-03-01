@@ -111,6 +111,7 @@ services:
     restart: unless-stopped
     environment:
       PUBLIC_URL: "/"
+      VITE_APP_URL: "${VITE_APP_URL:-http://localhost:3010}"
     ports:
       - "${LANDING_PORT:-3014}:5174"
     networks:

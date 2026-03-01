@@ -115,6 +115,7 @@ services:
       target: production
       args:
         PUBLIC_URL: "/"
+        VITE_APP_URL: "${VITE_APP_URL:-https://app.track.alfredo.re}"
     container_name: timetrack-landing-prod
     restart: unless-stopped
     environment:

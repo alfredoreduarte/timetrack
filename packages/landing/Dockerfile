@@ -7,6 +7,10 @@ FROM node:18-alpine AS build
 ARG PUBLIC_URL
 ENV PUBLIC_URL=${PUBLIC_URL:-/}
 
+# App URL for sign-up link (environment-specific)
+ARG VITE_APP_URL
+ENV VITE_APP_URL=${VITE_APP_URL}
+
 WORKDIR /app
 
 # Copy workspace package manifests so npm can resolve deps
