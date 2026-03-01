@@ -89,6 +89,7 @@ storage/
 
 # Docker
 docker.env
+docker.staging.env
 *.sql
 backup_*.sql
 # Allow SQL files needed for initialization and migrations
