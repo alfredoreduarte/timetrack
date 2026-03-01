@@ -3,38 +3,40 @@ import WatchConnectivity
 
 class WatchConnectivityService: NSObject, ObservableObject {
     static let shared = WatchConnectivityService()
-    
+
     private override init() {
         super.init()
         setupWatchConnectivity()
     }
-    
+
     private func setupWatchConnectivity() {
         if WCSession.isSupported() {
             let session = WCSession.default
             session.delegate = self
             session.activate()
-            print("📱 iOS: WatchConnectivity activated")
+            #if DEBUG
+            print("iOS: WatchConnectivity activated")
+            #endif
         }
     }
-    
+
     func sendAuthToken(_ token: String) {
         guard WCSession.default.isReachable else {
             // Try transferring user info for background sync
             let userInfo = ["auth_token": token]
             WCSession.default.transferUserInfo(userInfo)
-            print("📱 iOS: Sent auth token via transferUserInfo")
             return
         }
-        
+
         let message = ["auth_token": token]
-        WCSession.default.sendMessage(message, replyHandler: { reply in
-            print("📱 iOS: Watch received auth token successfully")
+        WCSession.default.sendMessage(message, replyHandler: { _ in
         }, errorHandler: { error in
-            print("📱 iOS: Failed to send auth token to Watch: \(error)")
+            #if DEBUG
+            print("iOS: Failed to send auth token to Watch: \(error)")
+            #endif
         })
     }
-    
+
     func sendProjectsData(_ projects: [Project]) {
         let projectsData = projects.map { project in
             [
@@ -43,12 +45,11 @@ class WatchConnectivityService: NSObject, ObservableObject {
                 "color": project.color ?? "#3B82F6"
             ]
         }
-        
+
         let userInfo = ["projects": projectsData]
         WCSession.default.transferUserInfo(userInfo)
-        print("📱 iOS: Sent \(projects.count) projects to Watch")
     }
-    
+
     func sendDashboardData(earnings: Double, isRunning: Bool, todaysHours: Double, currentProject: String) {
         let dashboardData: [String: Any] = [
             "current_earnings": earnings,
@@ -59,7 +60,6 @@ class WatchConnectivityService: NSObject, ObservableObject {
 
         let userInfo = ["dashboard": dashboardData]
         WCSession.default.transferUserInfo(userInfo)
-        print("📱 iOS: Sent dashboard data to Watch")
     }
 
     /// Push the current timer state to the watch immediately via applicationContext.
@@ -81,12 +81,16 @@ class WatchConnectivityService: NSObject, ObservableObject {
 
         do {
             try WCSession.default.updateApplicationContext(context)
-            print("📱 iOS: Sent timer state to Watch (running: \(isRunning))")
+            #if DEBUG
+            print("iOS: Sent timer state to Watch (running: \(isRunning))")
+            #endif
         } catch {
-            print("📱 iOS: Failed to send timer state: \(error)")
+            #if DEBUG
+            print("iOS: Failed to send timer state: \(error)")
+            #endif
         }
     }
-    
+
     func sendRecentEntries(_ entries: [TimeEntry]) {
         let entriesData = entries.map { entry in
             [
@@ -98,35 +102,34 @@ class WatchConnectivityService: NSObject, ObservableObject {
                 "start_time": entry.startTime
             ]
         }
-        
+
         let userInfo = ["recent_entries": entriesData]
         WCSession.default.transferUserInfo(userInfo)
-        print("📱 iOS: Sent \(entries.count) recent entries to Watch")
     }
 }
 
 extension WatchConnectivityService: WCSessionDelegate {
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        #if DEBUG
         if let error = error {
-            print("📱 iOS: WatchConnectivity activation failed: \(error)")
-        } else {
-            print("📱 iOS: WatchConnectivity activated successfully")
+            print("iOS: WatchConnectivity activation failed: \(error)")
         }
+        #endif
     }
-    
+
     func sessionDidBecomeInactive(_ session: WCSession) {
-        print("📱 iOS: WatchConnectivity became inactive")
     }
-    
+
     func sessionDidDeactivate(_ session: WCSession) {
-        print("📱 iOS: WatchConnectivity deactivated")
         WCSession.default.activate()
     }
-    
+
     func session(_ session: WCSession, didReceiveMessage message: [String : Any], replyHandler: @escaping ([String : Any]) -> Void) {
-        print("📱 iOS: Received message from Watch: \(message)")
-        
-        if message["request"] as? String == "start_timer", 
+        #if DEBUG
+        print("iOS: Received message from Watch: \(message)")
+        #endif
+
+        if message["request"] as? String == "start_timer",
            let projectId = message["project_id"] as? String {
             // Handle start timer request from Watch
             // You would integrate this with your existing timer logic
