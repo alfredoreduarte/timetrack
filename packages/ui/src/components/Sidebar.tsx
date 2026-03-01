@@ -20,6 +20,10 @@ const navigation = [
   { name: "API Test", href: "/api-test", icon: WrenchScrewdriverIcon },
 ];
 
+const isStaging = ((import.meta as any).env.VITE_API_URL || "").includes(
+  "staging"
+);
+
 const Sidebar: React.FC = () => {
   const location = useLocation();
   const { user } = useSelector((state: RootState) => state.auth);
@@ -30,6 +34,13 @@ const Sidebar: React.FC = () => {
       <div className="flex items-center justify-center h-16 px-4 border-b border-gray-200">
         <h1 className="text-xl font-bold text-primary-600">TimeTrack</h1>
       </div>
+
+      {/* Staging indicator */}
+      {isStaging && (
+        <div className="bg-yellow-400 text-yellow-900 text-center text-xs font-bold py-1 tracking-widest uppercase">
+          Staging
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 px-4 py-6 space-y-1">
