@@ -31,12 +31,6 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            echo "=== Cleaning up Docker to free disk space ==="
-            # Remove dangling images (untagged leftovers from previous builds)
-            docker image prune -f
-            # Remove build cache older than 7 days
-            docker builder prune -f --filter "until=168h"
-
             echo "=== Deploying ==="
             ./deploy.sh prod
 

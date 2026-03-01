@@ -34,10 +34,6 @@ jobs:
             git fetch origin pull/${{ github.event.pull_request.number }}/head
             git checkout -B pr-${{ github.event.pull_request.number }} FETCH_HEAD
 
-            echo "=== Cleaning up Docker to free disk space ==="
-            docker image prune -f
-            docker builder prune -f --filter "until=168h"
-
             echo "=== Deploying staging ==="
             ./deploy.sh staging
 
@@ -100,10 +96,6 @@ jobs:
 
             echo "=== Cleaning up PR branches ==="
             git branch -D pr-${{ github.event.pull_request.number }} 2>/dev/null || true
-
-            echo "=== Cleaning up Docker to free disk space ==="
-            docker image prune -f
-            docker builder prune -f --filter "until=168h"
 
             echo "=== Deploying staging from main ==="
             ./deploy.sh staging
