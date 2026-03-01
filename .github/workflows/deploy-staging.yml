@@ -1,0 +1,135 @@
+name: Deploy PR to Staging
+
+on:
+  pull_request:
+    types: [labeled, synchronize, unlabeled, closed]
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy-pr:
+    name: Deploy PR to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      (github.event.action == 'labeled' && github.event.label.name == 'deploy-staging') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'deploy-staging'))
+
+    steps:
+      - name: Deploy PR branch via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
+          command_timeout: 12m
+          script: |
+            set -e
+            cd ~/websites/timetrack-monorepo
+
+            echo "=== Fetching PR #${{ github.event.pull_request.number }} ==="
+            git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-${{ github.event.pull_request.number }}
+            git checkout pr-${{ github.event.pull_request.number }}
+
+            echo "=== Cleaning up Docker to free disk space ==="
+            docker image prune -f
+            docker builder prune -f --filter "until=168h"
+
+            echo "=== Deploying staging ==="
+            ./deploy.sh staging
+
+            echo "=== Verifying health ==="
+            for service in "3021/health" "3020/health"; do
+              echo "Waiting for localhost:${service}..."
+              for i in $(seq 1 30); do
+                if curl -sf "http://localhost:${service}" > /dev/null 2>&1; then
+                  echo "✓ localhost:${service} is healthy"
+                  break
+                fi
+                if [ "$i" -eq 30 ]; then
+                  echo "✗ localhost:${service} failed health check after 30 attempts"
+                  docker logs timetrack-api-staging --tail 50 2>&1 || true
+                  exit 1
+                fi
+                sleep 2
+              done
+            done
+
+            echo "=== Staging deploy complete ==="
+
+      - name: Comment staging URLs on PR
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            **Staging deployed** with PR #${{ github.event.pull_request.number }} (`${{ github.event.pull_request.head.ref }}`)
+
+            | Service | URL |
+            |---------|-----|
+            | Web UI | https://app.staging.track.alfredo.re |
+            | API | https://api.staging.track.alfredo.re |
+            | Landing | https://staging.track.alfredo.re |
+
+  rollback:
+    name: Roll Back Staging to Main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      (github.event.action == 'unlabeled' && github.event.label.name == 'deploy-staging') ||
+      (github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'deploy-staging'))
+
+    steps:
+      - name: Roll back to main via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
+          command_timeout: 12m
+          script: |
+            set -e
+            cd ~/websites/timetrack-monorepo
+
+            echo "=== Rolling back to main ==="
+            git checkout main
+            git pull origin main
+
+            echo "=== Cleaning up PR branches ==="
+            git branch -D pr-${{ github.event.pull_request.number }} 2>/dev/null || true
+
+            echo "=== Cleaning up Docker to free disk space ==="
+            docker image prune -f
+            docker builder prune -f --filter "until=168h"
+
+            echo "=== Deploying staging from main ==="
+            ./deploy.sh staging
+
+            echo "=== Verifying health ==="
+            for service in "3021/health" "3020/health"; do
+              echo "Waiting for localhost:${service}..."
+              for i in $(seq 1 30); do
+                if curl -sf "http://localhost:${service}" > /dev/null 2>&1; then
+                  echo "✓ localhost:${service} is healthy"
+                  break
+                fi
+                if [ "$i" -eq 30 ]; then
+                  echo "✗ localhost:${service} failed health check after 30 attempts"
+                  docker logs timetrack-api-staging --tail 50 2>&1 || true
+                  exit 1
+                fi
+                sleep 2
+              done
+            done
+
+            echo "=== Staging rolled back to main ==="
+
+      - name: Comment rollback on PR
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            **Staging rolled back** to `main` (PR #${{ github.event.pull_request.number }} removed from staging)
