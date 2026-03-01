@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { BrowserRouter } from "react-router-dom";
 import { vi, describe, it, expect, beforeEach } from "vitest";
@@ -10,8 +10,6 @@ import timerSlice from "../../store/slices/timerSlice";
 import projectsSlice from "../../store/slices/projectsSlice";
 import timeEntriesSlice from "../../store/slices/timeEntriesSlice";
 import dashboardSlice from "../../store/slices/dashboardSlice";
-import * as timeEntriesActions from "../../store/slices/timeEntriesSlice";
-import * as projectsActions from "../../store/slices/projectsSlice";
 
 // Mock the Timer component
 vi.mock("../../components/Timer", () => ({

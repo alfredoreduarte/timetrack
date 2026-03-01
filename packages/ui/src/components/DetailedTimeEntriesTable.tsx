@@ -401,9 +401,7 @@ const DetailedTimeEntriesTable: React.FC<DetailedTimeEntriesTableProps> = ({
 
                   // Individual entry rows - only show when expanded
                   if (isExpanded) {
-                    projectGroup.entries.forEach((entry, entryIndex) => {
-                      const isFirstEntryOfProject = entryIndex === 0;
-
+                    projectGroup.entries.forEach((entry) => {
                       rows.push(
                         <tr key={entry.id} className="hover:bg-gray-50">
                           {/* Project column - empty for individual entries */}

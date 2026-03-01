@@ -5,7 +5,7 @@ import { useTimer } from "../hooks/useTimer";
 import { fetchProjects } from "../store/slices/projectsSlice";
 import { fetchTasks } from "../store/slices/projectsSlice";
 import { fetchTimeEntries } from "../store/slices/timeEntriesSlice";
-import { ClockIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
+import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { StopIcon, PlayIcon } from "@heroicons/react/24/solid";
 import ResumeLastTimer from "./ResumeLastTimer";
 

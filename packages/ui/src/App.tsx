@@ -150,7 +150,7 @@ const ElectronEventHandler: React.FC = () => {
 
 function AppContent() {
   const dispatch = useDispatch<AppDispatch>();
-  const { token, user, hasCheckedAuth, isAuthenticated } = useSelector(
+  const { token, hasCheckedAuth, isAuthenticated } = useSelector(
     (state: RootState) => state.auth
   );
 

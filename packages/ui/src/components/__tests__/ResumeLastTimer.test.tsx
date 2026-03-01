@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ResumeLastTimer from "../ResumeLastTimer";
 import { renderWithProviders, createMockStore } from "../../test/utils";
@@ -178,10 +178,7 @@ describe("ResumeLastTimer Component", () => {
       });
       await user.click(resumeButton);
 
-      // Check that the timer actions were dispatched with correct parameters
-      const actions = store.getState();
-      // Note: In a real test, you'd mock the startTimer action and verify it was called
-      // This is a simplified check that the component rendered and button was clickable
+      // Simplified check that the component rendered and button was clickable
       expect(resumeButton).toBeInTheDocument();
     });
   });
