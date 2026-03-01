@@ -1,5 +1,7 @@
 # Removed version attribute as it's obsolete in modern Docker Compose
 
+name: timetrack-prod
+
 services:
   # PostgreSQL Database
   postgres:
