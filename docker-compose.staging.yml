@@ -1,6 +1,8 @@
 # Staging environment — isolated from production on the same droplet
 # Ports 3020-3024, separate DB/Redis/volumes/network
 
+name: timetrack-staging
+
 services:
   # PostgreSQL Database
   postgres:
