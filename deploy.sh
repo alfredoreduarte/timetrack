@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# TimeTrack Deployment Script for Local Development & Production
+# TimeTrack Deployment Script for Local Development, Staging & Production
 # This script automates the deployment process
 
 set -e
@@ -14,7 +14,9 @@ NC='\033[0m' # No Color
 # Configuration
 COMPOSE_FILE="docker-compose.yml"
 PROD_COMPOSE_FILE="docker-compose.prod.yml"
+STAGING_COMPOSE_FILE="docker-compose.staging.yml"
 ENV_FILE="docker.env"
+STAGING_ENV_FILE="docker.staging.env"
 
 # Docker Compose command detection
 DOCKER_COMPOSE_CMD=""
@@ -73,33 +75,39 @@ check_requirements() {
 }
 
 setup_environment() {
-    log_info "Setting up environment..."
+    local env_file="${1:-$ENV_FILE}"
+    log_info "Setting up environment from $env_file..."
 
-    if [ ! -f "$ENV_FILE" ]; then
-        if [ -f "docker.env.example" ]; then
-            cp docker.env.example "$ENV_FILE"
-            log_warn "Created $ENV_FILE from example. Please update it with your configuration."
-            log_warn "Edit $ENV_FILE and run this script again."
+    if [ ! -f "$env_file" ]; then
+        local example_file="${env_file%.env}.env.example"
+        # Fallback: if the derived example name doesn't exist, try the base example
+        if [ ! -f "$example_file" ]; then
+            example_file="docker.env.example"
+        fi
+        if [ -f "$example_file" ]; then
+            cp "$example_file" "$env_file"
+            log_warn "Created $env_file from example. Please update it with your configuration."
+            log_warn "Edit $env_file and run this script again."
             exit 1
         else
-            log_error "No environment file found. Please create $ENV_FILE"
+            log_error "No environment file found. Please create $env_file"
             exit 1
         fi
     fi
 
     # Source environment file
     set -a
-    source "$ENV_FILE"
+    source "$env_file"
     set +a
 
     # Check required variables
     if [ -z "$POSTGRES_PASSWORD" ]; then
-        log_error "POSTGRES_PASSWORD is not set in $ENV_FILE"
+        log_error "POSTGRES_PASSWORD is not set in $env_file"
         exit 1
     fi
 
     if [ -z "$JWT_SECRET" ]; then
-        log_error "JWT_SECRET is not set in $ENV_FILE"
+        log_error "JWT_SECRET is not set in $env_file"
         exit 1
     fi
 
@@ -110,6 +118,7 @@ deploy() {
     local mode="$1"
     local compose_file="$COMPOSE_FILE"
     local container_prefix="timetrack"
+    local env_file="$ENV_FILE"
 
     if [ "$mode" = "prod" ]; then
         compose_file="$PROD_COMPOSE_FILE"
@@ -117,10 +126,23 @@ deploy() {
         log_info "Deploying in production mode..."
 
         # Create automatic backup before production deployment
-        if docker ps | grep -q "${container_prefix}-postgres"; then
+        if docker ps | grep -q "timetrack-postgres-prod"; then
             local timestamp=$(date +%Y%m%d_%H%M%S)
             local backup_file="backup_prod_${timestamp}.sql"
-            docker exec ${container_prefix}-postgres pg_dump -U timetrack_user timetrack_db > "$backup_file"
+            docker exec timetrack-postgres-prod pg_dump -U timetrack_user timetrack_db > "$backup_file"
+            log_info "Pre-deployment backup created: $backup_file"
+        fi
+    elif [ "$mode" = "staging" ]; then
+        compose_file="$STAGING_COMPOSE_FILE"
+        container_prefix="timetrack-staging"
+        env_file="$STAGING_ENV_FILE"
+        log_info "Deploying in staging mode..."
+
+        # Create automatic backup before staging deployment
+        if docker ps | grep -q "timetrack-postgres-staging"; then
+            local timestamp=$(date +%Y%m%d_%H%M%S)
+            local backup_file="backup_staging_${timestamp}.sql"
+            docker exec timetrack-postgres-staging pg_dump -U timetrack_user timetrack_db > "$backup_file"
             log_info "Pre-deployment backup created: $backup_file"
         fi
     else
@@ -140,15 +162,15 @@ deploy() {
     # Export environment variables for docker-compose ${VAR} substitution
     # The env_file directive loads vars into containers, but ${VAR} syntax
     # in docker-compose.yml requires vars in the shell environment
-    log_info "Loading environment variables from $ENV_FILE"
+    log_info "Loading environment variables from $env_file"
     set -a
-    source "$ENV_FILE"
+    source "$env_file"
     set +a
 
     # Stop existing containers
     docker_compose -f "$compose_file" down --remove-orphans
 
-    if [ "$mode" = "prod" ]; then
+    if [ "$mode" = "prod" ] || [ "$mode" = "staging" ]; then
         # Remove dangling images left by previous builds
         log_info "Pruning dangling Docker images..."
         docker image prune -f
@@ -161,7 +183,7 @@ deploy() {
     # Build and start services
     docker_compose -f "$compose_file" up -d --build
 
-    if [ "$mode" = "prod" ]; then
+    if [ "$mode" = "prod" ] || [ "$mode" = "staging" ]; then
         # Clean up old images that are no longer used by any container
         log_info "Removing unused images from previous deployments..."
         docker image prune -af --filter "until=24h"
@@ -173,41 +195,58 @@ deploy() {
     log_info "  API: http://localhost:${API_PORT:-3011}"
     log_info "  API Docs: http://localhost:${API_PORT:-3011}/api-docs"
     log_info "  Landing: http://localhost:${LANDING_PORT:-3014}"
-    if [ "$mode" != "prod" ]; then
+    if [ "$mode" != "prod" ] && [ "$mode" != "staging" ]; then
         log_info "  PostgreSQL: localhost:${POSTGRES_PORT:-3012}"
         log_info "  Redis: localhost:${REDIS_PORT:-3013}"
     fi
 }
 
+# Resolve compose file for a given environment argument
+resolve_compose_file() {
+    local env="$1"
+    case "$env" in
+        prod)    echo "$PROD_COMPOSE_FILE" ;;
+        staging) echo "$STAGING_COMPOSE_FILE" ;;
+        *)       echo "$COMPOSE_FILE" ;;
+    esac
+}
+
 show_logs() {
-    local compose_file="$COMPOSE_FILE"
-    if [ "$2" = "prod" ]; then
-        compose_file="$PROD_COMPOSE_FILE"
-    fi
+    local compose_file
+    compose_file=$(resolve_compose_file "$2")
     log_info "Showing logs..."
     docker_compose -f "$compose_file" logs -f
 }
 
 show_status() {
-    local compose_file="$COMPOSE_FILE"
-    if [ "$2" = "prod" ]; then
-        compose_file="$PROD_COMPOSE_FILE"
-    fi
+    local compose_file
+    compose_file=$(resolve_compose_file "$2")
     log_info "Service status:"
     docker_compose -f "$compose_file" ps
 }
 
 backup_database() {
+    local env="${1:-}"
     log_info "Creating database backup..."
     local timestamp=$(date +%Y%m%d_%H%M%S)
-    local backup_file="backup_${timestamp}.sql"
 
-    if docker ps | grep -q "timetrack-postgres"; then
-        docker exec timetrack-postgres pg_dump -U timetrack_user timetrack_db > "$backup_file"
-        log_info "Database backup created: $backup_file"
+    if [ "$env" = "staging" ]; then
+        if docker ps | grep -q "timetrack-postgres-staging"; then
+            local backup_file="backup_staging_${timestamp}.sql"
+            docker exec timetrack-postgres-staging pg_dump -U timetrack_user timetrack_db > "$backup_file"
+            log_info "Staging database backup created: $backup_file"
+        else
+            log_error "No staging PostgreSQL container found"
+            exit 1
+        fi
     elif docker ps | grep -q "timetrack-postgres-prod"; then
+        local backup_file="backup_prod_${timestamp}.sql"
         docker exec timetrack-postgres-prod pg_dump -U timetrack_user timetrack_db > "$backup_file"
         log_info "Production database backup created: $backup_file"
+    elif docker ps | grep -q "timetrack-postgres"; then
+        local backup_file="backup_${timestamp}.sql"
+        docker exec timetrack-postgres pg_dump -U timetrack_user timetrack_db > "$backup_file"
+        log_info "Database backup created: $backup_file"
     else
         log_error "No PostgreSQL container found"
         exit 1
@@ -223,6 +262,10 @@ migrate_database() {
         container_name="timetrack-api-prod"
         compose_file="$PROD_COMPOSE_FILE"
         log_info "Running database migrations in production..."
+    elif [ "$environment" = "staging" ]; then
+        container_name="timetrack-api-staging"
+        compose_file="$STAGING_COMPOSE_FILE"
+        log_info "Running database migrations in staging..."
     else
         log_info "Running database migrations in development..."
     fi
@@ -237,19 +280,15 @@ migrate_database() {
 }
 
 stop_services() {
-    local compose_file="$COMPOSE_FILE"
-    if [ "$2" = "prod" ]; then
-        compose_file="$PROD_COMPOSE_FILE"
-    fi
+    local compose_file
+    compose_file=$(resolve_compose_file "$2")
     docker_compose -f "$compose_file" down
     log_info "Services stopped"
 }
 
 restart_services() {
-    local compose_file="$COMPOSE_FILE"
-    if [ "$2" = "prod" ]; then
-        compose_file="$PROD_COMPOSE_FILE"
-    fi
+    local compose_file
+    compose_file=$(resolve_compose_file "$2")
     docker_compose -f "$compose_file" restart
     log_info "Services restarted"
 }
@@ -260,23 +299,26 @@ show_help() {
     echo "Usage: $0 [COMMAND] [OPTIONS]"
     echo ""
     echo "Commands:"
-    echo "  dev                Deploy in development mode"
-    echo "  prod               Deploy in production mode"
-    echo "  logs [prod]        Show application logs"
-    echo "  status [prod]      Show service status"
-    echo "  backup             Create database backup"
-    echo "  migrate [dev|prod] Run database migrations"
-    echo "  stop [prod]        Stop all services"
-    echo "  restart [prod]     Restart all services"
-    echo "  help               Show this help message"
+    echo "  dev                       Deploy in development mode"
+    echo "  prod                      Deploy in production mode"
+    echo "  staging                   Deploy in staging mode"
+    echo "  logs [prod|staging]       Show application logs"
+    echo "  status [prod|staging]     Show service status"
+    echo "  backup [staging]          Create database backup"
+    echo "  migrate [dev|prod|staging] Run database migrations"
+    echo "  stop [prod|staging]       Stop all services"
+    echo "  restart [prod|staging]    Restart all services"
+    echo "  help                      Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0 dev             # Start development environment"
-    echo "  $0 prod            # Deploy production"
-    echo "  $0 logs            # Show development logs"
-    echo "  $0 logs prod       # Show production logs"
-    echo "  $0 migrate prod    # Run migrations in production"
-    echo "  $0 stop prod       # Stop production services"
+    echo "  $0 dev                # Start development environment"
+    echo "  $0 prod               # Deploy production"
+    echo "  $0 staging            # Deploy staging"
+    echo "  $0 logs               # Show development logs"
+    echo "  $0 logs prod          # Show production logs"
+    echo "  $0 logs staging       # Show staging logs"
+    echo "  $0 migrate staging    # Run migrations in staging"
+    echo "  $0 stop staging       # Stop staging services"
 }
 
 # Main script
@@ -291,6 +333,11 @@ case "$1" in
         setup_environment
         deploy "prod"
         ;;
+    "staging")
+        check_requirements
+        setup_environment "$STAGING_ENV_FILE"
+        deploy "staging"
+        ;;
     "logs")
         check_requirements
         show_logs "$@"
@@ -301,10 +348,15 @@ case "$1" in
         ;;
     "backup")
         check_requirements
-        backup_database
+        backup_database "$2"
         ;;
     "migrate")
         check_requirements
+        if [ "$2" = "staging" ]; then
+            setup_environment "$STAGING_ENV_FILE"
+        else
+            setup_environment
+        fi
         migrate_database "$2"
         ;;
     "stop")

@@ -19,19 +19,25 @@ Core data model: **User → Projects → Tasks → TimeEntries**. Hourly rates c
 ## Root Commands
 
 ```bash
-npm run dev          # Start all services (Docker)
-npm run logs         # View logs
-npm run stop         # Stop all services
-npm run restart      # Restart all services
-npm run status       # Check service status
-npm run build:all    # Build all packages (shared → api → ui → landing)
-npm run test:all     # Run tests across api and ui
-npm run lint:all     # Lint all packages
+npm run dev              # Start all services (Docker)
+npm run logs             # View logs
+npm run stop             # Stop all services
+npm run restart          # Restart all services
+npm run status           # Check service status
+npm run build:all        # Build all packages (shared → api → ui → landing)
+npm run test:all         # Run tests across api and ui
+npm run lint:all         # Lint all packages
 npm run type-check:all
-npm run migrate      # Run DB migrations (dev)
-npm run migrate:prod # Run DB migrations (prod)
-npm run backup       # Create DB backup
-npm run db:seed      # Seed test data
+npm run migrate          # Run DB migrations (dev)
+npm run migrate:prod     # Run DB migrations (prod)
+npm run migrate:staging  # Run DB migrations (staging)
+npm run backup           # Create DB backup
+npm run db:seed          # Seed test data
+npm run staging          # Deploy staging environment
+npm run logs:staging     # View staging logs
+npm run stop:staging     # Stop staging services
+npm run status:staging   # Check staging service status
+npm run restart:staging  # Restart staging services
 ```
 
 **Dev login** (after seeding): `test@example.com` / `123456`
@@ -45,14 +51,20 @@ npm run db:seed      # Seed test data
 | 3012 | PostgreSQL |
 | 3013 | Redis |
 | 3014 | Landing page |
+| 3020 | Staging Web UI |
+| 3021 | Staging API |
+| 3022 | Staging PostgreSQL |
+| 3023 | Staging Redis |
+| 3024 | Staging Landing |
 | 5173 | Vite dev (UI) |
 | 5174 | Vite dev (Landing) |
 
 ## Deployment
 
 ```bash
-./deploy.sh dev   # Development with hot reload
-./deploy.sh prod  # Production (includes DB backup + migrations)
+./deploy.sh dev     # Development with hot reload
+./deploy.sh prod    # Production (includes DB backup + migrations)
+./deploy.sh staging # Staging (isolated on same droplet, ports 3020-3024)
 ```
 
 ## Development Workflow

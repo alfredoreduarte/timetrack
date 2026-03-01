@@ -158,3 +158,160 @@ server {
     server_name api.yourdomain.com;
     return 404;                                                             # managed by Certbot
 }
+
+###############################################################################
+# STAGING ENVIRONMENT
+# Staging runs on the same droplet with ports 3020-3024
+# Replace staging.track.alfredo.re with your staging domain if different
+###############################################################################
+
+###############################################################################
+# 4) Staging landing  (staging.track.alfredo.re -> container port 3024)
+###############################################################################
+server {
+    server_name staging.track.alfredo.re;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header X-Environment "staging" always;
+
+    # Health check endpoint - proxy to staging API service
+    location /health {
+        limit_req zone=timetrack_api burst=10 nodelay;
+        proxy_pass http://localhost:3021/health;
+        access_log off;
+    }
+
+    # API docs - proxy to staging API service
+    location /api-docs {
+        limit_req zone=timetrack_web burst=30 nodelay;
+        proxy_pass http://localhost:3021/api-docs;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Static marketing site (staging)
+    location / {
+        limit_req zone=timetrack_web burst=30 nodelay;
+        proxy_pass http://localhost:3024;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout    60s;
+        proxy_read_timeout    60s;
+    }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/staging.track.alfredo.re/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/staging.track.alfredo.re/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+###############################################################################
+# 5) Staging dashboard  (app.staging.track.alfredo.re -> container port 3020)
+###############################################################################
+server {
+    server_name app.staging.track.alfredo.re;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header X-Environment "staging" always;
+
+    # React app served by staging dashboard container (nginx)
+    location / {
+        limit_req zone=timetrack_web burst=20 nodelay;
+
+        proxy_pass http://localhost:3020;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/staging.track.alfredo.re/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/staging.track.alfredo.re/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+###############################################################################
+# 6) Staging API  (api.staging.track.alfredo.re -> container port 3021)
+###############################################################################
+server {
+    server_name api.staging.track.alfredo.re;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header X-Environment "staging" always;
+
+    location / {
+        limit_req zone=timetrack_api burst=10 nodelay;
+
+        proxy_pass http://localhost:3021;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/staging.track.alfredo.re/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/staging.track.alfredo.re/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+###############################################################################
+# Staging HTTP-to-HTTPS redirects
+###############################################################################
+server {
+    if ($host = staging.track.alfredo.re)     { return 301 https://$host$request_uri; }
+    listen 80;
+    server_name staging.track.alfredo.re;
+    return 404;
+}
+
+server {
+    if ($host = app.staging.track.alfredo.re) { return 301 https://$host$request_uri; }
+    listen 80;
+    server_name app.staging.track.alfredo.re;
+    return 404;
+}
+
+server {
+    if ($host = api.staging.track.alfredo.re) { return 301 https://$host$request_uri; }
+    listen 80;
+    server_name api.staging.track.alfredo.re;
+    return 404;
+}
