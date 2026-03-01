@@ -1,3 +1,14 @@
+// Subscription types
+export type SubscriptionStatus =
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "trialing"
+  | "incomplete"
+  | "incomplete_expired"
+  | "unpaid"
+  | null;
+
 // User types
 export interface User {
   id: string;
@@ -7,6 +18,10 @@ export interface User {
   createdAt: string;
   updatedAt: string;
   idleTimeoutSeconds?: number;
+  subscriptionStatus?: SubscriptionStatus;
+  subscriptionCurrentPeriodEnd?: string | null;
+  subscriptionCancelAtPeriodEnd?: boolean;
+  isSubscriptionExempt?: boolean;
 }
 
 export interface LoginRequest {

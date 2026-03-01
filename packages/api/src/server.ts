@@ -21,6 +21,8 @@ import projectRoutes from "./routes/projects";
 import taskRoutes from "./routes/tasks";
 import timeEntryRoutes from "./routes/timeEntries";
 import reportRoutes from "./routes/reports";
+import billingRoutes from "./routes/billing";
+import { stripeWebhookHandler } from "./routes/webhooks";
 
 // Load environment variables
 dotenv.config();
@@ -204,6 +206,15 @@ app.use(
     exposedHeaders: ["Content-Length", "X-Foo", "X-Bar"],
     optionsSuccessStatus: 200, // Some legacy browsers choke on 204
   })
+);
+
+// Stripe webhook route - MUST be mounted before body parsers (requestSizeLimiter)
+// because Stripe requires the raw body for signature verification.
+// Also intentionally exempt from rate limiting (Stripe controls the request rate).
+app.post(
+  "/billing/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhookHandler
 );
 
 // Rate limiting - more lenient for development
@@ -413,6 +424,7 @@ app.use("/projects", projectRoutes);
 app.use("/tasks", taskRoutes);
 app.use("/time-entries", timeEntryRoutes);
 app.use("/reports", reportRoutes);
+app.use("/billing", billingRoutes);
 
 // Socket.IO authentication middleware
 io.use(async (socket, next) => {

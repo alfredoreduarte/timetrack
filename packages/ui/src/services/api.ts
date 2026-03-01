@@ -40,6 +40,12 @@ class APIClient {
           localStorage.removeItem("token");
           window.location.href = "/login";
         }
+        if (
+          error.response?.status === 402 &&
+          error.response?.data?.error === "subscription_required"
+        ) {
+          window.location.href = "/billing";
+        }
         return Promise.reject(error);
       }
     );
@@ -415,6 +421,23 @@ class APIClient {
     },
   };
 
+  // Billing API
+  billing = {
+    createCheckoutSession: async () => {
+      return this.request<{ url: string }>(
+        "POST",
+        "/billing/create-checkout-session"
+      );
+    },
+
+    createPortalSession: async () => {
+      return this.request<{ url: string }>(
+        "POST",
+        "/billing/create-portal-session"
+      );
+    },
+  };
+
   // Health check
   health = {
     check: async () => {
@@ -439,6 +462,7 @@ export const projectsAPI = apiClient.projects;
 export const tasksAPI = apiClient.tasks;
 export const timeEntriesAPI = apiClient.timeEntries;
 export const reportsAPI = apiClient.reports;
+export const billingAPI = apiClient.billing;
 export const healthAPI = apiClient.health;
 
 export default apiClient;

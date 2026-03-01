@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState, AppDispatch } from "./store";
 import { getCurrentUser } from "./store/slices/authSlice";
@@ -19,10 +19,14 @@ import Projects from "./pages/Projects";
 import TimeEntries from "./pages/TimeEntries";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import BillingPage from "./pages/BillingPage";
 import ApiTest from "./pages/ApiTest";
 import LoadingSpinner from "./components/LoadingSpinner";
 import ElectronApp from "./components/electron/ElectronApp";
 import "./types/electron.d.ts"; // Import electron types
+
+const SUBSCRIPTION_ACTIVE_STATUSES = ["active", "trialing", "past_due"];
+const SUBSCRIPTION_EXEMPT_PATHS = ["/billing", "/settings"];
 
 // Protected Route component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
@@ -30,6 +34,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const { isAuthenticated, isLoading, user, token, hasCheckedAuth } =
     useSelector((state: RootState) => state.auth);
+  const location = useLocation();
 
   // Show loading only if we're loading and don't have any user data
   if (isLoading && !user) {
@@ -39,6 +44,16 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   // If we have a token and user data (even if we haven't finished checking), allow access
   // This provides a better UX when we have cached data
   if (token && user) {
+    // Subscription check: redirect to /billing if not subscribed
+    // Exempt users, grandfathered users, and certain paths are excluded
+    if (
+      !user.isSubscriptionExempt &&
+      (!user.subscriptionStatus ||
+        !SUBSCRIPTION_ACTIVE_STATUSES.includes(user.subscriptionStatus)) &&
+      !SUBSCRIPTION_EXEMPT_PATHS.includes(location.pathname)
+    ) {
+      return <Navigate to="/billing" replace />;
+    }
     return <>{children}</>;
   }
 
@@ -254,6 +269,7 @@ function AppContent() {
           <Route path="time-entries" element={<TimeEntries />} />
           <Route path="reports" element={<Reports />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="billing" element={<BillingPage />} />
           <Route path="api-test" element={<ApiTest />} />
         </Route>
 
