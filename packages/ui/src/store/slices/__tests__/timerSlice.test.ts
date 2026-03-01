@@ -9,7 +9,6 @@ import timerSlice, {
   clearError,
 } from "../timerSlice";
 import {
-  server,
   resetMockData,
   setMockCurrentEntry,
 } from "../../../test/mocks/server";

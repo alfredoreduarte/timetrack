@@ -7,7 +7,7 @@ import {
   TimeEntry,
 } from "../store/slices/timeEntriesSlice";
 import { useTimer } from "../hooks/useTimer";
-import { fetchProjects, fetchTasks, Task } from "../store/slices/projectsSlice";
+import { fetchProjects, fetchTasks } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
 import LoadingSpinner from "../components/LoadingSpinner";
 import EditTimeEntryModal from "../components/EditTimeEntryModal";
@@ -44,7 +44,7 @@ const TimeEntries: React.FC = () => {
   useEffect(() => {
     dispatch(fetchTimeEntries({}));
     dispatch(fetchProjects());
-    dispatch(fetchTasks());
+    dispatch(fetchTasks({}));
   }, [dispatch]);
 
   // Apply filters
@@ -101,7 +101,7 @@ const TimeEntries: React.FC = () => {
   };
 
   // Handle save edited entry
-  const handleSaveEntry = (updatedEntry: TimeEntry) => {
+  const handleSaveEntry = (_updatedEntry: TimeEntry) => {
     // Refresh the entries list
     dispatch(fetchTimeEntries({}));
     setIsEditModalOpen(false);

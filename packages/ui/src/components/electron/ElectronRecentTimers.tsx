@@ -7,7 +7,7 @@ import {
   TimeEntry,
 } from "../../store/slices/timeEntriesSlice";
 import { fetchProjects } from "../../store/slices/projectsSlice";
-import { formatReportsDuration, formatDateTime } from "../../utils/dateTime";
+import { formatReportsDuration } from "../../utils/dateTime";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import { PlayIcon } from "@heroicons/react/24/solid";
 
@@ -103,7 +103,7 @@ const ElectronRecentTimers: React.FC = () => {
                       <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
                         <div className="flex items-center gap-1">
                           <ClockIcon className="h-3 w-3" />
-                          <span>{formatReportsDuration(entry.duration)}</span>
+                          <span>{formatReportsDuration(entry.duration ?? 0)}</span>
                         </div>
                         <span>•</span>
                         <span>
