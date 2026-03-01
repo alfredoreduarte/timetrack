@@ -98,6 +98,10 @@ router.get(
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        githubRepoId: true,
+        githubRepoOwner: true,
+        githubRepoName: true,
+        githubRepoFullName: true,
         _count: {
           select: {
             tasks: true,
@@ -171,6 +175,10 @@ router.post(
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        githubRepoId: true,
+        githubRepoOwner: true,
+        githubRepoName: true,
+        githubRepoFullName: true,
       },
     });
 
@@ -224,6 +232,10 @@ router.get(
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        githubRepoId: true,
+        githubRepoOwner: true,
+        githubRepoName: true,
+        githubRepoFullName: true,
         tasks: {
           select: {
             id: true,
@@ -232,6 +244,10 @@ router.get(
             isCompleted: true,
             hourlyRate: true,
             createdAt: true,
+            githubIssueNumber: true,
+            githubIssueUrl: true,
+            githubLabels: true,
+            githubIssueState: true,
           },
           orderBy: {
             createdAt: "desc",
@@ -322,6 +338,10 @@ router.put(
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        githubRepoId: true,
+        githubRepoOwner: true,
+        githubRepoName: true,
+        githubRepoFullName: true,
       },
     });
 

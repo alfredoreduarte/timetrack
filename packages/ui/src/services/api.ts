@@ -415,6 +415,78 @@ class APIClient {
     },
   };
 
+  // GitHub API
+  github = {
+    getStatus: async () => {
+      return this.request<{
+        connected: boolean;
+        username?: string;
+        avatarUrl?: string;
+      }>("GET", "/github/status");
+    },
+
+    getAuthUrl: async () => {
+      return this.request<{ url: string }>("GET", "/github/auth-url");
+    },
+
+    disconnect: async () => {
+      return this.request<{ message: string }>("DELETE", "/github/disconnect");
+    },
+
+    getRepos: async (page = 1) => {
+      return this.request<{
+        repos: Array<{
+          id: number;
+          name: string;
+          full_name: string;
+          owner: string;
+          description?: string;
+          html_url: string;
+          private: boolean;
+          open_issues_count: number;
+        }>;
+      }>("GET", `/github/repos?page=${page}`);
+    },
+
+    linkRepo: async (
+      projectId: string,
+      repo: {
+        repoId: number;
+        owner: string;
+        name: string;
+        fullName: string;
+      }
+    ) => {
+      return this.request<{
+        message: string;
+        project: Project;
+        webhookCreated: boolean;
+      }>("POST", `/github/projects/${projectId}/link-repo`, repo);
+    },
+
+    unlinkRepo: async (projectId: string) => {
+      return this.request<{ message: string }>(
+        "DELETE",
+        `/github/projects/${projectId}/unlink-repo`
+      );
+    },
+
+    syncIssues: async (projectId: string) => {
+      return this.request<{ imported: number; updated: number }>(
+        "POST",
+        `/github/projects/${projectId}/sync-issues`
+      );
+    },
+
+    importIssue: async (projectId: string, issueNumber: number) => {
+      return this.request<{ task: Task }>(
+        "POST",
+        `/github/projects/${projectId}/import-issue`,
+        { issueNumber }
+      );
+    },
+  };
+
   // Health check
   health = {
     check: async () => {
@@ -439,6 +511,7 @@ export const projectsAPI = apiClient.projects;
 export const tasksAPI = apiClient.tasks;
 export const timeEntriesAPI = apiClient.timeEntries;
 export const reportsAPI = apiClient.reports;
+export const githubAPI = apiClient.github;
 export const healthAPI = apiClient.health;
 
 export default apiClient;

@@ -23,10 +23,11 @@ model User {
   passwordResetExpiresAt DateTime?
 
   // Relations
-  projects     Project[]
-  timeEntries  TimeEntry[]
-  tasks        Task[]
-  apiKeys      ApiKey[]
+  projects          Project[]
+  timeEntries       TimeEntry[]
+  tasks             Task[]
+  apiKeys           ApiKey[]
+  githubIntegration GitHubIntegration?
 
   @@map("users")
   @@index([email])
@@ -42,6 +43,14 @@ model Project {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   hourlyRate  Float?
+
+  // GitHub integration
+  githubRepoId        Int?    @map("github_repo_id")
+  githubRepoOwner     String? @map("github_repo_owner")
+  githubRepoName      String? @map("github_repo_name")
+  githubRepoFullName  String? @map("github_repo_full_name")
+  githubWebhookId     Int?    @map("github_webhook_id")
+  githubWebhookSecret String? @map("github_webhook_secret")
 
   // Relations
   userId      String
@@ -63,6 +72,13 @@ model Task {
   updatedAt   DateTime  @updatedAt
   hourlyRate  Float?
 
+  // GitHub integration
+  githubIssueId     Int?    @map("github_issue_id")
+  githubIssueNumber Int?    @map("github_issue_number")
+  githubIssueUrl    String? @map("github_issue_url")
+  githubLabels      String? @map("github_labels")
+  githubIssueState  String? @map("github_issue_state")
+
   // Relations
   projectId   String
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -74,6 +90,8 @@ model Task {
   @@index([projectId])
   @@index([userId])
   @@index([userId, isCompleted])
+  @@index([githubIssueId])
+  @@unique([projectId, githubIssueNumber])
 }
 
 model TimeEntry {
@@ -120,4 +138,22 @@ model ApiKey {
   @@index([userId])
   @@index([key])
   @@index([userId, isActive])
+}
+
+model GitHubIntegration {
+  id             String   @id @default(cuid())
+  githubUserId   Int      @map("github_user_id")
+  githubUsername  String   @map("github_username")
+  accessToken    String   @map("access_token")
+  scope          String?
+  avatarUrl      String?  @map("avatar_url")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("github_integrations")
+  @@index([githubUserId])
 }

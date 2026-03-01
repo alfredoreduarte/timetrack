@@ -44,6 +44,11 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3010,https://yourdomain.com}
       LOG_LEVEL: info
       APPLICATION_URL: ${APPLICATION_URL:-http://localhost:3010}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-http://localhost:3011/github/callback}
+      GITHUB_TOKEN_ENCRYPTION_KEY: ${GITHUB_TOKEN_ENCRYPTION_KEY:-}
+      GITHUB_WEBHOOK_URL: ${GITHUB_WEBHOOK_URL:-}
     ports:
       - "${API_PORT:-3011}:${API_PORT:-3011}"
     depends_on:

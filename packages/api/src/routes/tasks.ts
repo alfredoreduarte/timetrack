@@ -50,7 +50,7 @@ const updateTaskSchema = z.object({
 router.get(
   "/",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { projectId, isCompleted } = req.query;
+    const { projectId, isCompleted, linkedToGithub } = req.query;
 
     const where: any = {
       userId: req.user!.id,
@@ -64,6 +64,10 @@ router.get(
       where.isCompleted = isCompleted === "true";
     }
 
+    if (linkedToGithub === "true") {
+      where.githubIssueNumber = { not: null };
+    }
+
     const tasks = await prisma.task.findMany({
       where,
       select: {
@@ -74,6 +78,10 @@ router.get(
         hourlyRate: true,
         createdAt: true,
         updatedAt: true,
+        githubIssueNumber: true,
+        githubIssueUrl: true,
+        githubLabels: true,
+        githubIssueState: true,
         project: {
           select: {
             id: true,
@@ -162,6 +170,10 @@ router.post(
         hourlyRate: true,
         createdAt: true,
         updatedAt: true,
+        githubIssueNumber: true,
+        githubIssueUrl: true,
+        githubLabels: true,
+        githubIssueState: true,
         project: {
           select: {
             id: true,
@@ -221,6 +233,10 @@ router.get(
         hourlyRate: true,
         createdAt: true,
         updatedAt: true,
+        githubIssueNumber: true,
+        githubIssueUrl: true,
+        githubLabels: true,
+        githubIssueState: true,
         project: {
           select: {
             id: true,
@@ -319,6 +335,10 @@ router.put(
         hourlyRate: true,
         createdAt: true,
         updatedAt: true,
+        githubIssueNumber: true,
+        githubIssueUrl: true,
+        githubLabels: true,
+        githubIssueState: true,
         project: {
           select: {
             id: true,

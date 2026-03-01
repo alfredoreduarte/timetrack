@@ -21,6 +21,8 @@ import projectRoutes from "./routes/projects";
 import taskRoutes from "./routes/tasks";
 import timeEntryRoutes from "./routes/timeEntries";
 import reportRoutes from "./routes/reports";
+import githubRoutes from "./routes/github";
+import webhookRoutes from "./routes/webhooks";
 
 // Load environment variables
 dotenv.config();
@@ -246,6 +248,9 @@ if (
   logger.info("Rate limiting disabled for development");
 }
 
+// Webhook routes must be mounted before body parsers (need raw body for signature verification)
+app.use("/webhooks", webhookRoutes);
+
 // Request size limiting and upload protection
 const requestSizeLimiter = (
   req: express.Request,
@@ -413,6 +418,7 @@ app.use("/projects", projectRoutes);
 app.use("/tasks", taskRoutes);
 app.use("/time-entries", timeEntryRoutes);
 app.use("/reports", reportRoutes);
+app.use("/github", githubRoutes);
 
 // Socket.IO authentication middleware
 io.use(async (socket, next) => {
