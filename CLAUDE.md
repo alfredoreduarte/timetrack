@@ -67,6 +67,9 @@ npm run restart:staging  # Restart staging services
 ./deploy.sh staging # Staging (isolated on same droplet, ports 3020-3024)
 ```
 
+### Staging via PR Label
+Add the `deploy-staging` label to any PR to automatically deploy that branch to the staging environment. Removing the label (or closing the PR) rolls staging back to `main`.
+
 ## Development Workflow
 
 ### Never Work Directly on Main

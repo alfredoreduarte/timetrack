@@ -161,6 +161,9 @@ npm run dev    # Starts all services with hot reload
 npm run prod   # Optimized production build
 ```
 
+### Staging via PR Label
+Add the `deploy-staging` label to any PR to automatically deploy that branch to the staging environment. Removing the label (or closing the PR) rolls staging back to `main`.
+
 Both use the same Docker Compose setup with different configurations.
 
 ## 🎯 Key Benefits
