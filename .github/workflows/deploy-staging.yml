@@ -31,8 +31,8 @@ jobs:
             cd ~/websites/timetrack-monorepo
 
             echo "=== Fetching PR #${{ github.event.pull_request.number }} ==="
-            git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-${{ github.event.pull_request.number }}
-            git checkout pr-${{ github.event.pull_request.number }}
+            git fetch origin pull/${{ github.event.pull_request.number }}/head
+            git checkout -B pr-${{ github.event.pull_request.number }} FETCH_HEAD
 
             echo "=== Cleaning up Docker to free disk space ==="
             docker image prune -f
