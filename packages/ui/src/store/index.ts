@@ -5,6 +5,7 @@ import projectsSlice from "./slices/projectsSlice";
 import timeEntriesSlice from "./slices/timeEntriesSlice";
 import dashboardSlice from "./slices/dashboardSlice";
 import reportsSlice from "./slices/reportsSlice";
+import githubSlice from "./slices/githubSlice";
 
 export const store = configureStore({
   reducer: {
@@ -14,6 +15,7 @@ export const store = configureStore({
     timeEntries: timeEntriesSlice,
     dashboard: dashboardSlice,
     reports: reportsSlice,
+    github: githubSlice,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

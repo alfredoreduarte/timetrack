@@ -34,6 +34,10 @@ export interface Project {
   userId: string;
   createdAt: string;
   updatedAt: string;
+  githubRepoId?: number;
+  githubRepoOwner?: string;
+  githubRepoName?: string;
+  githubRepoFullName?: string;
 }
 
 export interface CreateProjectRequest {
@@ -85,4 +89,38 @@ export interface ApiError {
   message: string;
   code?: string;
   statusCode?: number;
+}
+
+// GitHub Integration types
+export interface GitHubIntegration {
+  id: string;
+  githubUserId: number;
+  githubUsername: string;
+  avatarUrl?: string;
+  scope?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GitHubRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  owner: string;
+  description?: string;
+  html_url: string;
+  private: boolean;
+  open_issues_count: number;
+}
+
+export interface GitHubIssue {
+  id: number;
+  number: number;
+  title: string;
+  body?: string;
+  state: string;
+  html_url: string;
+  labels: Array<{ name: string; color: string }>;
+  created_at: string;
+  updated_at: string;
 }

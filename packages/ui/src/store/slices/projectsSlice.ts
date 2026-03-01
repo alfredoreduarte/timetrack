@@ -11,6 +11,10 @@ export interface Project {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  githubRepoId?: number;
+  githubRepoOwner?: string;
+  githubRepoName?: string;
+  githubRepoFullName?: string;
 }
 
 export interface Task {
@@ -22,6 +26,10 @@ export interface Task {
   isCompleted: boolean;
   createdAt: string;
   updatedAt: string;
+  githubIssueNumber?: number;
+  githubIssueUrl?: string;
+  githubLabels?: string;
+  githubIssueState?: string;
   project?: {
     id: string;
     name: string;

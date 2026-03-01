@@ -8,8 +8,10 @@ import {
   ArrowLeftIcon,
   CheckIcon,
   ClockIcon,
+  ArrowPathIcon,
+  LinkIcon,
 } from "@heroicons/react/24/outline";
-import { RootState } from "../store";
+import { RootState, AppDispatch } from "../store";
 import {
   fetchProjects,
   createProject,
@@ -22,6 +24,9 @@ import {
   Project,
   Task,
 } from "../store/slices/projectsSlice";
+import { syncGitHubIssues } from "../store/slices/githubSlice";
+import { githubAPI } from "../services/api";
+import GitHubRepoModal from "../components/GitHubRepoModal";
 import toast from "react-hot-toast";
 
 interface ProjectFormData {
@@ -38,12 +43,16 @@ interface TaskFormData {
 }
 
 const Projects: React.FC = () => {
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
   const { projectId } = useParams<{ projectId?: string }>();
   const { projects, tasks, loading, error } = useSelector(
     (state: RootState) => state.projects
   );
+  const { connected: githubConnected, syncing } = useSelector(
+    (state: RootState) => state.github
+  );
+  const [showRepoModal, setShowRepoModal] = useState(false);
 
   // Project state
   const [showProjectModal, setShowProjectModal] = useState(false);
@@ -263,6 +272,60 @@ const Projects: React.FC = () => {
     navigate("/projects");
   };
 
+  const handleLinkRepo = async (repo: {
+    id: number;
+    full_name: string;
+    owner: string;
+    name: string;
+  }) => {
+    if (!selectedProject) return;
+    try {
+      const result = await githubAPI.linkRepo(selectedProject.id, {
+        repoId: repo.id,
+        owner: repo.owner,
+        name: repo.name,
+        fullName: repo.full_name,
+      });
+      // Refresh projects to get updated GitHub fields
+      dispatch(fetchProjects());
+      setShowRepoModal(false);
+      toast.success(
+        `Linked to ${repo.full_name}${
+          result.webhookCreated ? "" : " (webhook skipped — set GITHUB_WEBHOOK_URL for auto-sync)"
+        }`
+      );
+    } catch {
+      toast.error("Failed to link repository");
+    }
+  };
+
+  const handleUnlinkRepo = async () => {
+    if (!selectedProject) return;
+    if (!confirm("Unlink this repository? Existing tasks will be kept.")) return;
+    try {
+      await githubAPI.unlinkRepo(selectedProject.id);
+      dispatch(fetchProjects());
+      toast.success("Repository unlinked");
+    } catch {
+      toast.error("Failed to unlink repository");
+    }
+  };
+
+  const handleSyncIssues = async () => {
+    if (!selectedProject) return;
+    try {
+      const result = await dispatch(
+        syncGitHubIssues(selectedProject.id)
+      ).unwrap();
+      dispatch(fetchTasks({ projectId: selectedProject.id }));
+      toast.success(
+        `Synced: ${result.imported} imported, ${result.updated} updated`
+      );
+    } catch {
+      toast.error("Failed to sync issues");
+    }
+  };
+
   const colorOptions = [
     "#3B82F6", // Blue
     "#EF4444", // Red
@@ -319,15 +382,76 @@ const Projects: React.FC = () => {
                 </h1>
               </div>
               <p className="text-gray-600">Manage tasks for this project</p>
+              {/* GitHub repo link info */}
+              {selectedProject.githubRepoFullName && (
+                <div className="flex items-center gap-2 mt-1">
+                  <svg
+                    className="w-3.5 h-3.5 text-gray-400"
+                    fill="currentColor"
+                    viewBox="0 0 16 16"
+                  >
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+                  </svg>
+                  <a
+                    href={`https://github.com/${selectedProject.githubRepoFullName}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    {selectedProject.githubRepoFullName}
+                  </a>
+                </div>
+              )}
             </div>
           </div>
-          <button
-            onClick={() => setShowTaskModal(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <PlusIcon className="h-5 w-5" />
-            New Task
-          </button>
+          <div className="flex items-center gap-2">
+            {/* GitHub actions */}
+            {selectedProject.githubRepoFullName ? (
+              <>
+                <button
+                  onClick={handleSyncIssues}
+                  disabled={syncing}
+                  className="btn-secondary flex items-center gap-1.5 text-sm"
+                  title="Sync issues from GitHub"
+                >
+                  <ArrowPathIcon
+                    className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`}
+                  />
+                  {syncing ? "Syncing..." : "Sync Issues"}
+                </button>
+                <button
+                  onClick={handleUnlinkRepo}
+                  className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                  title="Unlink repository"
+                >
+                  <LinkIcon className="h-4 w-4" />
+                </button>
+              </>
+            ) : (
+              githubConnected && (
+                <button
+                  onClick={() => setShowRepoModal(true)}
+                  className="btn-secondary flex items-center gap-1.5 text-sm"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="currentColor"
+                    viewBox="0 0 16 16"
+                  >
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+                  </svg>
+                  Link Repo
+                </button>
+              )
+            )}
+            <button
+              onClick={() => setShowTaskModal(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <PlusIcon className="h-5 w-5" />
+              New Task
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -399,6 +523,24 @@ const Projects: React.FC = () => {
                         </p>
                       )}
                       <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                        {task.githubIssueNumber && (
+                          <a
+                            href={task.githubIssueUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <svg
+                              className="w-3.5 h-3.5"
+                              fill="currentColor"
+                              viewBox="0 0 16 16"
+                            >
+                              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+                            </svg>
+                            #{task.githubIssueNumber}
+                          </a>
+                        )}
                         <span>
                           Created{" "}
                           {new Date(task.createdAt).toLocaleDateString()}
@@ -415,6 +557,26 @@ const Projects: React.FC = () => {
                           </span>
                         )}
                       </div>
+                      {task.githubLabels && (() => {
+                        try {
+                          const labels = JSON.parse(task.githubLabels);
+                          if (labels.length === 0) return null;
+                          return (
+                            <div className="flex gap-1 mt-2 flex-wrap">
+                              {labels.map((label: string) => (
+                                <span
+                                  key={label}
+                                  className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full"
+                                >
+                                  {label}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        } catch {
+                          return null;
+                        }
+                      })()}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -529,6 +691,13 @@ const Projects: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* GitHub Repo Modal */}
+        <GitHubRepoModal
+          isOpen={showRepoModal}
+          onClose={() => setShowRepoModal(false)}
+          onSelect={handleLinkRepo}
+        />
       </div>
     );
   }
@@ -615,6 +784,19 @@ const Projects: React.FC = () => {
                 <p className="text-gray-600 text-sm mb-4">
                   {project.description}
                 </p>
+              )}
+
+              {project.githubRepoFullName && (
+                <div className="flex items-center gap-1.5 mb-3 text-xs text-gray-500">
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="currentColor"
+                    viewBox="0 0 16 16"
+                  >
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+                  </svg>
+                  {project.githubRepoFullName}
+                </div>
               )}
 
               <div className="flex items-center justify-between text-sm text-gray-500">
