@@ -8,6 +8,7 @@ import { fetchTimeEntries } from "../store/slices/timeEntriesSlice";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { StopIcon, PlayIcon } from "@heroicons/react/24/solid";
 import ResumeLastTimer from "./ResumeLastTimer";
+import AutocompleteInput from "./AutocompleteInput";
 
 interface TimerProps {
   className?: string;
@@ -214,13 +215,13 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
             >
               Description (Optional)
             </label>
-            <input
-              type="text"
+            <AutocompleteInput
               id="description"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={setDescription}
               onKeyDown={handleKeyDown}
               placeholder="What are you working on?"
+              projectId={selectedProjectId || undefined}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
