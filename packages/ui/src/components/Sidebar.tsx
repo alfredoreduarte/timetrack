@@ -12,12 +12,12 @@ import {
 } from "@heroicons/react/24/outline";
 
 const navigation = [
-  { name: "Dashboard", href: "/dashboard", icon: HomeIcon },
-  { name: "Projects", href: "/projects", icon: FolderIcon },
-  { name: "Time Entries", href: "/time-entries", icon: ClockIcon },
-  { name: "Reports", href: "/reports", icon: ChartBarIcon },
-  { name: "Settings", href: "/settings", icon: CogIcon },
-  { name: "API Test", href: "/api-test", icon: WrenchScrewdriverIcon },
+  { name: "Dashboard", href: "/dashboard", icon: HomeIcon, shortcutHint: ["D"] },
+  { name: "Projects", href: "/projects", icon: FolderIcon, shortcutHint: ["P"] },
+  { name: "Time Entries", href: "/time-entries", icon: ClockIcon, shortcutHint: ["T"] },
+  { name: "Reports", href: "/reports", icon: ChartBarIcon, shortcutHint: ["R"] },
+  { name: "Settings", href: "/settings", icon: CogIcon, shortcutHint: ["S"] },
+  { name: "API Test", href: "/api-test", icon: WrenchScrewdriverIcon, shortcutHint: undefined },
 ];
 
 const isStaging = ((import.meta as any).env.VITE_API_URL || "").includes(
@@ -64,6 +64,18 @@ const Sidebar: React.FC = () => {
                 }`}
               />
               {item.name}
+              {item.shortcutHint && (
+                <span className="ml-auto hidden lg:inline-flex items-center gap-0.5">
+                  {item.shortcutHint.map((k) => (
+                    <kbd
+                      key={k}
+                      className="px-1.5 py-0.5 text-[10px] font-mono text-gray-400 bg-gray-50 border border-gray-200 rounded"
+                    >
+                      {k}
+                    </kbd>
+                  ))}
+                </span>
+              )}
             </NavLink>
           );
         })}
@@ -88,6 +100,17 @@ const Sidebar: React.FC = () => {
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Keyboard shortcuts hint */}
+      <div className="px-4 py-2 border-t border-gray-200 text-center hidden lg:block">
+        <span className="text-xs text-gray-400">
+          Press{" "}
+          <kbd className="px-1 py-0.5 text-[10px] font-mono bg-gray-100 border border-gray-200 rounded">
+            ?
+          </kbd>{" "}
+          for shortcuts
+        </span>
       </div>
     </div>
   );

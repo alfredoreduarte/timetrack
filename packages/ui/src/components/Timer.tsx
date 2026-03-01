@@ -256,6 +256,9 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
             >
               <StopIcon className="h-4 w-4" />
               {loading ? "Stopping..." : "Stop Timer"}
+              <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono text-red-400 bg-red-50 border border-red-200 rounded hidden sm:inline">
+                Space
+              </kbd>
             </button>
             {showProjectSelector && (
               <button
