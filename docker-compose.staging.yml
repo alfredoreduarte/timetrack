@@ -108,6 +108,7 @@ services:
       target: production
       args:
         PUBLIC_URL: "/"
+        VITE_APP_URL: "${VITE_APP_URL:-https://app.staging.track.alfredo.re}"
     container_name: timetrack-landing-staging
     restart: unless-stopped
     environment:

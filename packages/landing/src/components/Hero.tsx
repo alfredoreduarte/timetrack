@@ -45,7 +45,7 @@ const Hero: React.FC = () => {
           {downloadLabel}
         </a>
         <a
-          href="https://app.track.alfredo.re"
+          href={import.meta.env.VITE_APP_URL || "/"}
           className="inline-block border border-neon-purple px-8 py-3 rounded-md font-semibold text-neon-purple hover:bg-neon-purple hover:text-white transition-colors"
         >
           {signUpLabel}
