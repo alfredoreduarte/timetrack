@@ -13,6 +13,7 @@ import EditTimeEntryModal from "../components/EditTimeEntryModal";
 import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 import { ClockIcon, PencilIcon } from "@heroicons/react/24/outline";
 import { StopIcon } from "@heroicons/react/24/solid";
+import FavoriteButton from "../components/FavoriteButton";
 
 const TimeEntries: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -267,6 +268,13 @@ const TimeEntries: React.FC = () => {
                           <span className="text-sm text-gray-500">
                             • {entry.task.name}
                           </span>
+                        )}
+                        {entry.project && (
+                          <FavoriteButton
+                            projectId={entry.project.id}
+                            taskId={entry.task?.id}
+                            description={entry.description}
+                          />
                         )}
                         {isRunning && (
                           <div className="flex items-center space-x-2">

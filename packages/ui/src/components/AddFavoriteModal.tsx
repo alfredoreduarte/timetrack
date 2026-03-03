@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { AppDispatch, RootState } from "../store";
 import { createFavorite } from "../store/slices/favoritesSlice";
-import { fetchProjects, fetchTasks } from "../store/slices/projectsSlice";
+import { fetchProjects, fetchTasks, Project, Task } from "../store/slices/projectsSlice";
 
 interface AddFavoriteModalProps {
   isOpen: boolean;
@@ -43,11 +43,11 @@ const AddFavoriteModal: React.FC<AddFavoriteModalProps> = ({
   }, [selectedProjectId, dispatch]);
 
   const activeProjects = Array.isArray(projects)
-    ? projects.filter((p: any) => p.isActive)
+    ? projects.filter((p: Project) => p.isActive)
     : [];
 
   const projectTasks = Array.isArray(tasks)
-    ? tasks.filter((t: any) => t.projectId === selectedProjectId)
+    ? tasks.filter((t: Task) => t.projectId === selectedProjectId)
     : [];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -66,9 +66,10 @@ const AddFavoriteModal: React.FC<AddFavoriteModalProps> = ({
         })
       ).unwrap();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : null;
       setError(
-        err?.message || "Failed to create favorite. It may already exist."
+        message || "Failed to create favorite. It may already exist."
       );
     } finally {
       setSubmitting(false);
@@ -114,7 +115,7 @@ const AddFavoriteModal: React.FC<AddFavoriteModalProps> = ({
               className="input w-full"
             >
               <option value="">Select a project</option>
-              {activeProjects.map((project: any) => (
+              {activeProjects.map((project: Project) => (
                 <option key={project.id} value={project.id}>
                   {project.name}
                 </option>
@@ -138,7 +139,7 @@ const AddFavoriteModal: React.FC<AddFavoriteModalProps> = ({
                 className="input w-full"
               >
                 <option value="">No task</option>
-                {projectTasks.map((task: any) => (
+                {projectTasks.map((task: Task) => (
                   <option key={task.id} value={task.id}>
                     {task.name}
                   </option>

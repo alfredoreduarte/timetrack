@@ -23,8 +23,6 @@ import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
 import {
   favoriteCreatedFromSocket,
   favoriteDeletedFromSocket,
-  favoriteUpdatedFromSocket,
-  favoritesReorderedFromSocket,
 } from "../store/slices/favoritesSlice";
 
 export function useSocket() {
@@ -119,12 +117,6 @@ export function useSocket() {
       },
       onFavoriteDeleted: (data) => {
         dispatch(favoriteDeletedFromSocket(data));
-      },
-      onFavoriteUpdated: (favorite) => {
-        dispatch(favoriteUpdatedFromSocket(favorite));
-      },
-      onFavoritesReordered: (favorites) => {
-        dispatch(favoritesReorderedFromSocket(favorites));
       },
     });
 

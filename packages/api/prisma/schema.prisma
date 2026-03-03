@@ -138,7 +138,7 @@ model Favorite {
   projectId String
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   taskId    String?
-  task      Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   @@unique([userId, projectId, taskId, description], name: "unique_favorite")
   @@map("favorites")

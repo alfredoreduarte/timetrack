@@ -26,6 +26,8 @@ interface FavoritesState {
   error: string | null;
 }
 
+export const MAX_FAVORITES = 5;
+
 const initialState: FavoritesState = {
   favorites: [],
   loading: false,
@@ -61,28 +63,6 @@ export const deleteFavorite = createAsyncThunk(
   }
 );
 
-export const updateFavorite = createAsyncThunk(
-  "favorites/updateFavorite",
-  async ({
-    id,
-    data,
-  }: {
-    id: string;
-    data: { description?: string; displayOrder?: number };
-  }) => {
-    const response = await favoritesAPI.updateFavorite(id, data);
-    return response;
-  }
-);
-
-export const reorderFavorites = createAsyncThunk(
-  "favorites/reorderFavorites",
-  async (orderedIds: string[]) => {
-    const response = await favoritesAPI.reorderFavorites(orderedIds);
-    return response;
-  }
-);
-
 const favoritesSlice = createSlice({
   name: "favorites",
   initialState,
@@ -106,21 +86,6 @@ const favoritesSlice = createSlice({
         (f) => f.id !== action.payload.id
       );
     },
-    favoriteUpdatedFromSocket: (state, action: PayloadAction<Favorite>) => {
-      const index = state.favorites.findIndex(
-        (f) => f.id === action.payload.id
-      );
-      if (index !== -1) {
-        state.favorites[index] = action.payload;
-      }
-      state.favorites.sort((a, b) => a.displayOrder - b.displayOrder);
-    },
-    favoritesReorderedFromSocket: (
-      state,
-      action: PayloadAction<Favorite[]>
-    ) => {
-      state.favorites = action.payload;
-    },
   },
   extraReducers: (builder) => {
     builder
@@ -137,8 +102,10 @@ const favoritesSlice = createSlice({
         state.error = action.error.message || "Failed to fetch favorites";
       })
       .addCase(createFavorite.fulfilled, (state, action) => {
-        state.favorites.push(action.payload);
-        state.favorites.sort((a, b) => a.displayOrder - b.displayOrder);
+        if (!state.favorites.find((f) => f.id === action.payload.id)) {
+          state.favorites.push(action.payload);
+          state.favorites.sort((a, b) => a.displayOrder - b.displayOrder);
+        }
       })
       .addCase(createFavorite.rejected, (state, action) => {
         state.error = action.error.message || "Failed to create favorite";
@@ -148,18 +115,6 @@ const favoritesSlice = createSlice({
           (f) => f.id !== action.payload
         );
       })
-      .addCase(updateFavorite.fulfilled, (state, action) => {
-        const index = state.favorites.findIndex(
-          (f) => f.id === action.payload.id
-        );
-        if (index !== -1) {
-          state.favorites[index] = action.payload;
-        }
-        state.favorites.sort((a, b) => a.displayOrder - b.displayOrder);
-      })
-      .addCase(reorderFavorites.fulfilled, (state, action) => {
-        state.favorites = action.payload;
-      });
   },
 });
 
@@ -167,8 +122,6 @@ export const {
   clearError,
   favoriteCreatedFromSocket,
   favoriteDeletedFromSocket,
-  favoriteUpdatedFromSocket,
-  favoritesReorderedFromSocket,
 } = favoritesSlice.actions;
 
 export default favoritesSlice.reducer;

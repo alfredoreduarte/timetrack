@@ -2,6 +2,7 @@ import axios, { AxiosInstance, AxiosResponse } from "axios";
 import { User } from "../store/slices/authSlice";
 import { Project, Task } from "../store/slices/projectsSlice";
 import { TimeEntry } from "../store/slices/timeEntriesSlice";
+import { Favorite } from "../store/slices/favoritesSlice";
 
 // In production the UI is served by nginx which reverse-proxies /api/ to the
 // API container, so no absolute URL is needed. VITE_API_URL is only required
@@ -462,7 +463,7 @@ class APIClient {
   // Favorites API
   favorites = {
     getFavorites: async () => {
-      const response = await this.request<{ favorites: any[] }>(
+      const response = await this.request<{ favorites: Favorite[] }>(
         "GET",
         "/favorites"
       );
@@ -476,7 +477,7 @@ class APIClient {
     }) => {
       const response = await this.request<{
         message: string;
-        favorite: any;
+        favorite: Favorite;
       }>("POST", "/favorites", data);
       return response.favorite;
     },
@@ -485,24 +486,6 @@ class APIClient {
       return this.request<{ message: string }>("DELETE", `/favorites/${id}`);
     },
 
-    updateFavorite: async (
-      id: string,
-      data: { description?: string; displayOrder?: number }
-    ) => {
-      const response = await this.request<{
-        message: string;
-        favorite: any;
-      }>("PUT", `/favorites/${id}`, data);
-      return response.favorite;
-    },
-
-    reorderFavorites: async (orderedIds: string[]) => {
-      const response = await this.request<{
-        message: string;
-        favorites: any[];
-      }>("PUT", "/favorites/reorder", { orderedIds });
-      return response.favorites;
-    },
   };
 
   // Health check

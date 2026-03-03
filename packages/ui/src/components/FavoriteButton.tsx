@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { StarIcon as StarOutline } from "@heroicons/react/24/outline";
 import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
@@ -7,6 +7,7 @@ import {
   createFavorite,
   deleteFavorite,
   Favorite,
+  MAX_FAVORITES,
 } from "../store/slices/favoritesSlice";
 
 interface FavoriteButtonProps {
@@ -14,8 +15,6 @@ interface FavoriteButtonProps {
   taskId?: string | null;
   description?: string | null;
 }
-
-const MAX_FAVORITES = 5;
 
 const FavoriteButton: React.FC<FavoriteButtonProps> = ({
   projectId,
@@ -44,41 +43,29 @@ const FavoriteButton: React.FC<FavoriteButtonProps> = ({
   const isFavorited = !!matchingFavorite;
   const atLimit = favorites.length >= MAX_FAVORITES;
 
-  const handleClick = useCallback(
-    async (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (pending) return;
+  const handleClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (pending) return;
 
-      setPending(true);
-      try {
-        if (isFavorited && matchingFavorite) {
-          await dispatch(deleteFavorite(matchingFavorite.id)).unwrap();
-        } else if (!atLimit) {
-          await dispatch(
-            createFavorite({
-              projectId,
-              taskId: normalizedTaskId,
-              description: normalizedDescription,
-            })
-          ).unwrap();
-        }
-      } catch {
-        // Error handled by Redux
-      } finally {
-        setPending(false);
+    setPending(true);
+    try {
+      if (isFavorited && matchingFavorite) {
+        await dispatch(deleteFavorite(matchingFavorite.id)).unwrap();
+      } else if (!atLimit) {
+        await dispatch(
+          createFavorite({
+            projectId,
+            taskId: normalizedTaskId,
+            description: normalizedDescription,
+          })
+        ).unwrap();
       }
-    },
-    [
-      dispatch,
-      isFavorited,
-      matchingFavorite,
-      atLimit,
-      projectId,
-      normalizedTaskId,
-      normalizedDescription,
-      pending,
-    ]
-  );
+    } catch {
+      // Error handled by Redux
+    } finally {
+      setPending(false);
+    }
+  };
 
   const isDisabled = pending || (!isFavorited && atLimit);
 
