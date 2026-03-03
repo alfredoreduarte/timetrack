@@ -9,6 +9,20 @@ import { TimeEntry } from "../store/slices/timeEntriesSlice";
 const API_BASE_URL =
   (import.meta as any).env.VITE_API_URL || "/api";
 
+// Rate limit tracking — shared across all requests
+let rateLimitedUntil = 0;
+
+// Maximum client-side backoff to prevent extended lockouts from large Retry-After values
+const MAX_BACKOFF_MS = 60_000; // 60 seconds
+
+// Endpoints exempt from client-side rate limit blocking (must remain functional)
+const RATE_LIMIT_EXEMPT_PATHS = ["/auth/login", "/auth/register", "/auth/me", "/health"];
+
+/** Check if the client is currently backing off from a 429 */
+function isRateLimited(): boolean {
+  return Date.now() < rateLimitedUntil;
+}
+
 class APIClient {
   private client: AxiosInstance;
 
@@ -20,9 +34,21 @@ class APIClient {
       },
     });
 
-    // Request interceptor to add auth token
+    // Request interceptor to add auth token and block when rate-limited
     this.client.interceptors.request.use(
       (config) => {
+        // Block non-critical requests while rate-limited to avoid wasting quota
+        if (isRateLimited()) {
+          const url = config.url || "";
+          const isExempt = RATE_LIMIT_EXEMPT_PATHS.some((path) => url.includes(path));
+          if (!isExempt) {
+            const waitSec = Math.ceil((rateLimitedUntil - Date.now()) / 1000);
+            return Promise.reject(
+              new Error(`Rate limited — retry in ${waitSec}s`)
+            );
+          }
+        }
+
         const token = localStorage.getItem("token");
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
@@ -38,6 +64,22 @@ class APIClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
+        // Handle rate limiting (429)
+        if (error.response?.status === 429) {
+          const retryAfter = error.response.headers?.["retry-after"];
+          // Use Retry-After header if present, otherwise default to 60s
+          const parsed = retryAfter ? Number(retryAfter) : NaN;
+          const waitMs = Math.min(
+            !isNaN(parsed) ? parsed * 1000 : MAX_BACKOFF_MS,
+            MAX_BACKOFF_MS
+          );
+          rateLimitedUntil = Date.now() + waitMs;
+          console.warn(
+            `[API] Rate limited. Backing off for ${Math.ceil(waitMs / 1000)}s`
+          );
+          return Promise.reject(error);
+        }
+
         if (error.response?.status === 401) {
           localStorage.removeItem("token");
           window.location.href = "/login";

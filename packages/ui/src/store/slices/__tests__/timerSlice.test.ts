@@ -37,6 +37,7 @@ describe("timerSlice", () => {
         currentEntry: null,
         elapsedTime: 0,
         loading: false,
+        fetchingCurrentEntry: false,
         error: null,
       });
     });

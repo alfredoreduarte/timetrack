@@ -9,7 +9,6 @@ import {
 import { useTimer } from "../hooks/useTimer";
 import { fetchProjects, fetchTasks } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
-import LoadingSpinner from "../components/LoadingSpinner";
 import EditTimeEntryModal from "../components/EditTimeEntryModal";
 import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 import { ClockIcon, PencilIcon } from "@heroicons/react/24/outline";
@@ -125,10 +124,6 @@ const TimeEntries: React.FC = () => {
     return !entry.endTime;
   };
 
-  if (loading && safeEntries.length === 0) {
-    return <LoadingSpinner />;
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -226,7 +221,11 @@ const TimeEntries: React.FC = () => {
           </h3>
         </div>
 
-        {safeEntries.length === 0 ? (
+        {loading && safeEntries.length === 0 ? (
+          <div className="text-center py-12" data-testid="loading-spinner">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+          </div>
+        ) : safeEntries.length === 0 ? (
           <div className="text-gray-500 text-center py-12">
             <h3 className="text-lg font-medium text-gray-900 mb-2">
               No time entries found
