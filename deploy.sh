@@ -170,20 +170,6 @@ deploy() {
     # Stop existing containers
     docker_compose -f "$compose_file" down --remove-orphans
 
-    # Force-remove any lingering containers by name in case 'down' missed them
-    # (e.g., after a project name change where old containers have stale labels)
-    if [ "$mode" = "prod" ]; then
-        log_info "Cleaning up any lingering production containers..."
-        for name in timetrack-postgres-prod timetrack-api-prod timetrack-web-prod timetrack-redis-prod timetrack-landing-prod; do
-            docker rm -f "$name" 2>/dev/null || true
-        done
-    elif [ "$mode" = "staging" ]; then
-        log_info "Cleaning up any lingering staging containers..."
-        for name in timetrack-postgres-staging timetrack-api-staging timetrack-web-staging timetrack-redis-staging timetrack-landing-staging; do
-            docker rm -f "$name" 2>/dev/null || true
-        done
-    fi
-
     if [ "$mode" = "prod" ] || [ "$mode" = "staging" ]; then
         # Remove dangling images left by previous builds
         log_info "Pruning dangling Docker images..."
