@@ -66,7 +66,7 @@ const TimerWidget: React.FC = () => {
         }`}
       >
         <ClockIcon className="h-4 w-4 animate-pulse" />
-        <span className="font-mono font-medium">
+        <span className="font-mono font-medium tabular-nums">
           {formatTimeCompact(elapsedTime)}
         </span>
         {currentProject && (
