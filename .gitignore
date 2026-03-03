@@ -140,3 +140,4 @@ todos/
 
 # Local dev artifacts
 github_key_id_*
+.worktrees
