@@ -80,43 +80,6 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
-// Favorite types
-export interface Favorite {
-  id: string;
-  displayOrder: number;
-  description?: string;
-  userId: string;
-  projectId: string;
-  taskId?: string;
-  project?: {
-    id: string;
-    name: string;
-    color: string;
-  };
-  task?: {
-    id: string;
-    name: string;
-  } | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateFavoriteRequest {
-  projectId: string;
-  taskId?: string;
-  description?: string;
-  displayOrder?: number;
-}
-
-export interface UpdateFavoriteRequest {
-  description?: string;
-  displayOrder?: number;
-}
-
-export interface ReorderFavoritesRequest {
-  orderedIds: string[];
-}
-
 // Error types
 export interface ApiError {
   message: string;

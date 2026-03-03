@@ -7,12 +7,11 @@ import {
   fetchFavorites,
   deleteFavorite,
   Favorite,
+  MAX_FAVORITES,
 } from "../store/slices/favoritesSlice";
 import { useTimer } from "../hooks/useTimer";
 import FavoriteCard from "./FavoriteCard";
 import AddFavoriteModal from "./AddFavoriteModal";
-
-const MAX_FAVORITES = 5;
 
 const FavoritesBar: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();

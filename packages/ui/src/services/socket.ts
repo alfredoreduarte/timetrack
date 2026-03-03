@@ -35,8 +35,6 @@ interface SocketEventHandlers {
   // Favorite events
   onFavoriteCreated?: EventCallback<Favorite>;
   onFavoriteDeleted?: EventCallback<{ id: string }>;
-  onFavoriteUpdated?: EventCallback<Favorite>;
-  onFavoritesReordered?: EventCallback<Favorite[]>;
   // Connection events
   onConnectionStateChange?: EventCallback<ConnectionState>;
 }
@@ -195,15 +193,6 @@ class SocketService {
       this.handlers.onFavoriteDeleted?.(data);
     });
 
-    this.socket.on("favorite-updated", (data: Favorite) => {
-      console.log("[Socket] favorite-updated", data.id);
-      this.handlers.onFavoriteUpdated?.(data);
-    });
-
-    this.socket.on("favorites-reordered", (data: Favorite[]) => {
-      console.log("[Socket] favorites-reordered");
-      this.handlers.onFavoritesReordered?.(data);
-    });
   }
 
   private scheduleReconnect(): void {

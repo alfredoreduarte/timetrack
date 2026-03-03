@@ -53,9 +53,7 @@ const FavoriteCard: React.FC<FavoriteCardProps> = ({
       {/* Description */}
       {favorite.description && (
         <p className="text-xs text-gray-400 truncate mt-0.5">
-          {favorite.description.length > 25
-            ? `${favorite.description.substring(0, 25)}...`
-            : favorite.description}
+          {favorite.description}
         </p>
       )}
 
