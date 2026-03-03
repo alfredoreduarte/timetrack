@@ -197,7 +197,17 @@ deploy() {
     fi
 
     # Build and start services
-    docker_compose -f "$compose_file" up -d --build
+    # In prod/staging, build sequentially to avoid overwhelming the server
+    # when Docker cache is cold (parallel npm ci can exhaust CPU/RAM).
+    if [ "$mode" = "prod" ] || [ "$mode" = "staging" ]; then
+        log_info "Building services sequentially..."
+        docker_compose -f "$compose_file" build api
+        docker_compose -f "$compose_file" build web
+        docker_compose -f "$compose_file" build landing
+        docker_compose -f "$compose_file" up -d
+    else
+        docker_compose -f "$compose_file" up -d --build
+    fi
 
     if [ "$mode" = "prod" ] || [ "$mode" = "staging" ]; then
         # Clean up old images that are no longer used by any container
