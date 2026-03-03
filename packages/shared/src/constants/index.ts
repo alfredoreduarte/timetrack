@@ -41,6 +41,9 @@ export const DEFAULT_VALUES = {
   ],
 } as const;
 
+// Favorites
+export const MAX_FAVORITES = 5;
+
 // Status codes
 export const HTTP_STATUS = {
   OK: 200,

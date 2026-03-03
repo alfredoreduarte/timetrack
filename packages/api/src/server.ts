@@ -21,6 +21,7 @@ import projectRoutes from "./routes/projects";
 import taskRoutes from "./routes/tasks";
 import timeEntryRoutes from "./routes/timeEntries";
 import reportRoutes from "./routes/reports";
+import favoriteRoutes from "./routes/favorites";
 
 // Load environment variables
 dotenv.config();
@@ -413,6 +414,7 @@ app.use("/projects", projectRoutes);
 app.use("/tasks", taskRoutes);
 app.use("/time-entries", timeEntryRoutes);
 app.use("/reports", reportRoutes);
+app.use("/favorites", favoriteRoutes);
 
 // Socket.IO authentication middleware
 io.use(async (socket, next) => {

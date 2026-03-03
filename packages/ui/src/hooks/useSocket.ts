@@ -20,6 +20,12 @@ import {
   taskDeletedFromSocket,
 } from "../store/slices/projectsSlice";
 import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
+import {
+  favoriteCreatedFromSocket,
+  favoriteDeletedFromSocket,
+  favoriteUpdatedFromSocket,
+  favoritesReorderedFromSocket,
+} from "../store/slices/favoritesSlice";
 
 export function useSocket() {
   const dispatch = useDispatch<AppDispatch>();
@@ -92,6 +98,20 @@ export function useSocket() {
       onTaskDeleted: (data) => {
         dispatch(taskDeletedFromSocket(data));
         dispatch(fetchDashboardEarnings());
+      },
+
+      // Favorite events
+      onFavoriteCreated: (favorite) => {
+        dispatch(favoriteCreatedFromSocket(favorite));
+      },
+      onFavoriteDeleted: (data) => {
+        dispatch(favoriteDeletedFromSocket(data));
+      },
+      onFavoriteUpdated: (favorite) => {
+        dispatch(favoriteUpdatedFromSocket(favorite));
+      },
+      onFavoritesReordered: (favorites) => {
+        dispatch(favoritesReorderedFromSocket(favorites));
       },
     });
 

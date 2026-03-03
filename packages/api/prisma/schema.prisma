@@ -27,6 +27,7 @@ model User {
   timeEntries  TimeEntry[]
   tasks        Task[]
   apiKeys      ApiKey[]
+  favorites    Favorite[]
 
   @@map("users")
   @@index([email])
@@ -48,6 +49,7 @@ model Project {
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   tasks       Task[]
   timeEntries TimeEntry[]
+  favorites   Favorite[]
 
   @@map("projects")
   @@index([userId])
@@ -69,6 +71,7 @@ model Task {
   userId      String
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   timeEntries TimeEntry[]
+  favorites   Favorite[]
 
   @@map("tasks")
   @@index([projectId])
@@ -120,4 +123,25 @@ model ApiKey {
   @@index([userId])
   @@index([key])
   @@index([userId, isActive])
+}
+
+model Favorite {
+  id            String   @id @default(cuid())
+  displayOrder  Int      @default(0) @map("display_order")
+  description   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId, taskId, description], name: "unique_favorite")
+  @@map("favorites")
+  @@index([userId])
+  @@index([userId, displayOrder])
 }

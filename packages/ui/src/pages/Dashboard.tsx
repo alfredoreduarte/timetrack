@@ -12,6 +12,8 @@ import Timer from "../components/Timer";
 import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import { PlayIcon } from "@heroicons/react/24/solid";
+import FavoritesBar from "../components/FavoritesBar";
+import FavoriteButton from "../components/FavoriteButton";
 
 const Dashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -174,6 +176,9 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* Favorites Bar */}
+      <FavoritesBar />
+
       {/* Recent Time Entries */}
       <div className="card">
         <div className="px-6 py-4 border-b border-gray-200">
@@ -244,10 +249,17 @@ const Dashboard: React.FC = () => {
                           ${calculateEarnings(entry).toFixed(2)}
                         </p>
                       </div>
+                      {entry.projectId && (
+                        <FavoriteButton
+                          projectId={entry.projectId}
+                          taskId={entry.taskId}
+                          description={entry.description}
+                        />
+                      )}
                       <button
                         onClick={() => handleResumeTimer(entry)}
                         disabled={isRunning}
-                        className="ml-3 p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Resume this timer"
                       >
                         <PlayIcon className="h-4 w-4" />

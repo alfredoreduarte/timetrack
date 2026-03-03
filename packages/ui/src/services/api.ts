@@ -417,6 +417,52 @@ class APIClient {
     },
   };
 
+  // Favorites API
+  favorites = {
+    getFavorites: async () => {
+      const response = await this.request<{ favorites: any[] }>(
+        "GET",
+        "/favorites"
+      );
+      return response.favorites;
+    },
+
+    createFavorite: async (data: {
+      projectId: string;
+      taskId?: string;
+      description?: string;
+    }) => {
+      const response = await this.request<{
+        message: string;
+        favorite: any;
+      }>("POST", "/favorites", data);
+      return response.favorite;
+    },
+
+    deleteFavorite: async (id: string) => {
+      return this.request<{ message: string }>("DELETE", `/favorites/${id}`);
+    },
+
+    updateFavorite: async (
+      id: string,
+      data: { description?: string; displayOrder?: number }
+    ) => {
+      const response = await this.request<{
+        message: string;
+        favorite: any;
+      }>("PUT", `/favorites/${id}`, data);
+      return response.favorite;
+    },
+
+    reorderFavorites: async (orderedIds: string[]) => {
+      const response = await this.request<{
+        message: string;
+        favorites: any[];
+      }>("PUT", "/favorites/reorder", { orderedIds });
+      return response.favorites;
+    },
+  };
+
   // Health check
   health = {
     check: async () => {
@@ -441,6 +487,7 @@ export const projectsAPI = apiClient.projects;
 export const tasksAPI = apiClient.tasks;
 export const timeEntriesAPI = apiClient.timeEntries;
 export const reportsAPI = apiClient.reports;
+export const favoritesAPI = apiClient.favorites;
 export const healthAPI = apiClient.health;
 
 export default apiClient;
