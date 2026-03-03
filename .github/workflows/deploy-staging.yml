@@ -39,6 +39,14 @@ jobs:
             fi
 
             # TODO: Remove this migration block once both environments have deployed successfully
+            # Stop old containers from the shared directory so container names are free
+            if [ -d "$OLD_DIR" ] && [ -f "$OLD_DIR/docker-compose.staging.yml" ]; then
+              echo "=== Stopping old containers from $OLD_DIR ==="
+              cd "$OLD_DIR"
+              docker compose -f docker-compose.staging.yml down --remove-orphans 2>/dev/null || true
+              cd ~
+            fi
+
             # Migrate env files from the old shared directory if missing
             for f in docker.env docker.staging.env; do
               if [ -f "$OLD_DIR/$f" ] && [ ! -f "$DEPLOY_DIR/$f" ]; then
