@@ -30,11 +30,22 @@ jobs:
             REPO_URL="https://github.com/alfredoreduarte/timetrack.git"
             DEPLOY_DIR=~/websites/timetrack-staging
 
+            OLD_DIR=~/websites/timetrack-monorepo
+
             # Clone on first deploy, otherwise just fetch
             if [ ! -d "$DEPLOY_DIR/.git" ]; then
               echo "=== First staging deploy: cloning repo ==="
               git clone "$REPO_URL" "$DEPLOY_DIR"
             fi
+
+            # TODO: Remove this migration block once both environments have deployed successfully
+            # Migrate env files from the old shared directory if missing
+            for f in docker.env docker.staging.env; do
+              if [ -f "$OLD_DIR/$f" ] && [ ! -f "$DEPLOY_DIR/$f" ]; then
+                cp "$OLD_DIR/$f" "$DEPLOY_DIR/$f"
+                echo "Copied $f from old directory"
+              fi
+            done
 
             cd "$DEPLOY_DIR"
 
