@@ -115,12 +115,13 @@ export const getCurrentUser = createAsyncThunk(
       saveUserToStorage(response);
       return response;
     } catch (error: any) {
+      const status = error.response?.status;
       const errorMessage =
         error.response?.data?.error ||
         error.response?.data?.message ||
         error.message ||
         "Failed to get user";
-      return rejectWithValue(errorMessage);
+      return rejectWithValue({ message: errorMessage, status });
     }
   }
 );
@@ -229,12 +230,20 @@ const authSlice = createSlice({
       })
       .addCase(getCurrentUser.rejected, (state, action) => {
         state.isLoading = false;
-        state.error = action.payload as string;
-        state.isAuthenticated = false;
-        state.token = null;
+        const payload = action.payload as { message: string; status?: number } | string;
+        const status = typeof payload === 'object' ? payload.status : undefined;
+        const message = typeof payload === 'object' ? payload.message : payload;
+        state.error = message;
         state.hasCheckedAuth = true;
-        localStorage.removeItem("token");
-        removeUserFromStorage();
+
+        // Only clear auth on 401 (invalid/expired token).
+        // Other errors (429 rate limit, 503, network errors) should not log the user out.
+        if (status === 401) {
+          state.isAuthenticated = false;
+          state.token = null;
+          localStorage.removeItem("token");
+          removeUserFromStorage();
+        }
       })
       // Update profile
       .addCase(updateProfile.pending, (state) => {

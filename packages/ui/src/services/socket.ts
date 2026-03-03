@@ -75,7 +75,17 @@ class SocketService {
       return;
     }
 
-    this.disconnect();
+    // Clean up existing socket without resetting reconnect counter
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.disconnect();
+      this.socket = null;
+    }
+
     this.setConnectionState("connecting");
 
     this.socket = io(SOCKET_URL, {
