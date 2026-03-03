@@ -4,18 +4,13 @@ import { Menu, Transition } from "@headlessui/react";
 import {
   ChevronDownIcon,
   ArrowRightOnRectangleIcon,
-  Bars3Icon,
 } from "@heroicons/react/24/outline";
 import { AppDispatch, RootState } from "../store";
 import { logout } from "../store/slices/authSlice";
 import TimerWidget from "./TimerWidget";
 import toast from "react-hot-toast";
 
-interface HeaderProps {
-  onMenuOpen: () => void;
-}
-
-const Header: React.FC<HeaderProps> = ({ onMenuOpen }) => {
+const Header: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { user } = useSelector((state: RootState) => state.auth);
 
@@ -31,17 +26,10 @@ const Header: React.FC<HeaderProps> = ({ onMenuOpen }) => {
   };
 
   return (
-    <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 md:py-4">
+    <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={onMenuOpen}
-            className="md:hidden p-2 -ml-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-            aria-label="Open navigation menu"
-          >
-            <Bars3Icon className="w-6 h-6" />
-          </button>
-          <h2 className="text-lg font-semibold text-gray-900 hidden sm:block">Welcome back!</h2>
+        <div className="flex items-center space-x-4">
+          <h2 className="text-lg font-semibold text-gray-900">Welcome back!</h2>
         </div>
 
         <div className="flex items-center space-x-4">

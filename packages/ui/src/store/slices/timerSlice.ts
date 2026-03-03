@@ -7,6 +7,7 @@ interface TimerState {
   currentEntry: TimeEntry | null;
   elapsedTime: number; // in seconds
   loading: boolean;
+  fetchingCurrentEntry: boolean;
   error: string | null;
 }
 
@@ -15,6 +16,7 @@ const initialState: TimerState = {
   currentEntry: null,
   elapsedTime: 0,
   loading: false,
+  fetchingCurrentEntry: false,
   error: null,
 };
 
@@ -73,6 +75,13 @@ export const fetchCurrentEntry = createAsyncThunk(
       // Re-throw other errors
       throw error;
     }
+  },
+  {
+    condition: (_, { getState }) => {
+      const { timer } = getState() as { timer: TimerState };
+      // Skip if already fetching — prevents duplicate concurrent requests
+      return !timer.fetchingCurrentEntry;
+    },
   }
 );
 
@@ -171,7 +180,14 @@ const timerSlice = createSlice({
         state.error = (action.payload as string) || "Failed to stop timer";
       })
       // Fetch current entry
+      .addCase(fetchCurrentEntry.pending, (state) => {
+        state.fetchingCurrentEntry = true;
+      })
+      .addCase(fetchCurrentEntry.rejected, (state) => {
+        state.fetchingCurrentEntry = false;
+      })
       .addCase(fetchCurrentEntry.fulfilled, (state, action) => {
+        state.fetchingCurrentEntry = false;
         if (action.payload) {
           state.isRunning = true;
           state.currentEntry = action.payload;

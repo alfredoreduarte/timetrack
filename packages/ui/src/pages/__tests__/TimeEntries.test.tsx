@@ -50,6 +50,7 @@ const createTestStore = (initialState = {}) => {
         elapsedTime: 0,
         currentEntry: null,
         loading: false,
+        fetchingCurrentEntry: false,
         error: null,
       },
       projects: {

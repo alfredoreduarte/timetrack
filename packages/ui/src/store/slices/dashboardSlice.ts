@@ -42,6 +42,13 @@ export const fetchDashboardEarnings = createAsyncThunk(
         error.response?.data?.error || "Failed to fetch dashboard earnings"
       );
     }
+  },
+  {
+    condition: (_, { getState }) => {
+      const { dashboard } = getState() as { dashboard: DashboardState };
+      // Skip if already loading — prevents duplicate concurrent requests
+      return !dashboard.loading;
+    },
   }
 );
 

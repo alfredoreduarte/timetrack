@@ -246,9 +246,6 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
           >
             <PlayIcon className="h-4 w-4" />
             {loading ? "Starting..." : "Start Timer"}
-            <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono text-primary-400 bg-primary-50 border border-primary-200 rounded hidden sm:inline">
-              Space
-            </kbd>
           </button>
         ) : (
           <>

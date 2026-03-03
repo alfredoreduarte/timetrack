@@ -12,19 +12,24 @@ const ResumeLastTimer: React.FC = () => {
   const { projects, tasks } = useSelector((state: RootState) => state.projects);
 
   // Use centralized timer hook
-  const { isRunning, currentEntry, loading, startTimer } = useTimer();
+  const { isRunning, loading, startTimer } = useTimer();
 
-  // Refresh time entries when timer stops (currentEntry becomes null and isRunning becomes false)
+  // Refresh time entries when timer stops (isRunning transitions to false).
+  // Note: `loading` is intentionally NOT in the dependency array — including it
+  // causes an infinite loop because every fetch cycle toggles loading, which
+  // re-triggers this effect.
+  const prevIsRunning = React.useRef(isRunning);
   useEffect(() => {
-    if (!isRunning && !currentEntry && !loading) {
-      // Small delay to ensure the stop timer API call has completed
+    const wasRunning = prevIsRunning.current;
+    prevIsRunning.current = isRunning;
+    if (wasRunning && !isRunning) {
+      // Timer just stopped — refresh entries after a short delay
       const timeoutId = setTimeout(() => {
         dispatch(fetchTimeEntries({ limit: 10 }));
       }, 100);
-
       return () => clearTimeout(timeoutId);
     }
-  }, [isRunning, currentEntry, loading, dispatch]);
+  }, [isRunning, dispatch]);
 
   // Get the most recent completed time entry (has endTime, not currently running)
   // Ensure entries is an array and filter for completed entries

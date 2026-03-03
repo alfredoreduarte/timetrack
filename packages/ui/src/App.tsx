@@ -174,29 +174,35 @@ function AppContent() {
   }, [dispatch, isAuthenticated]);
 
   // Sync timer when page becomes visible (handles tab switching, window focus, etc.)
+  // Both visibilitychange and focus are needed: visibilitychange covers tab switches
+  // and most app-resume scenarios, but mobile Safari sometimes only fires focus when
+  // returning from the app switcher. A short dedupe window prevents double-fetching
+  // when both events fire at the same time.
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const handleVisibilityChange = () => {
-      if (!document.hidden && !wasRecentlyIdleStopped()) {
-        dispatch(syncTimer());
-        dispatch(fetchCurrentEntry());
-      }
+    let lastSyncTs = 0;
+    const DEDUPE_MS = 2000;
+
+    const syncOnResume = () => {
+      if (document.hidden || wasRecentlyIdleStopped()) return;
+      const now = Date.now();
+      if (now - lastSyncTs < DEDUPE_MS) return;
+      lastSyncTs = now;
+      dispatch(syncTimer());
+      dispatch(fetchCurrentEntry());
     };
 
-    const handleFocus = () => {
-      if (!wasRecentlyIdleStopped()) {
-        dispatch(syncTimer());
-        dispatch(fetchCurrentEntry());
-      }
+    const handleVisibilityChange = () => {
+      if (!document.hidden) syncOnResume();
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", handleFocus);
+    window.addEventListener("focus", syncOnResume);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("focus", syncOnResume);
     };
   }, [dispatch, isAuthenticated]);
 

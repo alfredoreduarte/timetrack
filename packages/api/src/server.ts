@@ -201,7 +201,7 @@ app.use(
       "Accept",
       "Origin",
     ],
-    exposedHeaders: ["Content-Length", "X-Foo", "X-Bar"],
+    exposedHeaders: ["Content-Length", "Retry-After", "RateLimit-Reset"],
     optionsSuccessStatus: 200, // Some legacy browsers choke on 204
   })
 );
@@ -210,8 +210,8 @@ app.use(
 const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000"); // 15 minutes default
 const rateLimitMax = parseInt(
   process.env.RATE_LIMIT_MAX_REQUESTS ||
-    (process.env.NODE_ENV === "development" ? "1000" : "100")
-); // 1000 for dev, 100 for prod
+    (process.env.NODE_ENV === "development" ? "1000" : "300")
+); // 1000 for dev, 300 for prod
 
 const limiter = rateLimit({
   windowMs: rateLimitWindowMs,
