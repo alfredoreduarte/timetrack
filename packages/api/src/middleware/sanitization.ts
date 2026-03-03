@@ -21,6 +21,17 @@ const sanitizationConfig = {
 };
 
 /**
+ * Decode HTML entities back to plain text.
+ * DOMPurify encodes special chars (& → &amp;, etc.) because it outputs HTML,
+ * but we store plain text — so we need to reverse the encoding.
+ */
+const decodeHtmlEntities = (text: string): string => {
+  const el = window.document.createElement("div");
+  el.innerHTML = text;
+  return el.textContent || "";
+};
+
+/**
  * Sanitizes a string input to remove potential XSS vectors
  */
 export const sanitizeString = (input: string): string => {
@@ -30,6 +41,10 @@ export const sanitizeString = (input: string): string => {
 
   // First pass: Remove HTML tags and attributes
   let sanitized = purify.sanitize(input, sanitizationConfig);
+
+  // Decode HTML entities introduced by DOMPurify (e.g. &amp; → &)
+  // We store plain text, not HTML, so entities must not be persisted
+  sanitized = decodeHtmlEntities(sanitized);
 
   // Additional cleaning for common XSS patterns
   sanitized = sanitized
