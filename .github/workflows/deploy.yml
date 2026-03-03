@@ -23,11 +23,20 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 12m
           script: |
-            set -e
-            cd ~/websites/timetrack-monorepo
+            set -euo pipefail
+            REPO_URL="https://github.com/alfredoreduarte/timetrack.git"
+            DEPLOY_DIR=~/websites/timetrack-production
+
+            # Clone on first deploy, otherwise just fetch
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              echo "=== First deploy: cloning repo ==="
+              git clone "$REPO_URL" "$DEPLOY_DIR"
+            fi
+
+            cd "$DEPLOY_DIR"
 
             echo "=== Pulling latest changes ==="
-            git fetch origin main
+            git fetch --prune origin main
             git reset --hard origin/main
 
             echo "=== Deploying ==="

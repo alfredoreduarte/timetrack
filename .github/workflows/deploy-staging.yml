@@ -26,11 +26,20 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 12m
           script: |
-            set -e
-            cd ~/websites/timetrack-monorepo
+            set -euo pipefail
+            REPO_URL="https://github.com/alfredoreduarte/timetrack.git"
+            DEPLOY_DIR=~/websites/timetrack-staging
+
+            # Clone on first deploy, otherwise just fetch
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              echo "=== First staging deploy: cloning repo ==="
+              git clone "$REPO_URL" "$DEPLOY_DIR"
+            fi
+
+            cd "$DEPLOY_DIR"
 
             echo "=== Fetching PR #${{ github.event.pull_request.number }} ==="
-            git fetch origin pull/${{ github.event.pull_request.number }}/head
+            git fetch --prune origin pull/${{ github.event.pull_request.number }}/head
             git checkout -B pr-${{ github.event.pull_request.number }} FETCH_HEAD
 
             echo "=== Deploying staging ==="
@@ -85,12 +94,21 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 12m
           script: |
-            set -e
-            cd ~/websites/timetrack-monorepo
+            set -euo pipefail
+            DEPLOY_DIR=~/websites/timetrack-staging
+
+            # Nothing to roll back if staging was never deployed
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              echo "Staging directory does not exist, nothing to roll back"
+              exit 0
+            fi
+
+            cd "$DEPLOY_DIR"
 
             echo "=== Rolling back to main ==="
+            git fetch --prune origin main
             git checkout main
-            git pull origin main
+            git reset --hard origin/main
 
             echo "=== Cleaning up PR branches ==="
             git branch -D pr-${{ github.event.pull_request.number }} 2>/dev/null || true
