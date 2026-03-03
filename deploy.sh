@@ -167,52 +167,30 @@ deploy() {
     source "$env_file"
     set +a
 
-    # Stop existing containers
-    docker_compose -f "$compose_file" down --remove-orphans
-
-    # Force-remove any lingering containers by name.
-    # docker compose down only removes containers matching the current project
-    # name, so if the project name changed (e.g. directory rename or adding a
-    # name: field), old containers survive and block the next 'up'.
-    if [ "$mode" = "prod" ]; then
-        log_info "Removing any leftover production containers..."
-        for name in timetrack-postgres-prod timetrack-api-prod timetrack-web-prod timetrack-redis-prod timetrack-landing-prod; do
-            docker rm -f "$name" 2>/dev/null || true
-        done
-    elif [ "$mode" = "staging" ]; then
-        log_info "Removing any leftover staging containers..."
-        for name in timetrack-postgres-staging timetrack-api-staging timetrack-web-staging timetrack-redis-staging timetrack-landing-staging; do
-            docker rm -f "$name" 2>/dev/null || true
-        done
-    fi
-
     if [ "$mode" = "prod" ] || [ "$mode" = "staging" ]; then
-        # Remove dangling images left by previous builds
-        log_info "Pruning dangling Docker images..."
-        docker image prune -f
-
         # Remove old build cache (keeps recent layers for faster rebuilds)
         log_info "Pruning Docker build cache older than 7 days..."
         docker builder prune -f --filter "until=168h"
-    fi
 
-    # Build and start services
-    # In prod/staging, build sequentially to avoid overwhelming the server
-    # when Docker cache is cold (parallel npm ci can exhaust CPU/RAM).
-    if [ "$mode" = "prod" ] || [ "$mode" = "staging" ]; then
-        log_info "Building services sequentially..."
+        # Build new images while old containers keep serving traffic.
+        # Sequential builds avoid overwhelming the server when cache is cold.
+        log_info "Building new images (old containers still serving traffic)..."
         docker_compose -f "$compose_file" build api
         docker_compose -f "$compose_file" build web
         docker_compose -f "$compose_file" build landing
-        docker_compose -f "$compose_file" up -d
-    else
-        docker_compose -f "$compose_file" up -d --build
-    fi
 
-    if [ "$mode" = "prod" ] || [ "$mode" = "staging" ]; then
+        # Recreate only containers whose image/config changed.
+        # Postgres and redis are untouched (stock images, no rebuild needed).
+        log_info "Replacing containers with new images..."
+        docker_compose -f "$compose_file" up -d --remove-orphans
+
         # Clean up old images that are no longer used by any container
         log_info "Removing unused images from previous deployments..."
         docker image prune -af --filter "until=24h"
+    else
+        # Dev: full restart is fine
+        docker_compose -f "$compose_file" down --remove-orphans
+        docker_compose -f "$compose_file" up -d --build
     fi
 
     log_info "$mode deployment complete!"
