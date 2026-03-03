@@ -213,6 +213,137 @@ router.get(
   })
 );
 
+// Validation schema for suggestions endpoint
+const suggestionsQuerySchema = z.object({
+  q: z.string().min(1).max(200),
+  projectId: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(20).default(10),
+});
+
+/**
+ * @swagger
+ * /time-entries/suggestions:
+ *   get:
+ *     summary: Get autocomplete suggestions for time entry descriptions
+ *     tags: [Time Entries]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Search query for description matching
+ *       - in: query
+ *         name: projectId
+ *         schema:
+ *           type: string
+ *         description: Optional project ID to prioritize suggestions from
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           maximum: 20
+ *         description: Maximum number of suggestions
+ *     responses:
+ *       200:
+ *         description: Suggestions retrieved successfully
+ */
+router.get(
+  "/suggestions",
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { q, projectId, limit } = suggestionsQuerySchema.parse(req.query);
+
+    const userId = req.user!.id;
+
+    // Escape LIKE/ILIKE special characters in user input
+    const escapedQuery = q.replace(/[%_\\]/g, "\\$&");
+
+    // Fetch recent entries matching the query using Prisma
+    const matchingEntries = await prisma.timeEntry.findMany({
+      where: {
+        userId,
+        description: {
+          not: "",
+          contains: escapedQuery,
+          mode: "insensitive",
+        },
+      },
+      select: {
+        description: true,
+        startTime: true,
+        project: { select: { id: true, name: true, color: true } },
+        task: { select: { id: true, name: true } },
+        projectId: true,
+      },
+      orderBy: { startTime: "desc" },
+      take: 200,
+    });
+
+    // Aggregate client-side: group by description (case-insensitive)
+    const descMap = new Map<
+      string,
+      {
+        description: string;
+        frequency: number;
+        lastUsed: Date;
+        project: { id: string; name: string; color: string | null } | null;
+        task: { id: string; name: string } | null;
+        projectMatch: boolean;
+      }
+    >();
+
+    for (const entry of matchingEntries) {
+      if (!entry.description) continue;
+      const key = entry.description.toLowerCase();
+      const existing = descMap.get(key);
+      const isProjectMatch = projectId
+        ? entry.projectId === projectId
+        : false;
+
+      if (!existing) {
+        descMap.set(key, {
+          description: entry.description,
+          frequency: 1,
+          lastUsed: entry.startTime,
+          project: entry.project || null,
+          task: entry.task || null,
+          projectMatch: isProjectMatch,
+        });
+      } else {
+        existing.frequency++;
+        if (isProjectMatch) existing.projectMatch = true;
+        if (entry.startTime > existing.lastUsed) {
+          existing.lastUsed = entry.startTime;
+          existing.project = entry.project || existing.project;
+          existing.task = entry.task || existing.task;
+        }
+      }
+    }
+
+    const suggestions = Array.from(descMap.values())
+      .sort((a, b) => {
+        // Project match first, then frequency, then recency
+        if (a.projectMatch !== b.projectMatch)
+          return a.projectMatch ? -1 : 1;
+        if (a.frequency !== b.frequency) return b.frequency - a.frequency;
+        return b.lastUsed.getTime() - a.lastUsed.getTime();
+      })
+      .slice(0, limit)
+      .map((item) => ({
+        description: item.description,
+        frequency: item.frequency,
+        lastUsed: item.lastUsed.toISOString(),
+        project: item.project,
+        task: item.task,
+      }));
+
+    res.json({ suggestions });
+  })
+);
+
 /**
  * @swagger
  * /time-entries/start:
