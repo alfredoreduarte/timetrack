@@ -116,7 +116,7 @@ const Dashboard: React.FC = () => {
             <div className="flex items-center">
               <div className="flex-1">
                 <p className="text-sm font-medium text-gray-600">Today</p>
-                <p className="text-xl font-bold text-gray-900">
+                <p className="text-xl font-bold text-gray-900 tabular-nums">
                   {earningsLoading
                     ? "..."
                     : `$${(typeof earnings?.today === "object"
@@ -136,7 +136,7 @@ const Dashboard: React.FC = () => {
             <div className="flex items-center">
               <div className="flex-1">
                 <p className="text-sm font-medium text-gray-600">This Week</p>
-                <p className="text-xl font-bold text-gray-900">
+                <p className="text-xl font-bold text-gray-900 tabular-nums">
                   {earningsLoading
                     ? "..."
                     : `$${(typeof earnings?.thisWeek === "object"
@@ -161,7 +161,7 @@ const Dashboard: React.FC = () => {
                     <p className="text-sm font-medium text-green-600">
                       Earning Now
                     </p>
-                    <p className="text-xl font-bold text-green-700">
+                    <p className="text-xl font-bold text-green-700 tabular-nums">
                       ${getCurrentTimerEarnings().toFixed(2)}
                     </p>
                   </div>
@@ -236,7 +236,7 @@ const Dashboard: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
-                      <div className="text-right">
+                      <div className="text-right tabular-nums">
                         <p className="font-medium text-gray-900">
                           {formatReportsDuration(entry.duration || 0)}
                         </p>

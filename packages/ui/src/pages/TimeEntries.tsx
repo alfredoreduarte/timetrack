@@ -293,7 +293,7 @@ const TimeEntries: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right tabular-nums">
                       <div className="text-lg font-medium text-gray-900">
                         {formatReportsDuration(entry.duration || 0)}
                       </div>
@@ -337,7 +337,7 @@ const TimeEntries: React.FC = () => {
         {pagination && pagination.pages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-gray-700 tabular-nums">
                 Showing {(pagination.page - 1) * pagination.limit + 1} to{" "}
                 {Math.min(pagination.page * pagination.limit, pagination.total)}{" "}
                 of {pagination.total} entries

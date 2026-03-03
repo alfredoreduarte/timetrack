@@ -34,7 +34,7 @@
   }
 
   .timer-display {
-    @apply font-mono text-4xl font-bold text-gray-900;
+    @apply font-mono text-4xl font-bold text-gray-900 tabular-nums;
   }
 /* Electron window dragging */
 .drag-region {

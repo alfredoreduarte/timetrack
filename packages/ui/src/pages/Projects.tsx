@@ -404,7 +404,7 @@ const Projects: React.FC = () => {
                           {new Date(task.createdAt).toLocaleDateString()}
                         </span>
                         {task.hourlyRate !== null && task.hourlyRate !== undefined && (
-                          <span className="font-medium">
+                          <span className="font-medium tabular-nums">
                             ${task.hourlyRate}/hr
                           </span>
                         )}
@@ -622,7 +622,7 @@ const Projects: React.FC = () => {
                   Created {new Date(project.createdAt).toLocaleDateString()}
                 </span>
                 {project.hourlyRate !== null && project.hourlyRate !== undefined && (
-                  <span className="font-medium">${project.hourlyRate}/hr</span>
+                  <span className="font-medium tabular-nums">${project.hourlyRate}/hr</span>
                 )}
               </div>
             </div>

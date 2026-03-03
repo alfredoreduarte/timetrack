@@ -387,12 +387,12 @@ const DetailedTimeEntriesTable: React.FC<DetailedTimeEntriesTableProps> = ({
                         </button>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-sm font-medium text-gray-900 tabular-nums">
                           {formatDuration(projectGroup.totalDuration)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-sm font-medium text-gray-900 tabular-nums">
                           {formatCurrency(projectGroup.totalEarnings)}
                         </div>
                       </td>
@@ -440,14 +440,14 @@ const DetailedTimeEntriesTable: React.FC<DetailedTimeEntriesTableProps> = ({
 
                           {/* Time column - Individual entry duration */}
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-600">
+                            <div className="text-sm text-gray-600 tabular-nums">
                               {formatDuration(entry.duration)}
                             </div>
                           </td>
 
                           {/* Earnings column */}
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-600">
+                            <div className="text-sm text-gray-600 tabular-nums">
                               {formatCurrency(entry.earnings)}
                             </div>
                           </td>
@@ -469,18 +469,18 @@ const DetailedTimeEntriesTable: React.FC<DetailedTimeEntriesTableProps> = ({
                 </div>
               </td>
               <td className="px-6 py-4">
-                <div className="text-sm font-medium text-gray-700">
+                <div className="text-sm font-medium text-gray-700 tabular-nums">
                   {grandTotals.totalEntries}{" "}
                   {grandTotals.totalEntries === 1 ? "entry" : "entries"}
                 </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <div className="text-sm font-bold text-gray-900">
+                <div className="text-sm font-bold text-gray-900 tabular-nums">
                   {formatDuration(grandTotals.totalDuration)}
                 </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <div className="text-sm font-bold text-gray-900">
+                <div className="text-sm font-bold text-gray-900 tabular-nums">
                   {formatCurrency(grandTotals.totalEarnings)}
                 </div>
               </td>

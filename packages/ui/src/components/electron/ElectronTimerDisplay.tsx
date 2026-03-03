@@ -37,7 +37,7 @@ const ElectronTimerDisplay: React.FC = () => {
     <div className="p-4 border-b border-gray-200 bg-green-50">
       {/* Timer Display */}
       <div className="text-center mb-3">
-        <div className="text-2xl font-mono font-bold text-green-700 mb-1">
+        <div className="text-2xl font-mono font-bold text-green-700 mb-1 tabular-nums">
           {formatTime(elapsedTime)}
         </div>
         <div className="flex items-center justify-center gap-1 text-green-600">

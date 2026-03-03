@@ -70,7 +70,7 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg tabular-nums">
           <p className="font-medium">{label}</p>
           <p className="text-blue-600">
             Hours: {formatReportsDuration(data.totalDuration)}
@@ -194,19 +194,19 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
       {!loading && (
         <div className="mt-6 grid grid-cols-3 gap-4 pt-4 border-t border-gray-200">
           <div className="text-center">
-            <p className="text-2xl font-bold text-blue-600">
+            <p className="text-2xl font-bold text-blue-600 tabular-nums">
               {formatReportsDuration(totalDuration)}
             </p>
             <p className="text-sm text-gray-600">Total Hours</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-green-600">
+            <p className="text-2xl font-bold text-green-600 tabular-nums">
               ${Math.round(totalEarnings * 100) / 100}
             </p>
             <p className="text-sm text-gray-600">Total Earnings</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-gray-600">{totalEntries}</p>
+            <p className="text-2xl font-bold text-gray-600 tabular-nums">{totalEntries}</p>
             <p className="text-sm text-gray-600">Total Entries</p>
           </div>
         </div>

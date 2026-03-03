@@ -101,7 +101,7 @@ const ResumeLastTimer: React.FC = () => {
             {(lastEntry.duration || 0) > 0 && (
               <div className="flex items-center gap-1 text-xs text-gray-500">
                 <ClockIcon className="h-3 w-3" />
-                <span>{formatTime(lastEntry.duration || 0)}</span>
+                <span className="tabular-nums">{formatTime(lastEntry.duration || 0)}</span>
               </div>
             )}
           </div>

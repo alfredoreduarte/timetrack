@@ -103,7 +103,7 @@ const ElectronRecentTimers: React.FC = () => {
                       <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
                         <div className="flex items-center gap-1">
                           <ClockIcon className="h-3 w-3" />
-                          <span>{formatReportsDuration(entry.duration ?? 0)}</span>
+                          <span className="tabular-nums">{formatReportsDuration(entry.duration ?? 0)}</span>
                         </div>
                         <span>•</span>
                         <span>
