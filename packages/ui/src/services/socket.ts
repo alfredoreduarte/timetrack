@@ -1,6 +1,7 @@
 import { io, Socket } from "socket.io-client";
 import { TimeEntry } from "../store/slices/timeEntriesSlice";
 import { Project, Task } from "../store/slices/projectsSlice";
+import { Favorite } from "../store/slices/favoritesSlice";
 
 // In production, connect to the same origin — nginx proxies /socket.io/ to
 // the API container. VITE_API_URL is only needed for local dev.
@@ -31,6 +32,11 @@ interface SocketEventHandlers {
   onTaskCreated?: EventCallback<Task>;
   onTaskUpdated?: EventCallback<Task>;
   onTaskDeleted?: EventCallback<{ id: string }>;
+  // Favorite events
+  onFavoriteCreated?: EventCallback<Favorite>;
+  onFavoriteDeleted?: EventCallback<{ id: string }>;
+  onFavoriteUpdated?: EventCallback<Favorite>;
+  onFavoritesReordered?: EventCallback<Favorite[]>;
   // Connection events
   onConnectionStateChange?: EventCallback<ConnectionState>;
 }
@@ -176,6 +182,27 @@ class SocketService {
     this.socket.on("task-deleted", (data: { id: string }) => {
       console.log("[Socket] task-deleted", data.id);
       this.handlers.onTaskDeleted?.(data);
+    });
+
+    // Favorite events
+    this.socket.on("favorite-created", (data: Favorite) => {
+      console.log("[Socket] favorite-created", data.id);
+      this.handlers.onFavoriteCreated?.(data);
+    });
+
+    this.socket.on("favorite-deleted", (data: { id: string }) => {
+      console.log("[Socket] favorite-deleted", data.id);
+      this.handlers.onFavoriteDeleted?.(data);
+    });
+
+    this.socket.on("favorite-updated", (data: Favorite) => {
+      console.log("[Socket] favorite-updated", data.id);
+      this.handlers.onFavoriteUpdated?.(data);
+    });
+
+    this.socket.on("favorites-reordered", (data: Favorite[]) => {
+      console.log("[Socket] favorites-reordered");
+      this.handlers.onFavoritesReordered?.(data);
     });
   }
 
