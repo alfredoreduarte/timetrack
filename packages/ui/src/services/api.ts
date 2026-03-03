@@ -3,9 +3,11 @@ import { User } from "../store/slices/authSlice";
 import { Project, Task } from "../store/slices/projectsSlice";
 import { TimeEntry } from "../store/slices/timeEntriesSlice";
 
-// Use environment variable or fallback to localhost:3011 for development
+// In production the UI is served by nginx which reverse-proxies /api/ to the
+// API container, so no absolute URL is needed. VITE_API_URL is only required
+// for local dev where the UI and API run on different ports.
 const API_BASE_URL =
-  (import.meta as any).env.VITE_API_URL || "http://localhost:3011";
+  (import.meta as any).env.VITE_API_URL || "/api";
 
 class APIClient {
   private client: AxiosInstance;
