@@ -36,13 +36,13 @@ jobs:
             fi
 
             # TODO: Remove this migration block once both environments have deployed successfully
-            # Stop old containers from the shared directory so container names are free
-            if [ -d "$OLD_DIR" ] && [ -f "$OLD_DIR/docker-compose.prod.yml" ]; then
-              echo "=== Stopping old containers from $OLD_DIR ==="
-              cd "$OLD_DIR"
-              docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
-              cd ~
-            fi
+            # Force-remove old containers by name. We can't rely on docker compose down
+            # because the compose file's project name changed from timetrack-monorepo
+            # to timetrack-production, so 'down' won't find the old containers.
+            echo "=== Removing any leftover containers by name ==="
+            for name in timetrack-postgres-prod timetrack-api-prod timetrack-web-prod timetrack-redis-prod timetrack-landing-prod; do
+              docker rm -f "$name" 2>/dev/null || true
+            done
 
             # Migrate env files from the old shared directory if missing
             for f in docker.env docker.staging.env; do
