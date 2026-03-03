@@ -2,9 +2,10 @@ import { io, Socket } from "socket.io-client";
 import { TimeEntry } from "../store/slices/timeEntriesSlice";
 import { Project, Task } from "../store/slices/projectsSlice";
 
-// Use same base URL as API
-const API_BASE_URL =
-  (import.meta as any).env.VITE_API_URL || "http://localhost:3011";
+// In production, connect to the same origin — nginx proxies /socket.io/ to
+// the API container. VITE_API_URL is only needed for local dev.
+const SOCKET_URL =
+  (import.meta as any).env.VITE_API_URL || "";
 
 export type ConnectionState =
   | "disconnected"
@@ -73,7 +74,7 @@ class SocketService {
     this.disconnect();
     this.setConnectionState("connecting");
 
-    this.socket = io(API_BASE_URL, {
+    this.socket = io(SOCKET_URL, {
       auth: { token },
       transports: ["websocket"],
       reconnection: false, // We handle reconnection manually
