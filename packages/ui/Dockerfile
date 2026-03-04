@@ -24,7 +24,7 @@ RUN npm run build:shared
 
 # Build the React application for web (not Electron)
 WORKDIR /app/packages/ui
-RUN npm run build:react
+RUN npm run build:web
 
 # Development stage - run Vite dev server
 FROM node:18-alpine AS development

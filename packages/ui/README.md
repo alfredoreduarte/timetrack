@@ -59,7 +59,8 @@ This will start both the React development server (Vite) and the Electron applic
 - `npm run dev:react` - Start only React development server
 - `npm run dev:electron` - Start only Electron (requires React server running)
 - `npm run build` - Build for production
-- `npm run build:react` - Build React app only
+- `npm run build:web` - Build React app for web deployment
+- `npm run build:electron-renderer` - Build React app for Electron (relative paths)
 - `npm run build:electron` - Build Electron main process only
 - `npm run package` - Package the app for distribution
 - `npm run package:dir` - Package without creating installer

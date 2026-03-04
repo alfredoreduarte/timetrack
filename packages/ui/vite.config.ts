@@ -24,7 +24,7 @@ export default defineConfig({
     emptyOutDir: true,
     assetsDir: "assets",
   },
-  base: "./",
+  base: process.env.ELECTRON_BUILD ? "./" : "/",
   test: {
     globals: true,
     environment: "jsdom",

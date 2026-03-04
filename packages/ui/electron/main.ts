@@ -61,7 +61,7 @@ class TimeTrackApp {
         nodeIntegration: false,
         contextIsolation: true,
         preload: path.join(__dirname, "preload.cjs"),
-        webSecurity: false, // TEMPORARY: Disable for development only
+        webSecurity: !isDev(), // Allow cross-origin requests in dev only
       },
       titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
       show: false,
