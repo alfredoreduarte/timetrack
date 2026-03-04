@@ -34,6 +34,7 @@ FROM base AS build
 COPY . .
 RUN --mount=type=cache,target=/root/.npm npm ci
 RUN npm run build:shared
+RUN cd packages/api && npx prisma generate
 RUN npm run build:api
 
 # Production stage
@@ -56,18 +57,18 @@ COPY --from=build /app/packages/shared/package*.json ./packages/shared/
 # Install only production dependencies
 RUN --mount=type=cache,target=/root/.npm npm ci --only=production
 
-# Copy built application
+# Copy built application and generated Prisma client
 COPY --from=build --chown=nodeuser:nodejs /app/packages/api/dist ./packages/api/dist
 COPY --from=build --chown=nodeuser:nodejs /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build --chown=nodeuser:nodejs /app/packages/api/prisma ./packages/api/prisma
+COPY --from=build --chown=nodeuser:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build --chown=nodeuser:nodejs /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
-# Create startup script
+# Create startup script (Prisma client is pre-generated during build)
 RUN echo '#!/bin/sh' > /app/start.sh && \
   echo 'set -e' >> /app/start.sh && \
   echo 'echo "Starting TimeTrack API..."' >> /app/start.sh && \
   echo 'cd /app/packages/api' >> /app/start.sh && \
-  echo 'echo "Generating Prisma client..."' >> /app/start.sh && \
-  echo 'npx prisma generate' >> /app/start.sh && \
   echo 'echo "Running database migrations..."' >> /app/start.sh && \
   echo 'npx prisma migrate deploy' >> /app/start.sh && \
   echo 'echo "Starting server..."' >> /app/start.sh && \
