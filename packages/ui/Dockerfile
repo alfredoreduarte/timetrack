@@ -13,8 +13,8 @@ COPY package*.json ./
 COPY packages/ui/package*.json ./packages/ui/
 COPY packages/shared/package*.json ./packages/shared/
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (cache mount survives across builds for fast reinstalls)
+RUN --mount=type=cache,target=/root/.npm ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
 
 # Copy source code
 COPY . .
@@ -42,7 +42,7 @@ COPY packages/ui/package*.json ./packages/ui/
 COPY packages/shared/package*.json ./packages/shared/
 
 # Install dependencies
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
 
 # Copy source code
 COPY . .

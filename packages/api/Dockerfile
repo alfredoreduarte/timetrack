@@ -12,13 +12,13 @@ COPY package*.json ./
 COPY packages/api/package*.json ./packages/api/
 COPY packages/shared/package*.json ./packages/shared/
 
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install dependencies (cache mount survives across builds for fast reinstalls)
+RUN --mount=type=cache,target=/root/.npm npm ci --only=production
 
 # Development stage
 FROM base AS development
 # Install all dependencies (including dev dependencies) for development
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
 COPY . .
 # Build shared package first
 RUN npm run build:shared
@@ -32,8 +32,9 @@ CMD ["npm", "run", "dev:docker"]
 # Production build stage
 FROM base AS build
 COPY . .
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
 RUN npm run build:shared
+RUN cd packages/api && npx prisma generate
 RUN npm run build:api
 
 # Production stage
@@ -54,21 +55,20 @@ COPY --from=build /app/packages/api/package*.json ./packages/api/
 COPY --from=build /app/packages/shared/package*.json ./packages/shared/
 
 # Install only production dependencies
-RUN npm ci --only=production && npm cache clean --force
+RUN --mount=type=cache,target=/root/.npm npm ci --only=production
 
-# Copy built application
+# Copy built application and generated Prisma client
 COPY --from=build --chown=nodeuser:nodejs /app/packages/api/dist ./packages/api/dist
 COPY --from=build --chown=nodeuser:nodejs /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build --chown=nodeuser:nodejs /app/packages/api/prisma ./packages/api/prisma
-COPY --from=build --chown=nodeuser:nodejs /app/node_modules ./node_modules
+COPY --from=build --chown=nodeuser:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build --chown=nodeuser:nodejs /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
-# Create startup script
+# Create startup script (Prisma client is pre-generated during build)
 RUN echo '#!/bin/sh' > /app/start.sh && \
   echo 'set -e' >> /app/start.sh && \
   echo 'echo "Starting TimeTrack API..."' >> /app/start.sh && \
   echo 'cd /app/packages/api' >> /app/start.sh && \
-  echo 'echo "Generating Prisma client..."' >> /app/start.sh && \
-  echo 'npx prisma generate' >> /app/start.sh && \
   echo 'echo "Running database migrations..."' >> /app/start.sh && \
   echo 'npx prisma migrate deploy' >> /app/start.sh && \
   echo 'echo "Starting server..."' >> /app/start.sh && \
