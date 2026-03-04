@@ -27,6 +27,10 @@ jobs:
             REPO_URL="https://github.com/alfredoreduarte/timetrack.git"
             DEPLOY_DIR=~/websites/timetrack-production
 
+            echo "=== Freeing disk space ==="
+            docker system prune -af --volumes --filter "until=24h" || true
+            docker builder prune -af || true
+
             # Clone on first deploy, otherwise just fetch
             if [ ! -d "$DEPLOY_DIR/.git" ]; then
               echo "=== First deploy: cloning repo ==="
