@@ -168,9 +168,10 @@ deploy() {
     set +a
 
     if [ "$mode" = "prod" ] || [ "$mode" = "staging" ]; then
-        # Remove old build cache (keeps recent layers for faster rebuilds)
-        log_info "Pruning Docker build cache older than 7 days..."
-        docker builder prune -f --filter "until=168h"
+        # Aggressive cleanup to prevent disk-full failures on the VPS
+        log_info "Pruning unused Docker resources..."
+        docker system prune -f --volumes --filter "until=24h"
+        docker builder prune -f --filter "until=72h"
 
         # Build new images while old containers keep serving traffic.
         # Sequential builds avoid overwhelming the server when cache is cold.
@@ -183,10 +184,6 @@ deploy() {
         # Postgres and redis are untouched (stock images, no rebuild needed).
         log_info "Replacing containers with new images..."
         docker_compose -f "$compose_file" up -d --remove-orphans
-
-        # Clean up old images that are no longer used by any container
-        log_info "Removing unused images from previous deployments..."
-        docker image prune -af --filter "until=24h"
     else
         # Dev: full restart is fine
         docker_compose -f "$compose_file" down --remove-orphans
