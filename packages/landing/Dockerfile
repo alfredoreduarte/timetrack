@@ -18,7 +18,7 @@ COPY package*.json ./
 COPY packages/landing/package*.json ./packages/landing/
 COPY packages/shared/package*.json ./packages/shared/
 
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Bring in full monorepo source and build the SSR landing site (client + server bundles)
 COPY . .
@@ -34,7 +34,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY packages/landing/package*.json ./packages/landing/
 COPY packages/shared/package*.json ./packages/shared/
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY . .
 

@@ -12,13 +12,13 @@ COPY package*.json ./
 COPY packages/api/package*.json ./packages/api/
 COPY packages/shared/package*.json ./packages/shared/
 
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install dependencies (cache mount survives across builds for fast reinstalls)
+RUN --mount=type=cache,target=/root/.npm npm ci --only=production
 
 # Development stage
 FROM base AS development
 # Install all dependencies (including dev dependencies) for development
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 # Build shared package first
 RUN npm run build:shared
@@ -32,7 +32,7 @@ CMD ["npm", "run", "dev:docker"]
 # Production build stage
 FROM base AS build
 COPY . .
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 RUN npm run build:shared
 RUN npm run build:api
 
@@ -54,7 +54,7 @@ COPY --from=build /app/packages/api/package*.json ./packages/api/
 COPY --from=build /app/packages/shared/package*.json ./packages/shared/
 
 # Install only production dependencies
-RUN npm ci --only=production && npm cache clean --force
+RUN --mount=type=cache,target=/root/.npm npm ci --only=production
 
 # Copy built application
 COPY --from=build --chown=nodeuser:nodejs /app/packages/api/dist ./packages/api/dist
