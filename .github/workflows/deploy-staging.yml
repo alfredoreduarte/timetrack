@@ -30,6 +30,10 @@ jobs:
             REPO_URL="https://github.com/alfredoreduarte/timetrack.git"
             DEPLOY_DIR=~/websites/timetrack-staging
 
+            echo "=== Freeing disk space ==="
+            docker system prune -af --volumes --filter "until=24h" || true
+            docker builder prune -af || true
+
             # Clone on first deploy, otherwise just fetch
             if [ ! -d "$DEPLOY_DIR/.git" ]; then
               echo "=== First staging deploy: cloning repo ==="
@@ -96,6 +100,10 @@ jobs:
           script: |
             set -euo pipefail
             DEPLOY_DIR=~/websites/timetrack-staging
+
+            echo "=== Freeing disk space ==="
+            docker system prune -af --volumes --filter "until=24h" || true
+            docker builder prune -af || true
 
             # Nothing to roll back if staging was never deployed
             if [ ! -d "$DEPLOY_DIR/.git" ]; then

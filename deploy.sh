@@ -168,11 +168,6 @@ deploy() {
     set +a
 
     if [ "$mode" = "prod" ] || [ "$mode" = "staging" ]; then
-        # Aggressive cleanup to prevent disk-full failures on the VPS
-        log_info "Pruning unused Docker resources..."
-        docker system prune -f --volumes --filter "until=24h"
-        docker builder prune -f --filter "until=72h"
-
         # Build new images while old containers keep serving traffic.
         # Sequential builds avoid overwhelming the server when cache is cold.
         log_info "Building new images (old containers still serving traffic)..."
