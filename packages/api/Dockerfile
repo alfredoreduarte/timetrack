@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --only=production
 # Development stage
 FROM base AS development
 # Install all dependencies (including dev dependencies) for development
-RUN --mount=type=cache,target=/root/.npm npm ci
+RUN --mount=type=cache,target=/root/.npm ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
 COPY . .
 # Build shared package first
 RUN npm run build:shared
@@ -32,7 +32,7 @@ CMD ["npm", "run", "dev:docker"]
 # Production build stage
 FROM base AS build
 COPY . .
-RUN --mount=type=cache,target=/root/.npm npm ci
+RUN --mount=type=cache,target=/root/.npm ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
 RUN npm run build:shared
 RUN cd packages/api && npx prisma generate
 RUN npm run build:api
