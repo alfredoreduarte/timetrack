@@ -8,6 +8,7 @@ import {
   ArrowLeftIcon,
   CheckIcon,
   ClockIcon,
+  PlayIcon,
 } from "@heroicons/react/24/outline";
 import { RootState } from "../store";
 import {
@@ -22,6 +23,7 @@ import {
   Project,
   Task,
 } from "../store/slices/projectsSlice";
+import { useTimer } from "../hooks/useTimer";
 import toast from "react-hot-toast";
 
 interface ProjectFormData {
@@ -44,6 +46,12 @@ const Projects: React.FC = () => {
   const { projects, tasks, loading, error } = useSelector(
     (state: RootState) => state.projects
   );
+  const { startTimer, isRunning } = useTimer();
+
+  // Start timer prompt state
+  const [showStartTimerPrompt, setShowStartTimerPrompt] = useState(false);
+  const [newlyCreatedTask, setNewlyCreatedTask] = useState<Task | null>(null);
+  const [startingTimer, setStartingTimer] = useState(false);
 
   // Project state
   const [showProjectModal, setShowProjectModal] = useState(false);
@@ -194,12 +202,14 @@ const Projects: React.FC = () => {
           updateTask({ id: editingTask.id, data: taskData }) as any
         );
         toast.success("Task updated successfully");
+        handleCloseTaskModal();
       } else {
-        await dispatch(createTask(taskData) as any);
+        const result = await dispatch(createTask(taskData) as any).unwrap();
         toast.success("Task created successfully");
+        handleCloseTaskModal();
+        setNewlyCreatedTask(result);
+        setShowStartTimerPrompt(true);
       }
-
-      handleCloseTaskModal();
     } catch (error: any) {
       console.error("Error saving task:", error);
       toast.error(error.message || "Failed to save task");
@@ -253,6 +263,31 @@ const Projects: React.FC = () => {
       description: "",
       hourlyRate: "",
     });
+  };
+
+  const handleStartTimerForTask = async () => {
+    if (!newlyCreatedTask || !selectedProject) return;
+
+    setStartingTimer(true);
+    try {
+      await startTimer({
+        projectId: selectedProject.id,
+        taskId: newlyCreatedTask.id,
+      });
+      toast.success(`Timer started for "${newlyCreatedTask.name}"`);
+      setShowStartTimerPrompt(false);
+      setNewlyCreatedTask(null);
+      navigate("/");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to start timer");
+    } finally {
+      setStartingTimer(false);
+    }
+  };
+
+  const handleDismissTimerPrompt = () => {
+    setShowStartTimerPrompt(false);
+    setNewlyCreatedTask(null);
   };
 
   const handleProjectClick = (project: Project) => {
@@ -525,6 +560,57 @@ const Projects: React.FC = () => {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Start Timer Prompt */}
+        {showStartTimerPrompt && newlyCreatedTask && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-sm w-full">
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-primary-100 rounded-full">
+                    <PlayIcon className="h-6 w-6 text-primary-600" />
+                  </div>
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Start tracking time?
+                  </h2>
+                </div>
+                <p className="text-gray-600 mb-6">
+                  Would you like to start a timer for{" "}
+                  <span className="font-medium text-gray-900">
+                    "{newlyCreatedTask.name}"
+                  </span>
+                  ?
+                </p>
+                {isRunning && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-md p-3 mb-4">
+                    <p className="text-sm text-amber-800">
+                      A timer is currently running. Starting a new one will stop
+                      it.
+                    </p>
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleDismissTimerPrompt}
+                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                  >
+                    Not now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleStartTimerForTask}
+                    disabled={startingTimer}
+                    className="flex-1 btn-primary flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <PlayIcon className="h-4 w-4" />
+                    {startingTimer ? "Starting..." : "Start Timer"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
