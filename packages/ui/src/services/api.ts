@@ -380,6 +380,26 @@ class APIClient {
       }>("POST", `/time-entries/${id}/stop`);
       return response.timeEntry;
     },
+
+    getSuggestions: async (params: {
+      q: string;
+      projectId?: string;
+      limit?: number;
+    }) => {
+      const queryParams = new URLSearchParams({ q: params.q });
+      if (params.projectId) queryParams.append("projectId", params.projectId);
+      if (params.limit) queryParams.append("limit", params.limit.toString());
+
+      return this.request<{
+        suggestions: Array<{
+          description: string;
+          frequency: number;
+          lastUsed: string;
+          project: { id: string; name: string; color: string | null } | null;
+          task: { id: string; name: string } | null;
+        }>;
+      }>("GET", `/time-entries/suggestions?${queryParams.toString()}`);
+    },
   };
 
   // Reports API

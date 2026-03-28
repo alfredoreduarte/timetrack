@@ -80,6 +80,15 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
+// Description autocomplete types
+export interface DescriptionSuggestion {
+  description: string;
+  frequency: number;
+  lastUsed: string;
+  project: { id: string; name: string; color?: string } | null;
+  task: { id: string; name: string } | null;
+}
+
 // Error types
 export interface ApiError {
   message: string;
