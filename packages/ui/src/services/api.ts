@@ -3,6 +3,7 @@ import { User } from "../store/slices/authSlice";
 import { Project, Task } from "../store/slices/projectsSlice";
 import { TimeEntry } from "../store/slices/timeEntriesSlice";
 import { Favorite } from "../store/slices/favoritesSlice";
+import { ApiKey } from "../store/slices/apiKeysSlice";
 
 // In production the UI is served by nginx which reverse-proxies /api/ to the
 // API container, so no absolute URL is needed. VITE_API_URL is only required
@@ -488,6 +489,29 @@ class APIClient {
 
   };
 
+  // API Keys (programmatic access tokens)
+  apiKeys = {
+    list: async () => {
+      const response = await this.request<{ apiKeys: ApiKey[] }>(
+        "GET",
+        "/api-keys"
+      );
+      return response.apiKeys;
+    },
+
+    create: async (data: { name: string; expiresAt?: string }) => {
+      return this.request<{
+        message: string;
+        apiKey: ApiKey;
+        token: string;
+      }>("POST", "/api-keys", data);
+    },
+
+    revoke: async (id: string) => {
+      return this.request<{ message: string }>("DELETE", `/api-keys/${id}`);
+    },
+  };
+
   // Health check
   health = {
     check: async () => {
@@ -513,6 +537,7 @@ export const tasksAPI = apiClient.tasks;
 export const timeEntriesAPI = apiClient.timeEntries;
 export const reportsAPI = apiClient.reports;
 export const favoritesAPI = apiClient.favorites;
+export const apiKeysAPI = apiClient.apiKeys;
 export const healthAPI = apiClient.health;
 
 export default apiClient;

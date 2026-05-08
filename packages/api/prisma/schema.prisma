@@ -107,13 +107,14 @@ model TimeEntry {
 }
 
 model ApiKey {
-  id        String    @id @default(cuid())
-  name      String
-  key       String    @unique
-  isActive  Boolean   @default(true)
-  lastUsed  DateTime?
-  createdAt DateTime  @default(now())
-  expiresAt DateTime?
+  id         String    @id @default(cuid())
+  name       String
+  keyHash    String    @unique @map("key_hash")
+  keyPrefix  String    @map("key_prefix")
+  isActive   Boolean   @default(true)
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
 
   // Relations
   userId String
@@ -121,7 +122,7 @@ model ApiKey {
 
   @@map("api_keys")
   @@index([userId])
-  @@index([key])
+  @@index([keyHash])
   @@index([userId, isActive])
 }
 
