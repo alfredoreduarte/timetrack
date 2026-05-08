@@ -86,3 +86,26 @@ export interface ApiError {
   code?: string;
   statusCode?: number;
 }
+
+// API Key types (programmatic access tokens)
+export interface ApiKey {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  isActive: boolean;
+  lastUsedAt?: string | null;
+  createdAt: string;
+  expiresAt?: string | null;
+}
+
+export interface CreateApiKeyRequest {
+  name: string;
+  expiresAt?: string;
+}
+
+export interface CreateApiKeyResponse {
+  message: string;
+  apiKey: ApiKey;
+  // Plaintext token — returned ONCE on creation, never again.
+  token: string;
+}

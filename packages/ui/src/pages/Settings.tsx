@@ -3,6 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { RootState, AppDispatch } from "../store";
 import { updateProfile } from "../store/slices/authSlice";
 import { toast } from "react-hot-toast";
+import ApiKeysSection from "../components/ApiKeysSection";
 
 const Settings: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -322,6 +323,8 @@ const Settings: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <ApiKeysSection />
     </div>
   );
 };
