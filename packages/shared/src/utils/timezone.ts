@@ -32,7 +32,7 @@ export function getStartOfDayInTimezone(timezone: string): Date {
 /**
  * Get the start of week in a specific timezone and return as UTC
  * @param timezone - IANA timezone string (e.g., 'America/New_York')
- * @returns Date object representing start of week (Sunday) in the timezone, converted to UTC
+ * @returns Date object representing start of week (Monday) in the timezone, converted to UTC
  */
 export function getStartOfWeekInTimezone(timezone: string): Date {
   const now = new Date();
@@ -48,9 +48,13 @@ export function getStartOfWeekInTimezone(timezone: string): Date {
   // Calculate the timezone offset
   const timezoneOffset = nowUTC.getTime() - nowInTimezone.getTime();
 
-  // Create start of week in the user's timezone (Sunday = 0)
+  // Days back to Monday: getDay() returns 0 for Sunday, 1 for Monday, ...
+  // On Sunday we go back 6 days; otherwise getDay() - 1.
+  const dayOfWeek = nowInTimezone.getDay();
+  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+
   const startOfWeekLocal = new Date(nowInTimezone);
-  startOfWeekLocal.setDate(nowInTimezone.getDate() - nowInTimezone.getDay());
+  startOfWeekLocal.setDate(nowInTimezone.getDate() - daysToMonday);
   startOfWeekLocal.setHours(0, 0, 0, 0);
 
   // Convert back to UTC for database queries
