@@ -88,6 +88,13 @@ const swaggerOptions = {
 
 const specs = swaggerJsdoc(swaggerOptions);
 
+// Trust the first reverse proxy (nginx in front of the API container).
+// Without this, every IP-based rate limiter sees the docker-network IP of
+// the proxy and effectively becomes a single global bucket across all
+// callers — making the per-IP caps meaningless. With it set to 1, req.ip
+// resolves to the real client IP from X-Forwarded-For.
+app.set("trust proxy", 1);
+
 // Middleware
 app.use(
   helmet({
@@ -220,6 +227,11 @@ app.use(
 //      enumeration but won't ever hit a real user
 // Auth-specific limiters (login, register, password-reset) handle the
 // targeted abuse surfaces with tighter caps in their own route files.
+// Real token shapes accepted by authenticate(). Anything else with "Bearer "
+// in front is treated as anonymous-with-noise and goes through the limiter.
+const AUTH_BEARER_SHAPE =
+  /^Bearer (tt_[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/;
+
 const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000"); // 15 minutes
 const rateLimitMax = parseInt(
   process.env.RATE_LIMIT_MAX_REQUESTS ||
@@ -243,16 +255,15 @@ const limiter = rateLimit({
     ) {
       return true;
     }
-    // Skip when the request is authenticated. The Authorization presence
-    // check is intentionally lightweight (doesn't validate the token):
-    // - Valid token → trusted user, no IP limit
-    // - Invalid/expired token → still falls through to authenticate() which
-    //   returns 401, so the actual cost of a bad token is one request
-    //   regardless of limiter, not 100s of attempts to find a valid one
-    //   (credential stuffing on Authorization headers isn't a thing
-    //    because tokens carry their own entropy)
+    // Skip when the request looks authenticated. We don't validate the
+    // token here (that's authenticate() middleware's job), but we DO
+    // require the header to match one of the two real token shapes so
+    // that a literal "Bearer XX" can't be used to disable the limiter
+    // for anonymous endpoints.
+    //   - tt_<base64url payload>     → API key
+    //   - eyJ...<jwt-shape>          → JWT (header.payload.signature)
     const auth = req.headers.authorization;
-    if (auth && auth.startsWith("Bearer ") && auth.length > 8) {
+    if (auth && AUTH_BEARER_SHAPE.test(auth)) {
       return true;
     }
     return false;
