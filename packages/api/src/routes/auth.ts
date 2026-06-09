@@ -12,13 +12,45 @@ import { emailService } from "../utils/email";
 
 const router = express.Router();
 
-// Login-specific rate limiter for brute-force protection. Kept tight on
-// purpose — this is the credential-stuffing surface, separate from the
-// app-wide cap.
+// Auth-surface limiters. Tight on purpose because these endpoints are
+// unauthenticated and each one does something expensive (bcrypt CPU,
+// SMTP send, DB write). The global limiter doesn't gate these — it
+// either skips authenticated traffic or is itself very loose now —
+// so the protection lives here.
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 30, // 30 login attempts per 15 minutes per IP
+  windowMs: 15 * 60 * 1000,
+  max: 30,
   message: { error: "Too many login attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  // bcrypt.hash on register is CPU-expensive; cap aggressively.
+  max: 10,
+  message: { error: "Too many registration attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const passwordResetRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  // Sends an email; uncapped this is an email-bombing vector.
+  max: 5,
+  message: {
+    error: "Too many password reset requests, please try again later",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  // bcrypt.hash on the new password; tokens are high-entropy so brute
+  // force isn't the concern — CPU-DoS is.
+  max: 20,
+  message: { error: "Too many password reset attempts, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -206,6 +238,7 @@ router.get(
  */
 router.post(
   "/register",
+  registerLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const {
       name,
@@ -508,6 +541,7 @@ router.post(
  */
 router.post(
   "/request-password-reset",
+  passwordResetRequestLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const { email } = requestPasswordResetSchema.parse(req.body);
 
@@ -597,6 +631,7 @@ router.post(
  */
 router.post(
   "/reset-password",
+  passwordResetLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const { token, password } = resetPasswordSchema.parse(req.body);
 
