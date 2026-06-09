@@ -1,6 +1,6 @@
 import { request } from "undici";
 
-const DEFAULT_URL = "https://timetrack.alfredo.re";
+const DEFAULT_URL = "https://app.track.alfredo.re/api";
 const CLIENT_LABEL = "mcp";
 // Hard ceilings to keep a misbehaving server (or one we've misconfigured the
 // URL to) from blowing up the agent process or leaking the key back to the LLM.
