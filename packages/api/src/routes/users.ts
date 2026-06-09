@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
-import { authenticate, AuthenticatedRequest } from "../middleware/auth";
+import { authenticate, requireJwt, AuthenticatedRequest } from "../middleware/auth";
 
 const router = express.Router();
 
@@ -117,6 +117,7 @@ const changePasswordSchema = z.object({
  */
 router.put(
   "/profile",
+  requireJwt,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const updateData = updateProfileSchema.parse(req.body);
 
@@ -183,6 +184,7 @@ router.put(
  */
 router.post(
   "/change-password",
+  requireJwt,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { currentPassword, newPassword } = changePasswordSchema.parse(
       req.body

@@ -55,8 +55,9 @@ const ApiKeysSection: React.FC = () => {
       setName("");
       setExpiresAt("");
       toast.success("API key created");
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to create API key");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create API key";
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
@@ -69,8 +70,9 @@ const ApiKeysSection: React.FC = () => {
     try {
       await dispatch(revokeApiKey(id)).unwrap();
       toast.success("API key revoked");
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to revoke API key");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to revoke API key";
+      toast.error(message);
     }
   };
 
@@ -244,6 +246,7 @@ const ApiKeysSection: React.FC = () => {
                   onClick={() => handleRevoke(key.id, key.name)}
                   className="text-red-600 hover:text-red-800 p-2"
                   title="Revoke"
+                  aria-label={`Revoke API key ${key.name}`}
                 >
                   <TrashIcon className="h-4 w-4" />
                 </button>
