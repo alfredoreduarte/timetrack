@@ -115,6 +115,7 @@ router.get(
         hourlyRateSnapshot: true,
         startTime: true,
         endTime: true,
+        isAiGenerated: true,
         project: {
           select: {
             id: true,
@@ -137,6 +138,18 @@ router.get(
       0
     );
     const totalEarnings = timeEntries.reduce((sum: number, entry: any) => {
+      const rate = entry.hourlyRateSnapshot || 0;
+      const hours = (entry.duration || 0) / 3600;
+      return sum + rate * hours;
+    }, 0);
+
+    // AI subtotals so the client can apply a billing multiplier on display.
+    const aiDuration = timeEntries.reduce(
+      (sum: number, entry: any) => sum + (entry.isAiGenerated ? entry.duration || 0 : 0),
+      0
+    );
+    const aiEarnings = timeEntries.reduce((sum: number, entry: any) => {
+      if (!entry.isAiGenerated) return sum;
       const rate = entry.hourlyRateSnapshot || 0;
       const hours = (entry.duration || 0) / 3600;
       return sum + rate * hours;
@@ -191,6 +204,8 @@ router.get(
       summary: {
         totalDuration, // in seconds
         totalEarnings,
+        aiDuration,
+        aiEarnings,
         entryCount: timeEntries.length,
         averageSessionDuration:
           timeEntries.length > 0 ? totalDuration / timeEntries.length : 0,
@@ -284,6 +299,8 @@ router.get(
         duration: true,
         hourlyRateSnapshot: true,
         createdAt: true,
+        isAiGenerated: true,
+        createdVia: true,
         project: {
           select: {
             id: true,

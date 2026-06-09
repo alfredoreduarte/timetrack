@@ -260,6 +260,7 @@ router.post(
         email: true,
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
+        aiMultiplier: true,
         createdAt: true,
       },
     });
@@ -419,6 +420,7 @@ router.get(
         email: true,
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
+        aiMultiplier: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -630,6 +632,7 @@ router.post(
         email: true,
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
+        aiMultiplier: true,
       },
     });
 

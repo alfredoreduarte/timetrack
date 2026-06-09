@@ -12,6 +12,8 @@ export interface TimeEntry {
   taskId?: string;
   userId?: string; // optional for current entry API response
   hourlyRateSnapshot?: number | null; // Rate that was active when entry was created
+  createdVia?: string;
+  isAiGenerated?: boolean;
   project?: {
     id: string;
     name: string;

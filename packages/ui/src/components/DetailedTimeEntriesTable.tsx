@@ -1,5 +1,6 @@
 import React from "react";
 import { DetailedTimeEntry } from "../store/slices/reportsSlice";
+import AiBadge from "./AiBadge";
 import { getUserTimezone } from "../../../shared/src/utils/timezone";
 
 interface DetailedTimeEntriesTableProps {
@@ -411,8 +412,13 @@ const DetailedTimeEntriesTable: React.FC<DetailedTimeEntriesTableProps> = ({
 
                           {/* Time Entries column */}
                           <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900">
-                              {entry.description || "No description"}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm text-gray-900">
+                                {entry.description || "No description"}
+                              </span>
+                              {entry.isAiGenerated && (
+                                <AiBadge via={entry.createdVia} />
+                              )}
                             </div>
                             {entry.task && (
                               <div className="text-xs text-gray-500">
