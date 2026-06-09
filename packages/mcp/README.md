@@ -19,7 +19,7 @@ Time entries created through this server are automatically flagged as AI work, s
 3. **Set environment variables** (in your shell or in your MCP client's config):
 
    ```bash
-   export TIMETRACK_API_URL=https://timetrack.alfredo.re
+   export TIMETRACK_API_URL=https://app.track.alfredo.re/api
    export TIMETRACK_API_KEY=tt_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    ```
 
@@ -40,7 +40,7 @@ Time entries created through this server are automatically flagged as AI work, s
          "command": "node",
          "args": ["/absolute/path/to/packages/mcp/dist/index.js"],
          "env": {
-           "TIMETRACK_API_URL": "https://timetrack.alfredo.re",
+           "TIMETRACK_API_URL": "https://app.track.alfredo.re/api",
            "TIMETRACK_API_KEY": "tt_..."
          }
        }
@@ -73,7 +73,7 @@ Every request from this server sends `X-Client: mcp` so entries land with `creat
 
 | Variable             | Default                          | Notes                                       |
 | -------------------- | -------------------------------- | ------------------------------------------- |
-| `TIMETRACK_API_URL`  | `https://timetrack.alfredo.re`   | Trailing slash optional.                    |
+| `TIMETRACK_API_URL`  | `https://app.track.alfredo.re/api` | API base — the prod web app proxies `/api/*` to the API container. Trailing slash optional. For local dev: `http://localhost:3011`. |
 | `TIMETRACK_API_KEY`  | (required)                       | `tt_…` token from Settings → API Keys.      |
 
 ## Troubleshooting
