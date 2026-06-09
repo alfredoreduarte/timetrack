@@ -1,3 +1,13 @@
+-- Safety guard: this migration is only safe if api_keys is empty. Prior to
+-- this PR no code ever inserted rows, but if any environment somehow has
+-- data, fail loudly rather than producing a confusing mid-ALTER null violation.
+DO $$
+BEGIN
+  IF (SELECT COUNT(*) FROM api_keys) > 0 THEN
+    RAISE EXCEPTION 'api_keys is non-empty; manual reconciliation required before this migration can run';
+  END IF;
+END $$;
+
 -- DropIndex
 DROP INDEX "api_keys_key_idx";
 

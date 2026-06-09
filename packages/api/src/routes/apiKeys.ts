@@ -22,6 +22,9 @@ const createSchema = z.object({
   expiresAt: z
     .string()
     .datetime({ message: "expiresAt must be ISO 8601" })
+    .refine((v) => new Date(v) > new Date(), {
+      message: "expiresAt must be in the future",
+    })
     .optional(),
 });
 
@@ -91,34 +94,31 @@ router.post(
   "/",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { name, expiresAt } = createSchema.parse(req.body);
-
-    if (expiresAt && new Date(expiresAt) <= new Date()) {
-      throw createError("expiresAt must be in the future", 400);
-    }
-
-    const activeCount = await prisma.apiKey.count({
-      where: { userId: req.user!.id, isActive: true },
-    });
-    if (activeCount >= MAX_KEYS_PER_USER) {
-      throw createError(
-        `You can have at most ${MAX_KEYS_PER_USER} active API keys`,
-        400
-      );
-    }
-
     const { token, hash, prefix } = generateApiKey();
 
-    const apiKey = await prisma.apiKey.create({
-      data: {
-        userId: req.user!.id,
-        name: name.trim(),
-        keyHash: hash,
-        keyPrefix: prefix,
-        expiresAt: expiresAt ? new Date(expiresAt) : null,
-      },
-      select: apiKeySelect,
+    const apiKey = await prisma.$transaction(async (tx: typeof prisma) => {
+      const activeCount = await tx.apiKey.count({
+        where: { userId: req.user!.id, isActive: true },
+      });
+      if (activeCount >= MAX_KEYS_PER_USER) {
+        throw createError(
+          `You can have at most ${MAX_KEYS_PER_USER} active API keys`,
+          400
+        );
+      }
+      return tx.apiKey.create({
+        data: {
+          userId: req.user!.id,
+          name: name.trim(),
+          keyHash: hash,
+          keyPrefix: prefix,
+          expiresAt: expiresAt ? new Date(expiresAt) : null,
+        },
+        select: apiKeySelect,
+      });
     });
 
+    res.set("Cache-Control", "no-store");
     res.status(201).json({
       message: "API key created. Store the token securely — it will not be shown again.",
       apiKey,

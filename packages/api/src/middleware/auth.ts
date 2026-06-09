@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../utils/database";
 import { createError } from "./errorHandler";
 import { hashApiKey, isApiKeyToken } from "../utils/apiKeys";
+import { logger } from "../utils/logger";
 
 export type AuthMethod = "jwt" | "api_key";
 
@@ -13,8 +14,9 @@ export interface AuthenticatedRequest extends Request {
     name: string;
   };
   authMethod?: AuthMethod;
-  apiKeyId?: string;
 }
+
+const LAST_USED_DEBOUNCE_MS = 60_000;
 
 const authenticateApiKey = async (token: string) => {
   const hash = hashApiKey(token);
@@ -35,12 +37,22 @@ const authenticateApiKey = async (token: string) => {
     throw createError("API key expired", 401);
   }
 
-  // Bump lastUsedAt asynchronously; we don't need to wait.
-  prisma.apiKey
-    .update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } })
-    .catch(() => {});
+  const now = new Date();
+  const stale =
+    !apiKey.lastUsedAt ||
+    now.getTime() - apiKey.lastUsedAt.getTime() > LAST_USED_DEBOUNCE_MS;
+  if (stale) {
+    prisma.apiKey
+      .update({ where: { id: apiKey.id }, data: { lastUsedAt: now } })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.warn(
+          `Failed to update lastUsedAt for api_key ${apiKey.id}: ${message}`
+        );
+      });
+  }
 
-  return { user: apiKey.user, apiKeyId: apiKey.id };
+  return apiKey.user;
 };
 
 const authenticateJwt = async (token: string) => {
@@ -80,10 +92,8 @@ export const authenticate = async (
     const token = authHeader.substring(7);
 
     if (isApiKeyToken(token)) {
-      const { user, apiKeyId } = await authenticateApiKey(token);
-      req.user = user;
+      req.user = await authenticateApiKey(token);
       req.authMethod = "api_key";
-      req.apiKeyId = apiKeyId;
     } else {
       const { user } = await authenticateJwt(token);
       req.user = user;
@@ -120,26 +130,38 @@ export const optionalAuth = async (
 ) => {
   try {
     const authHeader = req.headers.authorization;
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return next();
     }
 
     const token = authHeader.substring(7);
 
-    if (isApiKeyToken(token)) {
-      const { user, apiKeyId } = await authenticateApiKey(token);
+    if (!process.env.JWT_SECRET) {
+      return next();
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET) as {
+      userId: string;
+      email: string;
+    };
+
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+    });
+
+    if (user) {
       req.user = user;
-      req.authMethod = "api_key";
-      req.apiKeyId = apiKeyId;
-    } else if (process.env.JWT_SECRET) {
-      const { user } = await authenticateJwt(token);
-      req.user = user;
-      req.authMethod = "jwt";
     }
 
     next();
   } catch (error) {
-    // Optional auth swallows errors so unauthenticated traffic still flows.
+    // Ignore auth errors for optional auth
     next();
   }
 };

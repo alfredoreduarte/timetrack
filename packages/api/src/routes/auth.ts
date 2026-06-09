@@ -7,7 +7,7 @@ import svgCaptcha from "svg-captcha";
 import crypto from "crypto";
 import { prisma } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
-import { authenticate, AuthenticatedRequest } from "../middleware/auth";
+import { authenticate, requireJwt, AuthenticatedRequest } from "../middleware/auth";
 import { emailService } from "../utils/email";
 
 const router = express.Router();
@@ -452,6 +452,7 @@ router.get(
 router.post(
   "/refresh",
   authenticate,
+  requireJwt,
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     // Generate new JWT token
     const jwtSecret = process.env.JWT_SECRET;
