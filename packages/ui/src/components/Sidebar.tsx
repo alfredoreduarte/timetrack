@@ -24,12 +24,34 @@ const isStaging = ((import.meta as any).env.VITE_API_URL || "").includes(
   "staging"
 );
 
-const Sidebar: React.FC = () => {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
   const location = useLocation();
   const { user } = useSelector((state: RootState) => state.auth);
 
   return (
-    <div className="flex flex-col w-64 bg-white border-r border-gray-200">
+    <>
+      {/* Backdrop — phones only, only when the drawer is open */}
+      {isOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={`
+          flex flex-col w-64 bg-white border-r border-gray-200
+          fixed inset-y-0 left-0 z-50 transform transition-transform duration-200
+          md:static md:translate-x-0
+          ${isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+        `}
+        aria-label="Primary navigation"
+      >
       {/* Logo */}
       <div className="flex items-center justify-center h-16 px-4 border-b border-gray-200">
         <h1 className="text-xl font-bold text-primary-600">TimeTrack</h1>
@@ -112,7 +134,8 @@ const Sidebar: React.FC = () => {
           for shortcuts
         </span>
       </div>
-    </div>
+      </aside>
+    </>
   );
 };
 
