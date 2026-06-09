@@ -9,6 +9,7 @@ import {
 import { fetchTimeEntries, TimeEntry } from "../store/slices/timeEntriesSlice";
 import { fetchProjects } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
+import RunningTimersStack from "../components/RunningTimersStack";
 import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import { PlayIcon } from "@heroicons/react/24/solid";
@@ -101,12 +102,15 @@ const Dashboard: React.FC = () => {
         <p className="text-gray-600">Track your time and monitor earnings</p>
       </div>
 
+      {/* Running timers (zero or more) */}
+      <RunningTimersStack />
+
       {/* Timer and Earnings Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* Timer Section */}
+        {/* Start-a-timer form */}
         <div className="card p-6">
           <h2 className="text-lg font-medium text-gray-900 mb-4">
-            Time Tracker
+            Start a timer
           </h2>
           <Timer />
         </div>

@@ -68,7 +68,7 @@ export function useSocket() {
         dispatch(timerStartedFromSocket(entry));
       },
       onTimeEntryStopped: (entry) => {
-        dispatch(timerStoppedFromSocket());
+        dispatch(timerStoppedFromSocket({ id: entry.id }));
         dispatch(entryUpdatedFromSocket(entry));
         debouncedFetchEarnings();
       },

@@ -6,7 +6,7 @@ import { fetchProjects } from "../store/slices/projectsSlice";
 import { fetchTasks } from "../store/slices/projectsSlice";
 import { fetchTimeEntries } from "../store/slices/timeEntriesSlice";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
-import { StopIcon, PlayIcon } from "@heroicons/react/24/solid";
+import { PlayIcon } from "@heroicons/react/24/solid";
 import ResumeLastTimer from "./ResumeLastTimer";
 
 interface TimerProps {
@@ -19,22 +19,13 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
     (state: RootState) => state.projects
   );
 
-  // Use centralized timer hook
-  const {
-    isRunning,
-    currentEntry,
-    elapsedTime,
-    loading,
-    error,
-    startTimer,
-    stopTimer,
-    formatTime,
-  } = useTimer();
+  // Use centralized timer hook (we no longer render the running state here —
+  // see RunningTimersStack — but we still need loading/error/startTimer)
+  const { loading, error, startTimer } = useTimer();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [selectedTaskId, setSelectedTaskId] = useState<string>("");
   const [description, setDescription] = useState<string>("");
-  const [showProjectSelector, setShowProjectSelector] = useState(false);
 
   // Load initial data
   useEffect(() => {
@@ -49,41 +40,16 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
     }
   }, [selectedProjectId, dispatch]);
 
-  // Set current project/task if timer is running
-  useEffect(() => {
-    if (currentEntry) {
-      setSelectedProjectId(currentEntry.project?.id || currentEntry.projectId || "");
-      setSelectedTaskId(currentEntry.task?.id || currentEntry.taskId || "");
-      setDescription(currentEntry.description || "");
-    } else {
-      // Clear local state when timer is stopped (currentEntry becomes null)
-      setSelectedProjectId("");
-      setSelectedTaskId("");
-      setDescription("");
-    }
-  }, [currentEntry]);
-
   const handleStartTimer = async () => {
-    if (!selectedProjectId) {
-      setShowProjectSelector(true);
-      return;
-    }
-
+    if (!selectedProjectId) return;
     try {
       await startTimer({
         projectId: selectedProjectId,
         taskId: selectedTaskId || undefined,
         description: description || undefined,
       });
-      setShowProjectSelector(false);
-    } catch (error) {
-      // Error is already logged in the hook
-    }
-  };
-
-  const handleStopTimer = async () => {
-    try {
-      await stopTimer();
+      // Reset the form so the next start isn't pre-filled with the same values.
+      setDescription("");
     } catch (error) {
       // Error is already logged in the hook
     }
@@ -92,22 +58,18 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
   // Handle form submission (for Enter key support)
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isRunning && !loading && selectedProjectId) {
+    if (!loading && selectedProjectId) {
       handleStartTimer();
     }
   };
 
   // Handle Enter key in form fields
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !isRunning && !loading && selectedProjectId) {
+    if (e.key === "Enter" && !loading && selectedProjectId) {
       e.preventDefault();
       handleStartTimer();
     }
   };
-
-  const selectedProject = Array.isArray(projects)
-    ? projects.find((p) => p.id === selectedProjectId)
-    : undefined;
 
   // Since we fetch tasks with a specific projectId, all tasks in the store
   // should already be for the selected project, no need to filter again
@@ -115,41 +77,7 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
 
   return (
     <div className={`${className}`}>
-      {/* Timer Display */}
-      <div className="text-center mb-6">
-        <div className="timer-display mb-2">{formatTime(elapsedTime)}</div>
-        {currentEntry && (currentEntry.project || selectedProject) && (
-          <div className="text-sm text-gray-600 line-clamp-2 max-w-xs mx-auto">
-            <span className="inline-flex items-center gap-1.5">
-              {(currentEntry.project?.color || selectedProject?.color) && (
-                <span
-                  className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: currentEntry.project?.color || selectedProject?.color }}
-                />
-              )}
-              <span className="font-medium">
-                {currentEntry.project?.name || selectedProject?.name}
-              </span>
-              {(currentEntry.task || currentEntry.taskId) && (
-                <>
-                  <span className="text-gray-400">•</span>
-                  <span>
-                    {currentEntry.task?.name ||
-                      availableTasks.find((t) => t.id === currentEntry.taskId)?.name}
-                  </span>
-                </>
-              )}
-            </span>
-            {description && (
-              <span className="block text-gray-500 mt-0.5">{description}</span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Project Selector (shown when not running or when no project selected) */}
-      {(!isRunning || showProjectSelector) && (
-        <form onSubmit={handleFormSubmit} className="space-y-4 mb-6">
+      <form onSubmit={handleFormSubmit} className="space-y-4 mb-6">
           <div>
             <label
               htmlFor="project"
@@ -225,7 +153,6 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
             />
           </div>
         </form>
-      )}
 
       {/* Error Message */}
       {error && (
@@ -236,40 +163,15 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
 
       {/* Timer Controls */}
       <div className="flex gap-3">
-        {!isRunning ? (
-          <button
-            onClick={handleStartTimer}
-            disabled={loading || !selectedProjectId}
-            className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            type="submit"
-            form={!isRunning || showProjectSelector ? undefined : "timer-form"}
-          >
-            <PlayIcon className="h-4 w-4" />
-            {loading ? "Starting..." : "Start Timer"}
-          </button>
-        ) : (
-          <>
-            <button
-              onClick={handleStopTimer}
-              disabled={loading}
-              className="btn-danger flex-1 flex items-center justify-center gap-2"
-            >
-              <StopIcon className="h-4 w-4" />
-              {loading ? "Stopping..." : "Stop Timer"}
-              <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono text-red-400 bg-red-50 border border-red-200 rounded hidden sm:inline">
-                Space
-              </kbd>
-            </button>
-            {showProjectSelector && (
-              <button
-                onClick={() => setShowProjectSelector(false)}
-                className="btn-secondary px-4"
-              >
-                Cancel
-              </button>
-            )}
-          </>
-        )}
+        <button
+          onClick={handleStartTimer}
+          disabled={loading || !selectedProjectId}
+          className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          type="submit"
+        >
+          <PlayIcon className="h-4 w-4" />
+          {loading ? "Starting..." : "Start Timer"}
+        </button>
       </div>
 
       {/* Resume Last Timer Component */}

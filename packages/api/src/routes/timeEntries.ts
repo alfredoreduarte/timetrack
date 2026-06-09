@@ -248,20 +248,9 @@ router.post(
       req.body
     );
 
-    // Check if user has any running time entries
-    const runningEntry = await prisma.timeEntry.findFirst({
-      where: {
-        userId: req.user!.id,
-        isRunning: true,
-      },
-    });
-
-    if (runningEntry) {
-      throw createError(
-        "You already have a running time entry. Please stop it first.",
-        400
-      );
-    }
+    // Multiple concurrent timers are intentionally allowed — needed for parallel
+    // AI coding sessions on different projects. Stop them individually via
+    // POST /time-entries/:id/stop.
 
     // Validate project and task belong to user
     if (projectId) {
@@ -446,19 +435,43 @@ router.post(
   })
 );
 
+// Shared SELECT so /current and /running stay in lockstep.
+const runningEntrySelect = {
+  id: true,
+  description: true,
+  startTime: true,
+  endTime: true,
+  duration: true,
+  isRunning: true,
+  hourlyRateSnapshot: true,
+  createdVia: true,
+  isAiGenerated: true,
+  project: {
+    select: {
+      id: true,
+      name: true,
+      color: true,
+    },
+  },
+  task: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+} as const;
+
 /**
  * @swagger
  * /time-entries/current:
  *   get:
- *     summary: Get currently running time entry
+ *     summary: Get the most recently started running time entry (legacy single-timer endpoint)
  *     tags: [Time Entries]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Current time entry retrieved successfully
- *       404:
- *         description: No running time entry found
+ *         description: Returns the most recently started running entry, or null if none. Concurrent timers are supported — use /running for the full list.
  */
 router.get(
   "/current",
@@ -468,35 +481,39 @@ router.get(
         userId: req.user!.id,
         isRunning: true,
       },
-      select: {
-        id: true,
-        description: true,
-        startTime: true,
-        endTime: true,
-        duration: true,
-        isRunning: true,
-        hourlyRateSnapshot: true,
-        createdVia: true,
-        isAiGenerated: true,
-        project: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-          },
-        },
-        task: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
+      orderBy: { startTime: "desc" },
+      select: runningEntrySelect,
     });
 
-    // Return 200 with null when no current entry exists
-    // This follows REST conventions better than 404
     return res.json({ timeEntry: timeEntry || null });
+  })
+);
+
+/**
+ * @swagger
+ * /time-entries/running:
+ *   get:
+ *     summary: List all running time entries (concurrent timers allowed)
+ *     tags: [Time Entries]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All running entries for the user, most recently started first.
+ */
+router.get(
+  "/running",
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const timeEntries = await prisma.timeEntry.findMany({
+      where: {
+        userId: req.user!.id,
+        isRunning: true,
+      },
+      orderBy: { startTime: "desc" },
+      select: runningEntrySelect,
+    });
+
+    return res.json({ timeEntries });
   })
 );
 

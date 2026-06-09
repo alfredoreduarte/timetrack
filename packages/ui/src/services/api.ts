@@ -334,6 +334,14 @@ class APIClient {
       return this.request<TimeEntry | null>("GET", "/time-entries/current");
     },
 
+    getRunningEntries: async () => {
+      const response = await this.request<{ timeEntries: TimeEntry[] }>(
+        "GET",
+        "/time-entries/running"
+      );
+      return response.timeEntries;
+    },
+
     createTimeEntry: async (entryData: {
       description?: string;
       startTime: string;
