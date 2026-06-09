@@ -12,10 +12,12 @@ import { emailService } from "../utils/email";
 
 const router = express.Router();
 
-// Login-specific rate limiter for brute-force protection
+// Login-specific rate limiter for brute-force protection. Kept tight on
+// purpose — this is the credential-stuffing surface, separate from the
+// app-wide cap.
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 login attempts per 15 minutes per IP
+  max: 30, // 30 login attempts per 15 minutes per IP
   message: { error: "Too many login attempts, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,

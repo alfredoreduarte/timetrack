@@ -208,12 +208,23 @@ app.use(
   })
 );
 
-// Rate limiting - more lenient for development
-const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000"); // 15 minutes default
+// Rate limiting — the global IP limiter exists to deter unauthenticated
+// abuse (probing, drive-by scans, credential stuffing). Authenticated
+// requests carry their own implicit limit (one user / one API key), and
+// real workloads — AI agents driving the MCP server, UI polling, real-time
+// updates — generate sustained traffic that would trip an IP cap meant for
+// anonymous abuse. So we:
+//   1. apply the global limiter only when there's no Authorization header
+//   2. set a very generous ceiling on top of that (5000/15min = ~5 req/s
+//      sustained from a single IP) which is still tight enough to deter
+//      enumeration but won't ever hit a real user
+// Auth-specific limiters (login, register, password-reset) handle the
+// targeted abuse surfaces with tighter caps in their own route files.
+const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000"); // 15 minutes
 const rateLimitMax = parseInt(
   process.env.RATE_LIMIT_MAX_REQUESTS ||
-    (process.env.NODE_ENV === "development" ? "1000" : "300")
-); // 1000 for dev, 300 for prod
+    (process.env.NODE_ENV === "development" ? "10000" : "5000")
+);
 
 const limiter = rateLimit({
   windowMs: rateLimitWindowMs,
@@ -224,12 +235,27 @@ const limiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Skip rate limiting in development if DISABLE_RATE_LIMIT is set
   skip: (req) => {
-    return (
+    // Dev escape hatch
+    if (
       process.env.NODE_ENV === "development" &&
       process.env.DISABLE_RATE_LIMIT === "true"
-    );
+    ) {
+      return true;
+    }
+    // Skip when the request is authenticated. The Authorization presence
+    // check is intentionally lightweight (doesn't validate the token):
+    // - Valid token → trusted user, no IP limit
+    // - Invalid/expired token → still falls through to authenticate() which
+    //   returns 401, so the actual cost of a bad token is one request
+    //   regardless of limiter, not 100s of attempts to find a valid one
+    //   (credential stuffing on Authorization headers isn't a thing
+    //    because tokens carry their own entropy)
+    const auth = req.headers.authorization;
+    if (auth && auth.startsWith("Bearer ") && auth.length > 8) {
+      return true;
+    }
+    return false;
   },
 });
 
@@ -242,7 +268,7 @@ if (
   logger.info(
     `Rate limiting enabled: ${rateLimitMax} requests per ${Math.ceil(
       rateLimitWindowMs / 60000
-    )} minutes`
+    )} minutes (anonymous only — authenticated traffic skipped)`
   );
 } else {
   logger.info("Rate limiting disabled for development");
