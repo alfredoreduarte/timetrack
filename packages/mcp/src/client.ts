@@ -2,6 +2,11 @@ import { request } from "undici";
 
 const DEFAULT_URL = "https://timetrack.alfredo.re";
 const CLIENT_LABEL = "mcp";
+// Hard ceilings to keep a misbehaving server (or one we've misconfigured the
+// URL to) from blowing up the agent process or leaking the key back to the LLM.
+const MAX_BODY_BYTES = 1_000_000;
+const REQUEST_TIMEOUT_MS = 30_000;
+const TOKEN_REDACT_RE = /tt_[A-Za-z0-9]+/g;
 
 export interface TimeTrackClientOptions {
   baseUrl?: string;
@@ -30,6 +35,8 @@ export class TimeTrackClient {
     this.apiKey = apiKey;
   }
 
+  private redact = (s: string) => s.replace(TOKEN_REDACT_RE, "tt_[REDACTED]");
+
   private async send<T>(
     method: "GET" | "POST" | "PUT" | "DELETE",
     path: string,
@@ -43,9 +50,23 @@ export class TimeTrackClient {
         "Content-Type": "application/json",
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      bodyTimeout: REQUEST_TIMEOUT_MS,
+      headersTimeout: REQUEST_TIMEOUT_MS,
     });
 
-    const text = await res.body.text();
+    // Drain with a size cap so a hostile server can't OOM the agent.
+    let text = "";
+    for await (const chunk of res.body) {
+      text += chunk.toString();
+      if (text.length > MAX_BODY_BYTES) {
+        res.body.destroy();
+        throw new TimeTrackError(
+          `TimeTrack ${method} ${path} returned > ${MAX_BODY_BYTES} bytes; aborting`,
+          res.statusCode
+        );
+      }
+    }
+
     if (res.statusCode < 200 || res.statusCode >= 300) {
       let detail = text;
       try {
@@ -54,10 +75,12 @@ export class TimeTrackClient {
       } catch {
         // keep text as-is
       }
+      // Strip any echoed token so we never round-trip credentials to the LLM.
+      const safeDetail = this.redact(detail);
       throw new TimeTrackError(
-        `TimeTrack ${method} ${path} failed (${res.statusCode}): ${detail}`,
+        `TimeTrack ${method} ${path} failed (${res.statusCode}): ${safeDetail}`,
         res.statusCode,
-        text
+        this.redact(text)
       );
     }
     return text ? (JSON.parse(text) as T) : (undefined as unknown as T);
