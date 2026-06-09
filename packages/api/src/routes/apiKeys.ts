@@ -26,6 +26,7 @@ const createSchema = z.object({
       message: "expiresAt must be in the future",
     })
     .optional(),
+  aiByDefault: z.boolean().optional(),
 });
 
 const apiKeySelect = {
@@ -36,6 +37,7 @@ const apiKeySelect = {
   lastUsedAt: true,
   createdAt: true,
   expiresAt: true,
+  aiByDefault: true,
 } as const;
 
 /**
@@ -93,7 +95,7 @@ router.get(
 router.post(
   "/",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { name, expiresAt } = createSchema.parse(req.body);
+    const { name, expiresAt, aiByDefault } = createSchema.parse(req.body);
     const { token, hash, prefix } = generateApiKey();
 
     const apiKey = await prisma.$transaction(async (tx: typeof prisma) => {
@@ -113,6 +115,7 @@ router.post(
           keyHash: hash,
           keyPrefix: prefix,
           expiresAt: expiresAt ? new Date(expiresAt) : null,
+          aiByDefault: aiByDefault ?? true,
         },
         select: apiKeySelect,
       });

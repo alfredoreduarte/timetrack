@@ -14,6 +14,9 @@ export interface AuthenticatedRequest extends Request {
     name: string;
   };
   authMethod?: AuthMethod;
+  // Populated only when authMethod === "api_key" — drives default source
+  // labeling for entries created with this key.
+  apiKeyAiByDefault?: boolean;
 }
 
 const LAST_USED_DEBOUNCE_MS = 60_000;
@@ -52,7 +55,7 @@ const authenticateApiKey = async (token: string) => {
       });
   }
 
-  return apiKey.user;
+  return { user: apiKey.user, aiByDefault: apiKey.aiByDefault };
 };
 
 const authenticateJwt = async (token: string) => {
@@ -92,8 +95,10 @@ export const authenticate = async (
     const token = authHeader.substring(7);
 
     if (isApiKeyToken(token)) {
-      req.user = await authenticateApiKey(token);
+      const { user, aiByDefault } = await authenticateApiKey(token);
+      req.user = user;
       req.authMethod = "api_key";
+      req.apiKeyAiByDefault = aiByDefault;
     } else {
       const { user } = await authenticateJwt(token);
       req.user = user;

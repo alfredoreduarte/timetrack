@@ -499,7 +499,7 @@ class APIClient {
       return response.apiKeys;
     },
 
-    create: async (data: { name: string; expiresAt?: string }) => {
+    create: async (data: { name: string; expiresAt?: string; aiByDefault?: boolean }) => {
       return this.request<{
         message: string;
         apiKey: ApiKey;

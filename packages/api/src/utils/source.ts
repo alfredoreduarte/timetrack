@@ -35,10 +35,10 @@ export const deriveSource = (
         : "web";
 
   const aiHeader = req.headers["x-ai-generated"];
+  const apiKeyDefault =
+    req.authMethod === "api_key" ? (req.apiKeyAiByDefault ?? true) : false;
   const isAiGenerated =
-    aiHeader !== undefined
-      ? isTruthyHeader(aiHeader)
-      : req.authMethod === "api_key";
+    aiHeader !== undefined ? isTruthyHeader(aiHeader) : apiKeyDefault;
 
   return { createdVia, isAiGenerated };
 };

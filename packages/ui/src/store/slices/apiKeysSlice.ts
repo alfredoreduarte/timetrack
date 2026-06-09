@@ -9,6 +9,7 @@ export interface ApiKey {
   lastUsedAt?: string | null;
   createdAt: string;
   expiresAt?: string | null;
+  aiByDefault: boolean;
 }
 
 interface ApiKeysState {
@@ -29,7 +30,7 @@ export const fetchApiKeys = createAsyncThunk("apiKeys/fetch", async () => {
 
 export const createApiKey = createAsyncThunk(
   "apiKeys/create",
-  async (data: { name: string; expiresAt?: string }) => {
+  async (data: { name: string; expiresAt?: string; aiByDefault?: boolean }) => {
     return apiKeysAPI.create(data);
   }
 );

@@ -570,6 +570,8 @@ router.get(
         endTime: true,
         duration: true,
         hourlyRateSnapshot: true,
+        isAiGenerated: true,
+        createdVia: true,
         project: {
           select: {
             name: true,
@@ -597,6 +599,8 @@ router.get(
       "Task",
       "Hourly Rate",
       "Earnings",
+      "AI Generated",
+      "Created Via",
     ];
 
     const csvRows = timeEntries.map((entry: any) => {
@@ -618,6 +622,8 @@ router.get(
         entry.task?.name || "",
         entry.hourlyRateSnapshot?.toFixed(2) || "0.00",
         earnings.toFixed(2),
+        entry.isAiGenerated ? "yes" : "no",
+        entry.createdVia || "",
       ];
     });
 
