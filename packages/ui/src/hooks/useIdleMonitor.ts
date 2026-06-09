@@ -28,7 +28,12 @@ export function wasRecentlyIdleStopped(): boolean {
  * that was hidden longer than the idle threshold, auto-stops the timer.
  */
 export function useIdleMonitor(): void {
-  const isRunning = useSelector((state: RootState) => state.timer.isRunning);
+  // Only watch for idle when there's at least one stoppable (non-MCP) timer.
+  // Without this gate, an all-MCP set of timers would have the interval
+  // polling forever and never doing anything.
+  const hasStoppableTimer = useSelector((state: RootState) =>
+    state.timer.runningEntries.some((e) => e.createdVia !== "mcp")
+  );
   const idleTimeoutSeconds = useSelector(
     (state: RootState) => state.auth.user?.idleTimeoutSeconds ?? 0
   );
@@ -47,11 +52,13 @@ export function useIdleMonitor(): void {
       if (hasStoppedRef.current) return;
 
       const state = store.getState();
-      // Stop only human-started timers. AI-driven entries (MCP / API key with
-      // aiByDefault) run unattended on the user's behalf and shouldn't be
-      // killed because the user's idle in the browser.
+      // Skip MCP-driven entries — those are unattended agent sessions that
+      // shouldn't die because the human's browser tab is idle. Note we key
+      // on createdVia (specifically "mcp") rather than isAiGenerated: the
+      // latter is a billing label that a script user can set without
+      // implying the timer is actually agent-driven.
       const stoppable = state.timer.runningEntries.filter(
-        (e) => !e.isAiGenerated
+        (e) => e.createdVia !== "mcp"
       );
       if (stoppable.length === 0) return;
 
@@ -76,7 +83,7 @@ export function useIdleMonitor(): void {
   );
 
   useEffect(() => {
-    if (!isRunning || !idleTimeoutSeconds) return;
+    if (!hasStoppableTimer || !idleTimeoutSeconds) return;
 
     // Reset stop guard when effect re-runs (timer started again)
     hasStoppedRef.current = false;
@@ -136,5 +143,5 @@ export function useIdleMonitor(): void {
       clearInterval(checkInterval);
       if (throttleTimer) clearTimeout(throttleTimer);
     };
-  }, [isRunning, idleTimeoutSeconds, resetActivity, handleIdleStop]);
+  }, [hasStoppableTimer, idleTimeoutSeconds, resetActivity, handleIdleStop]);
 }

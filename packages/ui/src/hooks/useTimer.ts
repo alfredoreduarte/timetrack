@@ -6,7 +6,7 @@ import {
   stopTimer as stopTimerAction,
   tick,
   syncTimer,
-  fetchCurrentEntry,
+  fetchRunningEntries,
 } from "../store/slices/timerSlice";
 import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
 import { fetchTimeEntries } from "../store/slices/timeEntriesSlice";
@@ -114,7 +114,7 @@ export const useTimer = (): UseTimerReturn => {
   // Initialize timer (fetch current entry if any)
   const initializeTimer = useCallback(async (): Promise<void> => {
     try {
-      await dispatch(fetchCurrentEntry()).unwrap();
+      await dispatch(fetchRunningEntries()).unwrap();
     } catch (error) {
       console.error("Failed to initialize timer:", error);
       // Don't throw here as this is initialization and shouldn't break the app

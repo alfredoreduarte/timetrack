@@ -15,6 +15,9 @@ const ElectronTimerDisplay: React.FC = () => {
     formatTime,
     loading,
   } = useTimer();
+  const runningCount = useSelector(
+    (state: RootState) => state.timer.runningEntries.length
+  );
 
   const handleStopTimer = async () => {
     try {
@@ -42,8 +45,18 @@ const ElectronTimerDisplay: React.FC = () => {
         </div>
         <div className="flex items-center justify-center gap-1 text-green-600">
           <ClockIcon className="h-4 w-4 animate-pulse" />
-          <span className="text-sm">Timer running</span>
+          <span className="text-sm">
+            {runningCount > 1
+              ? `${runningCount} timers running`
+              : "Timer running"}
+          </span>
         </div>
+        {runningCount > 1 && (
+          <p className="mt-1 text-xs text-amber-700">
+            Showing the most recently started. Open the web app to manage the
+            others.
+          </p>
+        )}
       </div>
 
       {/* Project Info */}

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch, RootState } from "../../store";
 import { getCurrentUser } from "../../store/slices/authSlice";
-import { fetchCurrentEntry } from "../../store/slices/timerSlice";
+import { fetchRunningEntries } from "../../store/slices/timerSlice";
 import { useTimer } from "../../hooks/useTimer";
 import ElectronTimerForm from "./ElectronTimerForm";
 import ElectronTimerDisplay from "./ElectronTimerDisplay";
@@ -32,7 +32,7 @@ const ElectronApp: React.FC = () => {
   // Initialize timer when user is authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      dispatch(fetchCurrentEntry());
+      dispatch(fetchRunningEntries());
     }
   }, [dispatch, isAuthenticated]);
 

@@ -3,7 +3,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import timerSlice, {
   startTimer,
   stopTimer,
-  fetchCurrentEntry,
+  fetchRunningEntries,
   tick,
   resetTimer,
   clearError,
@@ -33,6 +33,9 @@ describe("timerSlice", () => {
       const state = store.getState().timer;
 
       expect(state).toEqual({
+        runningEntries: [],
+        elapsedById: {},
+        stoppingIds: {},
         isRunning: false,
         currentEntry: null,
         elapsedTime: 0,
@@ -270,7 +273,7 @@ describe("timerSlice", () => {
     });
   });
 
-  describe("fetchCurrentEntry async thunk", () => {
+  describe("fetchRunningEntries async thunk", () => {
     it("should handle fetching existing current entry", async () => {
       const mockEntry = {
         id: "current-entry",
@@ -289,9 +292,9 @@ describe("timerSlice", () => {
 
       const store = createTestStore();
 
-      const result = await store.dispatch(fetchCurrentEntry());
+      const result = await store.dispatch(fetchRunningEntries());
 
-      expect(result.type).toBe("timer/fetchCurrentEntry/fulfilled");
+      expect(result.type).toBe("timer/fetchRunningEntries/fulfilled");
 
       const state = store.getState().timer;
       expect(state.isRunning).toBe(true);
@@ -302,9 +305,9 @@ describe("timerSlice", () => {
     it("should handle no current entry", async () => {
       const store = createTestStore();
 
-      const result = await store.dispatch(fetchCurrentEntry());
+      const result = await store.dispatch(fetchRunningEntries());
 
-      expect(result.type).toBe("timer/fetchCurrentEntry/fulfilled");
+      expect(result.type).toBe("timer/fetchRunningEntries/fulfilled");
 
       const state = store.getState().timer;
       expect(state.isRunning).toBe(false);
@@ -320,9 +323,9 @@ describe("timerSlice", () => {
       // Explicitly set mock to null to get { timeEntry: null } response
       setMockCurrentEntry(null);
 
-      const result = await store.dispatch(fetchCurrentEntry());
+      const result = await store.dispatch(fetchRunningEntries());
 
-      expect(result.type).toBe("timer/fetchCurrentEntry/fulfilled");
+      expect(result.type).toBe("timer/fetchRunningEntries/fulfilled");
       expect(result.payload).toBe(null);
 
       const state = store.getState().timer;
@@ -350,10 +353,10 @@ describe("timerSlice", () => {
         })
       );
 
-      const result = await store.dispatch(fetchCurrentEntry());
+      const result = await store.dispatch(fetchRunningEntries());
 
       // Should handle 404 gracefully and return fulfilled with null
-      expect(result.type).toBe("timer/fetchCurrentEntry/fulfilled");
+      expect(result.type).toBe("timer/fetchRunningEntries/fulfilled");
       expect(result.payload).toBe(null);
 
       const state = store.getState().timer;
@@ -381,7 +384,7 @@ describe("timerSlice", () => {
 
       const store = createTestStore();
 
-      await store.dispatch(fetchCurrentEntry());
+      await store.dispatch(fetchRunningEntries());
 
       const state = store.getState().timer;
       expect(state.elapsedTime).toBeGreaterThanOrEqual(9); // Should be around 10 seconds

@@ -238,8 +238,8 @@ router.get(
  *     responses:
  *       201:
  *         description: Time entry started successfully
- *       400:
- *         description: Another time entry is already running
+ *       429:
+ *         description: Concurrent running timer limit reached
  */
 router.post(
   "/start",
@@ -250,7 +250,18 @@ router.post(
 
     // Multiple concurrent timers are intentionally allowed — needed for parallel
     // AI coding sessions on different projects. Stop them individually via
-    // POST /time-entries/:id/stop.
+    // POST /time-entries/:id/stop. Cap to keep a runaway agent (or a leaked
+    // key looping start) from filling the table.
+    const MAX_RUNNING_ENTRIES = 10;
+    const runningCount = await prisma.timeEntry.count({
+      where: { userId: req.user!.id, isRunning: true },
+    });
+    if (runningCount >= MAX_RUNNING_ENTRIES) {
+      throw createError(
+        `You can have at most ${MAX_RUNNING_ENTRIES} concurrent running timers. Stop one before starting another.`,
+        429
+      );
+    }
 
     // Validate project and task belong to user
     if (projectId) {
@@ -485,6 +496,10 @@ router.get(
       select: runningEntrySelect,
     });
 
+    // Signal that clients should migrate to /running, which returns the
+    // full set when concurrent timers exist.
+    res.set("Deprecation", "true");
+    res.set("Link", '</time-entries/running>; rel="successor-version"');
     return res.json({ timeEntry: timeEntry || null });
   })
 );

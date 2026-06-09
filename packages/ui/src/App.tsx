@@ -6,7 +6,7 @@ import { getCurrentUser } from "./store/slices/authSlice";
 import { useTimer } from "./hooks/useTimer";
 import { useSocket } from "./hooks/useSocket";
 import { fetchProjects } from "./store/slices/projectsSlice";
-import { fetchCurrentEntry, syncTimer } from "./store/slices/timerSlice";
+import { fetchRunningEntries, syncTimer } from "./store/slices/timerSlice";
 import { isElectron } from "./utils/platform";
 import { wasRecentlyIdleStopped } from "./hooks/useIdleMonitor";
 import Layout from "./components/Layout";
@@ -169,7 +169,7 @@ function AppContent() {
   // Initialize timer when user is authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      dispatch(fetchCurrentEntry());
+      dispatch(fetchRunningEntries());
     }
   }, [dispatch, isAuthenticated]);
 
@@ -190,7 +190,7 @@ function AppContent() {
       if (now - lastSyncTs < DEDUPE_MS) return;
       lastSyncTs = now;
       dispatch(syncTimer());
-      dispatch(fetchCurrentEntry());
+      dispatch(fetchRunningEntries());
     };
 
     const handleVisibilityChange = () => {
