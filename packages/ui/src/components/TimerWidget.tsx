@@ -19,6 +19,9 @@ const TimerWidget: React.FC = () => {
     stopTimer,
     formatTimeCompact,
   } = useTimer();
+  const runningCount = useSelector(
+    (state: RootState) => state.timer.runningEntries.length
+  );
 
   const handleStopTimer = async () => {
     try {
@@ -61,18 +64,26 @@ const TimerWidget: React.FC = () => {
       <button
         onClick={handleTimerClick}
         className="flex items-center gap-2 px-3 py-2 text-sm bg-green-50 text-green-700 hover:bg-green-100 rounded-lg transition-colors"
-        title={`Timer running${
-          currentProject ? ` - ${currentProject.name}` : ""
-        }`}
+        title={
+          runningCount > 1
+            ? `${runningCount} timers running`
+            : `Timer running${currentProject ? ` - ${currentProject.name}` : ""}`
+        }
       >
         <ClockIcon className="h-4 w-4 animate-pulse" />
         <span className="font-mono font-medium tabular-nums">
           {formatTimeCompact(elapsedTime)}
         </span>
-        {currentProject && (
+        {runningCount > 1 ? (
           <span className="hidden md:inline text-xs">
-            - {currentProject.name}
+            · {runningCount} running
           </span>
+        ) : (
+          currentProject && (
+            <span className="hidden md:inline text-xs">
+              - {currentProject.name}
+            </span>
+          )
         )}
       </button>
 

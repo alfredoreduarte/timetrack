@@ -52,18 +52,18 @@ Time entries created through this server are automatically flagged as AI work, s
 
 ## Tools
 
-| Tool             | Description                                                              |
-| ---------------- | ------------------------------------------------------------------------ |
-| `current_timer`  | Get the running timer (or `null`).                                       |
-| `start_timer`    | Start a timer with optional `description`, `projectId`, `taskId`.        |
-| `stop_timer`     | Stop a timer (defaults to the currently running one if no `id` given).   |
-| `recent_entries` | List recent time entries (default 10).                                   |
-| `list_projects`  | List the user's projects.                                                |
-| `create_project` | Create a project (`name` required).                                      |
-| `list_tasks`     | List tasks, optionally filtered by `projectId`.                          |
-| `create_task`    | Create a task under a project.                                           |
-| `update_task`    | Patch a task — rename, change rate, or mark complete.                    |
-| `whoami`         | Return the authenticated user; useful for verifying the right account.   |
+| Tool             | Description                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------------- |
+| `running_timers` | List all currently running timers. Concurrent timers are supported (parallel AI sessions).   |
+| `start_timer`    | Start a timer with optional `description`, `projectId`, `taskId`. Doesn't stop existing ones. |
+| `stop_timer`     | Stop a timer. If `id` is omitted and exactly one timer is running, that one is stopped.      |
+| `recent_entries` | List recent time entries (default 10).                                                       |
+| `list_projects`  | List the user's projects.                                                                    |
+| `create_project` | Create a project (`name` required).                                                          |
+| `list_tasks`     | List tasks, optionally filtered by `projectId`.                                              |
+| `create_task`    | Create a task under a project.                                                               |
+| `update_task`    | Patch a task — rename, change rate, or mark complete.                                        |
+| `whoami`         | Return the authenticated user; useful for verifying the right account.                       |
 
 ## How AI labeling works
 

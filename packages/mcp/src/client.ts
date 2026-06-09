@@ -101,8 +101,11 @@ export class TimeTrackClient {
       endTime ? { endTime } : {}
     );
   }
-  currentTimer() {
-    return this.send<{ timeEntry: unknown | null }>("GET", "/time-entries/current");
+  runningTimers() {
+    return this.send<{ timeEntries: Array<{ id: string; [k: string]: unknown }> }>(
+      "GET",
+      "/time-entries/running"
+    );
   }
   recentEntries(limit = 10) {
     return this.send<{ timeEntries: unknown[] }>(

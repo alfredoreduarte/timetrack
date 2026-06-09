@@ -3,21 +3,50 @@ import { timeEntriesAPI } from "../../services/api";
 import { TimeEntry } from "./timeEntriesSlice";
 
 interface TimerState {
+  // Source of truth: all currently running timers, most recently started first.
+  // Multiple concurrent timers are allowed so parallel AI sessions on different
+  // projects each get their own row.
+  runningEntries: TimeEntry[];
+  // Per-entry live elapsed seconds, driven by tick/syncTimer.
+  elapsedById: Record<string, number>;
+
+  // Backwards-compat mirrors of the most recent running entry. Old consumers
+  // (Timer widget, header, electron display) keep reading these unchanged.
   isRunning: boolean;
   currentEntry: TimeEntry | null;
-  elapsedTime: number; // in seconds
+  elapsedTime: number;
+
   loading: boolean;
   fetchingCurrentEntry: boolean;
   error: string | null;
 }
 
 const initialState: TimerState = {
+  runningEntries: [],
+  elapsedById: {},
   isRunning: false,
   currentEntry: null,
   elapsedTime: 0,
   loading: false,
   fetchingCurrentEntry: false,
   error: null,
+};
+
+const elapsedFromStart = (entry: TimeEntry): number => {
+  if (!entry.startTime) return entry.duration || 0;
+  const start = new Date(entry.startTime).getTime();
+  const now = Date.now();
+  if (!Number.isFinite(start) || !Number.isFinite(now) || start > now) {
+    return entry.duration || 0;
+  }
+  return Math.floor((now - start) / 1000);
+};
+
+const syncMirrors = (state: TimerState) => {
+  const primary = state.runningEntries[0] ?? null;
+  state.currentEntry = primary;
+  state.isRunning = !!primary;
+  state.elapsedTime = primary ? state.elapsedById[primary.id] ?? 0 : 0;
 };
 
 // Async thunks
@@ -33,10 +62,12 @@ export const startTimer = createAsyncThunk(
   ) => {
     try {
       const response = await timeEntriesAPI.startTimer(data);
-      return response;
+      return response as TimeEntry;
     } catch (error: any) {
       return rejectWithValue(
-        error.response?.data?.message || "Failed to start timer"
+        error.response?.data?.message ||
+          error.response?.data?.error ||
+          "Failed to start timer"
       );
     }
   }
@@ -47,76 +78,63 @@ export const stopTimer = createAsyncThunk(
   async (entryId: string, { rejectWithValue }) => {
     try {
       const response = await timeEntriesAPI.stopTimer(entryId);
-      return response;
+      return { entryId, response };
     } catch (error: any) {
       return rejectWithValue(
-        error.response?.data?.message || "Failed to stop timer"
+        error.response?.data?.message ||
+          error.response?.data?.error ||
+          "Failed to stop timer"
       );
     }
   }
 );
 
-export const fetchCurrentEntry = createAsyncThunk(
-  "timer/fetchCurrentEntry",
+export const fetchRunningEntries = createAsyncThunk(
+  "timer/fetchRunningEntries",
   async () => {
-    try {
-      const response = await timeEntriesAPI.getCurrentEntry();
-      // Handle API response format: {timeEntry: TimeEntry | null}
-      if (response && typeof response === "object" && "timeEntry" in response) {
-        return (response as any).timeEntry;
-      }
-      // Fallback for direct TimeEntry response (backward compatibility)
-      return response;
-    } catch (error: any) {
-      // Handle 404 error gracefully - no current entry is not an error condition
-      if (error.response?.status === 404) {
-        return null;
-      }
-      // Re-throw other errors
-      throw error;
-    }
+    const response = await timeEntriesAPI.getRunningEntries();
+    return response as TimeEntry[];
   },
   {
     condition: (_, { getState }) => {
       const { timer } = getState() as { timer: TimerState };
-      // Skip if already fetching — prevents duplicate concurrent requests
       return !timer.fetchingCurrentEntry;
     },
   }
 );
+
+// Legacy alias — older code dispatches fetchCurrentEntry on focus etc.
+export const fetchCurrentEntry = fetchRunningEntries;
 
 const timerSlice = createSlice({
   name: "timer",
   initialState,
   reducers: {
     tick: (state) => {
-      if (state.isRunning && state.currentEntry) {
-        // Ensure elapsedTime is a valid number before incrementing
-        if (!Number.isFinite(state.elapsedTime)) {
-          state.elapsedTime = 0;
-        }
-        state.elapsedTime += 1;
+      for (const entry of state.runningEntries) {
+        const prev = state.elapsedById[entry.id];
+        const next = Number.isFinite(prev) ? prev + 1 : 1;
+        state.elapsedById[entry.id] = next;
+      }
+      syncMirrors(state);
+      if (state.currentEntry) {
         state.currentEntry.duration = state.elapsedTime;
       }
     },
-    // Add a new action to sync timer with current time
     syncTimer: (state) => {
-      if (
-        state.isRunning &&
-        state.currentEntry &&
-        state.currentEntry.startTime
-      ) {
-        const startTime = new Date(state.currentEntry.startTime).getTime();
-        const now = new Date().getTime();
-        if (!isNaN(startTime) && !isNaN(now) && startTime <= now) {
-          state.elapsedTime = Math.floor((now - startTime) / 1000);
-          state.currentEntry.duration = state.elapsedTime;
-        }
+      for (const entry of state.runningEntries) {
+        state.elapsedById[entry.id] = elapsedFromStart(entry);
+      }
+      syncMirrors(state);
+      if (state.currentEntry) {
+        state.currentEntry.duration = state.elapsedTime;
       }
     },
     resetTimer: (state) => {
-      state.isRunning = false;
+      state.runningEntries = [];
+      state.elapsedById = {};
       state.currentEntry = null;
+      state.isRunning = false;
       state.elapsedTime = 0;
       state.error = null;
     },
@@ -126,95 +144,80 @@ const timerSlice = createSlice({
     // Socket event reducers
     timerStartedFromSocket: (state, action: PayloadAction<TimeEntry>) => {
       const entry = action.payload;
-      state.isRunning = true;
-      state.currentEntry = entry;
-      // Calculate elapsed time from start time
-      if (entry.startTime) {
-        const startTime = new Date(entry.startTime).getTime();
-        const now = new Date().getTime();
-        if (!isNaN(startTime) && !isNaN(now) && startTime <= now) {
-          state.elapsedTime = Math.floor((now - startTime) / 1000);
-        } else {
-          state.elapsedTime = entry.duration || 0;
-        }
-      } else {
-        state.elapsedTime = entry.duration || 0;
+      if (!state.runningEntries.find((e) => e.id === entry.id)) {
+        state.runningEntries.unshift(entry);
       }
+      state.elapsedById[entry.id] = elapsedFromStart(entry);
+      syncMirrors(state);
     },
-    timerStoppedFromSocket: (state) => {
-      state.isRunning = false;
-      state.currentEntry = null;
-      state.elapsedTime = 0;
+    timerStoppedFromSocket: (
+      state,
+      action: PayloadAction<{ id?: string } | undefined>
+    ) => {
+      const id = action.payload?.id;
+      if (id) {
+        state.runningEntries = state.runningEntries.filter((e) => e.id !== id);
+        delete state.elapsedById[id];
+      } else {
+        // No id — clear everything (legacy event shape).
+        state.runningEntries = [];
+        state.elapsedById = {};
+      }
+      syncMirrors(state);
     },
   },
   extraReducers: (builder) => {
     builder
-      // Start timer
       .addCase(startTimer.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(startTimer.fulfilled, (state, action) => {
         state.loading = false;
-        state.isRunning = true;
-        state.currentEntry = action.payload;
-        state.elapsedTime = action.payload?.duration || 0;
+        const entry = action.payload;
+        if (entry && !state.runningEntries.find((e) => e.id === entry.id)) {
+          state.runningEntries.unshift(entry);
+        }
+        if (entry) {
+          state.elapsedById[entry.id] = entry.duration || 0;
+        }
+        syncMirrors(state);
       })
       .addCase(startTimer.rejected, (state, action) => {
         state.loading = false;
         state.error = (action.payload as string) || "Failed to start timer";
       })
-      // Stop timer
       .addCase(stopTimer.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(stopTimer.fulfilled, (state) => {
+      .addCase(stopTimer.fulfilled, (state, action) => {
         state.loading = false;
-        state.isRunning = false;
-        state.currentEntry = null;
-        state.elapsedTime = 0;
+        const id = action.payload.entryId;
+        state.runningEntries = state.runningEntries.filter((e) => e.id !== id);
+        delete state.elapsedById[id];
+        syncMirrors(state);
       })
       .addCase(stopTimer.rejected, (state, action) => {
         state.loading = false;
         state.error = (action.payload as string) || "Failed to stop timer";
       })
-      // Fetch current entry
-      .addCase(fetchCurrentEntry.pending, (state) => {
+      .addCase(fetchRunningEntries.pending, (state) => {
         state.fetchingCurrentEntry = true;
       })
-      .addCase(fetchCurrentEntry.rejected, (state) => {
+      .addCase(fetchRunningEntries.rejected, (state) => {
         state.fetchingCurrentEntry = false;
       })
-      .addCase(fetchCurrentEntry.fulfilled, (state, action) => {
+      .addCase(fetchRunningEntries.fulfilled, (state, action) => {
         state.fetchingCurrentEntry = false;
-        if (action.payload) {
-          state.isRunning = true;
-          state.currentEntry = action.payload;
-          // Calculate elapsed time from start time with proper validation
-          const startTimeValue = action.payload.startTime;
-
-          if (startTimeValue) {
-            const startTime = new Date(startTimeValue).getTime();
-            const now = new Date().getTime();
-
-            // Validate that both dates are valid numbers
-            if (!isNaN(startTime) && !isNaN(now) && startTime <= now) {
-              const calculatedElapsed = Math.floor((now - startTime) / 1000);
-              state.elapsedTime = calculatedElapsed;
-            } else {
-              // Fallback to duration from payload or 0
-              state.elapsedTime = action.payload.duration || 0;
-            }
-          } else {
-            // No start time, use duration from payload or 0
-            state.elapsedTime = action.payload.duration || 0;
-          }
-        } else {
-          state.isRunning = false;
-          state.currentEntry = null;
-          state.elapsedTime = 0;
+        const entries = Array.isArray(action.payload) ? action.payload : [];
+        state.runningEntries = entries;
+        const next: Record<string, number> = {};
+        for (const entry of entries) {
+          next[entry.id] = elapsedFromStart(entry);
         }
+        state.elapsedById = next;
+        syncMirrors(state);
       });
   },
 });
@@ -227,4 +230,11 @@ export const {
   timerStartedFromSocket,
   timerStoppedFromSocket,
 } = timerSlice.actions;
+
+// Selectors
+import type { RootState } from "../index";
+export const selectRunningEntries = (s: RootState) => s.timer.runningEntries;
+export const selectElapsedFor = (id: string) => (s: RootState) =>
+  s.timer.elapsedById[id] ?? 0;
+
 export default timerSlice.reducer;

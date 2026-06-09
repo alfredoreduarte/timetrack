@@ -15,15 +15,15 @@ interface ToolDef {
 
 const tools: ToolDef[] = [
   {
-    name: "current_timer",
+    name: "running_timers",
     description:
-      "Get the currently running timer (if any). Returns null when nothing is running.",
+      "List all currently running timers (most recently started first). Concurrent timers are supported — multiple AI sessions on different projects can each have their own running timer.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
     name: "start_timer",
     description:
-      "Start a new timer. If a timer is already running, the request will be rejected — stop it first with stop_timer. Returns the created time entry.",
+      "Start a new timer. Concurrent timers are allowed — this never auto-stops an existing one. Returns the created time entry.",
     inputSchema: {
       type: "object",
       properties: {
@@ -40,11 +40,11 @@ const tools: ToolDef[] = [
   {
     name: "stop_timer",
     description:
-      "Stop a running timer. If no id is supplied, stops the currently running one (call current_timer first if you need to confirm which).",
+      "Stop a running timer. Pass the entry id. If id is omitted and exactly one timer is running, that one is stopped; otherwise the call returns the list of running timers so you can pick.",
     inputSchema: {
       type: "object",
       properties: {
-        id: { type: "string", description: "Time entry id. Omit to stop the current timer." },
+        id: { type: "string", description: "Time entry id from running_timers." },
         endTime: {
           type: "string",
           description:
@@ -173,8 +173,8 @@ async function main() {
     const a: Record<string, unknown> = args;
     try {
       switch (name) {
-        case "current_timer":
-          return ok(await client.currentTimer());
+        case "running_timers":
+          return ok(await client.runningTimers());
         case "start_timer":
           return ok(
             await client.startTimer({
@@ -186,13 +186,19 @@ async function main() {
         case "stop_timer": {
           let id = a.id as string | undefined;
           if (!id) {
-            const current = (await client.currentTimer()) as {
-              timeEntry?: { id?: string } | null;
-            };
-            id = current.timeEntry?.id;
-            if (!id) {
-              return ok({ message: "No timer is currently running." });
+            const running = await client.runningTimers();
+            const entries = running.timeEntries ?? [];
+            if (entries.length === 0) {
+              return ok({ message: "No timers are currently running." });
             }
+            if (entries.length > 1) {
+              return ok({
+                message:
+                  "Multiple timers are running — call stop_timer again with the id of the one you want to stop.",
+                runningTimers: entries,
+              });
+            }
+            id = entries[0].id;
           }
           return ok(await client.stopTimer(id, a.endTime as string | undefined));
         }

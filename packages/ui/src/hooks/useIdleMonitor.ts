@@ -47,25 +47,31 @@ export function useIdleMonitor(): void {
       if (hasStoppedRef.current) return;
 
       const state = store.getState();
-      const currentEntry = state.timer.currentEntry;
-      if (!currentEntry || !state.timer.isRunning) return;
+      // Stop only human-started timers. AI-driven entries (MCP / API key with
+      // aiByDefault) run unattended on the user's behalf and shouldn't be
+      // killed because the user's idle in the browser.
+      const stoppable = state.timer.runningEntries.filter(
+        (e) => !e.isAiGenerated
+      );
+      if (stoppable.length === 0) return;
 
       hasStoppedRef.current = true;
       lastIdleStopAt = Date.now();
       const idleMinutes = Math.round(idleMs / 60000);
 
-      store.dispatch(stopTimer(currentEntry.id)).then(() => {
-        store.dispatch(fetchDashboardEarnings());
-        store.dispatch(fetchTimeEntries({ limit: 10 }));
-      });
+      Promise.all(stoppable.map((e) => store.dispatch(stopTimer(e.id)))).then(
+        () => {
+          store.dispatch(fetchDashboardEarnings());
+          store.dispatch(fetchTimeEntries({ limit: 10 }));
+        }
+      );
 
+      const count = stoppable.length;
       toast(
-        `Timer stopped due to inactivity${idleMinutes > 0 ? ` (${idleMinutes} min)` : ""}`,
+        `${count > 1 ? `${count} timers` : "Timer"} stopped due to inactivity${idleMinutes > 0 ? ` (${idleMinutes} min)` : ""}`,
         { duration: 15000 }
       );
     },
-    // Empty deps: reads store.getState() directly to avoid stale closures,
-    // same pattern as useBeforeUnload.
     []
   );
 

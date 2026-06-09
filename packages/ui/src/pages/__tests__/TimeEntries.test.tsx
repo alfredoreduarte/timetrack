@@ -46,6 +46,8 @@ const createTestStore = (initialState = {}) => {
         hasCheckedAuth: true,
       },
       timer: {
+        runningEntries: [],
+        elapsedById: {},
         isRunning: false,
         elapsedTime: 0,
         currentEntry: null,
