@@ -23,6 +23,8 @@ export interface DetailedTimeEntry {
   duration: number;
   hourlyRateSnapshot: number | null;
   earnings: number;
+  createdVia?: string;
+  isAiGenerated?: boolean;
   project: {
     id: string;
     name: string;

@@ -19,6 +19,7 @@ model User {
   updatedAt         DateTime    @updatedAt
   defaultHourlyRate Float?
   idleTimeoutSeconds Int? @default(600) @map("idle_timeout_seconds")
+  aiMultiplier Float? @default(3.0) @map("ai_multiplier")
   passwordResetToken    String?
   passwordResetExpiresAt DateTime?
 
@@ -89,6 +90,8 @@ model TimeEntry {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   hourlyRateSnapshot  Float?    // Snapshot of hourly rate at time of creation
+  createdVia          String    @default("web") @map("created_via")
+  isAiGenerated       Boolean   @default(false) @map("is_ai_generated")
 
   // Relations
   userId    String
@@ -102,6 +105,7 @@ model TimeEntry {
   @@index([userId])
   @@index([userId, isRunning])
   @@index([userId, startTime])
+  @@index([userId, isAiGenerated])
   @@index([projectId])
   @@index([taskId])
 }

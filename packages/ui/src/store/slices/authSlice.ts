@@ -7,6 +7,7 @@ export interface User {
   name: string;
   defaultHourlyRate?: number;
   idleTimeoutSeconds?: number;
+  aiMultiplier?: number | null;
   avatar?: string;
   createdAt?: string;
   updatedAt?: string;

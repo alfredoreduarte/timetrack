@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, AuthenticatedRequest } from "../middleware/auth";
+import { deriveSource } from "../utils/source";
 
 const router = express.Router();
 
@@ -294,6 +295,8 @@ router.post(
       taskId || undefined
     );
 
+    const { createdVia, isAiGenerated } = deriveSource(req);
+
     const timeEntry = await prisma.timeEntry.create({
       data: {
         description,
@@ -302,6 +305,8 @@ router.post(
         taskId,
         userId: req.user!.id,
         hourlyRateSnapshot: hourlyRate,
+        createdVia,
+        isAiGenerated,
       },
       select: {
         id: true,
@@ -311,6 +316,8 @@ router.post(
         duration: true,
         isRunning: true,
         hourlyRateSnapshot: true,
+        createdVia: true,
+        isAiGenerated: true,
         project: {
           select: {
             id: true,
@@ -410,6 +417,8 @@ router.post(
         duration: true,
         isRunning: true,
         hourlyRateSnapshot: true,
+        createdVia: true,
+        isAiGenerated: true,
         project: {
           select: {
             id: true,
@@ -467,6 +476,8 @@ router.get(
         duration: true,
         isRunning: true,
         hourlyRateSnapshot: true,
+        createdVia: true,
+        isAiGenerated: true,
         project: {
           select: {
             id: true,
@@ -568,6 +579,8 @@ router.post(
       taskId || undefined
     );
 
+    const { createdVia, isAiGenerated } = deriveSource(req);
+
     const timeEntry = await prisma.timeEntry.create({
       data: {
         description,
@@ -579,6 +592,8 @@ router.post(
         taskId,
         userId: req.user!.id,
         hourlyRateSnapshot: hourlyRate,
+        createdVia,
+        isAiGenerated,
       },
       select: {
         id: true,
@@ -588,6 +603,8 @@ router.post(
         duration: true,
         isRunning: true,
         hourlyRateSnapshot: true,
+        createdVia: true,
+        isAiGenerated: true,
         project: {
           select: {
             id: true,
@@ -767,6 +784,8 @@ router.put(
         duration: true,
         isRunning: true,
         hourlyRateSnapshot: true,
+        createdVia: true,
+        isAiGenerated: true,
         project: {
           select: {
             id: true,

@@ -10,6 +10,7 @@ import { useTimer } from "../hooks/useTimer";
 import { fetchProjects, fetchTasks } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
 import EditTimeEntryModal from "../components/EditTimeEntryModal";
+import AiBadge from "../components/AiBadge";
 import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 import { ClockIcon, PencilIcon } from "@heroicons/react/24/outline";
 import { StopIcon } from "@heroicons/react/24/solid";
@@ -283,6 +284,9 @@ const TimeEntries: React.FC = () => {
                               Running
                             </span>
                           </div>
+                        )}
+                        {entry.isAiGenerated && (
+                          <AiBadge via={entry.createdVia} />
                         )}
                       </div>
                       {entry.description && (
