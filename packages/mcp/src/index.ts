@@ -170,7 +170,7 @@ async function main() {
     req: { params: { name: string; arguments?: Record<string, unknown> } }
   ): Promise<ToolResult> => {
     const { name, arguments: args = {} } = req.params;
-    const a = args;
+    const a: Record<string, unknown> = args;
     try {
       switch (name) {
         case "current_timer":
