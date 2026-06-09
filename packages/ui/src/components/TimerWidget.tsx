@@ -87,15 +87,19 @@ const TimerWidget: React.FC = () => {
         )}
       </button>
 
-      {/* Stop button */}
-      <button
-        onClick={handleStopTimer}
-        disabled={loading}
-        className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-        title="Stop timer"
-      >
-        <StopIcon className="h-4 w-4" />
-      </button>
+      {/* Stop button — hidden when multiple timers run to avoid silently
+          stopping the wrong one. User picks from the Dashboard stack instead. */}
+      {runningCount <= 1 && (
+        <button
+          onClick={handleStopTimer}
+          disabled={loading}
+          className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+          title="Stop timer"
+          aria-label="Stop running timer"
+        >
+          <StopIcon className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 };

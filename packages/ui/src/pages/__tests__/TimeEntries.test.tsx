@@ -48,6 +48,7 @@ const createTestStore = (initialState = {}) => {
       timer: {
         runningEntries: [],
         elapsedById: {},
+        stoppingIds: {},
         isRunning: false,
         elapsedTime: 0,
         currentEntry: null,

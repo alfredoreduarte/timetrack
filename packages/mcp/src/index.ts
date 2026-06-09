@@ -189,14 +189,28 @@ async function main() {
             const running = await client.runningTimers();
             const entries = running.timeEntries ?? [];
             if (entries.length === 0) {
-              return ok({ message: "No timers are currently running." });
+              // Returning isError tells the agent the action did NOT complete,
+              // rather than letting it report "stopped" to the user.
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: "No timers are currently running — nothing to stop.",
+                  },
+                ],
+                isError: true,
+              };
             }
             if (entries.length > 1) {
-              return ok({
-                message:
-                  "Multiple timers are running — call stop_timer again with the id of the one you want to stop.",
-                runningTimers: entries,
-              });
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Ambiguous: ${entries.length} timers are running. Call stop_timer again with one of these ids:\n${JSON.stringify(entries, null, 2)}`,
+                  },
+                ],
+                isError: true,
+              };
             }
             id = entries[0].id;
           }

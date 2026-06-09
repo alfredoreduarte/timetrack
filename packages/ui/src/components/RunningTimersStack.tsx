@@ -4,6 +4,7 @@ import { StopIcon, ClockIcon } from "@heroicons/react/24/solid";
 import { AppDispatch, RootState } from "../store";
 import {
   selectRunningEntries,
+  selectStoppingIds,
   stopTimer,
 } from "../store/slices/timerSlice";
 import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
@@ -26,7 +27,7 @@ const RunningTimersStack: React.FC = () => {
   const elapsedById = useSelector(
     (state: RootState) => state.timer.elapsedById
   );
-  const loading = useSelector((state: RootState) => state.timer.loading);
+  const stoppingIds = useSelector(selectStoppingIds);
 
   if (entries.length === 0) return null;
 
@@ -44,11 +45,18 @@ const RunningTimersStack: React.FC = () => {
     <div className="card overflow-hidden">
       <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between">
         <h3 className="text-sm font-medium text-gray-900 flex items-center gap-2">
-          <ClockIcon className="h-4 w-4 text-green-600 animate-pulse" />
+          <ClockIcon
+            className="h-4 w-4 text-green-600 animate-pulse"
+            aria-hidden="true"
+          />
           Running now ({entries.length})
         </h3>
       </div>
-      <ul className="divide-y divide-gray-100">
+      <ul
+        className="divide-y divide-gray-100"
+        aria-label="Running timers"
+        aria-live="polite"
+      >
         {entries.map((entry) => {
           const elapsed = elapsedById[entry.id] ?? entry.duration ?? 0;
           const project = entry.project;
@@ -95,13 +103,13 @@ const RunningTimersStack: React.FC = () => {
               <button
                 type="button"
                 onClick={() => handleStop(entry.id)}
-                disabled={loading}
+                disabled={!!stoppingIds[entry.id]}
                 className="ml-1 inline-flex items-center gap-1 px-2 py-1 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                 title={`Stop ${project?.name || "timer"}`}
                 aria-label={`Stop timer for ${project?.name || "entry"}`}
               >
-                <StopIcon className="h-4 w-4" />
-                Stop
+                <StopIcon className="h-4 w-4" aria-hidden="true" />
+                {stoppingIds[entry.id] ? "Stopping..." : "Stop"}
               </button>
             </li>
           );
