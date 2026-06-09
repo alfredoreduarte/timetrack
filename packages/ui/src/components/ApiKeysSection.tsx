@@ -29,6 +29,7 @@ const ApiKeysSection: React.FC = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [name, setName] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [aiByDefault, setAiByDefault] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [newToken, setNewToken] = useState<string | null>(null);
 
@@ -48,12 +49,14 @@ const ApiKeysSection: React.FC = () => {
           expiresAt: expiresAt
             ? new Date(expiresAt).toISOString()
             : undefined,
+          aiByDefault,
         })
       ).unwrap();
       setNewToken(result.token);
       setShowCreateForm(false);
       setName("");
       setExpiresAt("");
+      setAiByDefault(true);
       toast.success("API key created");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create API key";
@@ -172,6 +175,23 @@ const ApiKeysSection: React.FC = () => {
               Leave blank for a key that never expires.
             </p>
           </div>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={aiByDefault}
+              onChange={(e) => setAiByDefault(e.target.checked)}
+              className="rounded mt-0.5"
+            />
+            <span className="text-sm">
+              <span className="font-medium text-gray-900">
+                Used by an AI agent
+              </span>
+              <span className="block text-xs text-gray-500">
+                Time entries from this key are flagged for the AI billing
+                multiplier. Uncheck for non-AI automation (CLI scripts, Zapier, etc.).
+              </span>
+            </span>
+          </label>
           <div className="flex gap-2">
             <button
               type="submit"
@@ -219,6 +239,11 @@ const ApiKeysSection: React.FC = () => {
                     <code className="text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded font-mono">
                       {key.keyPrefix}…
                     </code>
+                    {key.aiByDefault && (
+                      <span className="text-xs px-2 py-0.5 bg-violet-100 text-violet-700 rounded">
+                        AI
+                      </span>
+                    )}
                     {expired && (
                       <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded">
                         expired
