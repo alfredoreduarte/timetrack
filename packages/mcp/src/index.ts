@@ -1,0 +1,257 @@
+#!/usr/bin/env node
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+import { TimeTrackClient, TimeTrackError } from "./client.js";
+
+interface ToolDef {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+const tools: ToolDef[] = [
+  {
+    name: "current_timer",
+    description:
+      "Get the currently running timer (if any). Returns null when nothing is running.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "start_timer",
+    description:
+      "Start a new timer. If a timer is already running, the request will be rejected — stop it first with stop_timer. Returns the created time entry.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        description: {
+          type: "string",
+          description: "Free-text description of what you're working on.",
+        },
+        projectId: { type: "string", description: "Project ID from list_projects." },
+        taskId: { type: "string", description: "Task ID from list_tasks (must belong to projectId)." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "stop_timer",
+    description:
+      "Stop a running timer. If no id is supplied, stops the currently running one (call current_timer first if you need to confirm which).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Time entry id. Omit to stop the current timer." },
+        endTime: {
+          type: "string",
+          description:
+            "ISO 8601 timestamp. Defaults to now if omitted — only set this for backfills.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "recent_entries",
+    description: "List recent time entries for the user (most recent first).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "Max entries to return (default 10, max 50)." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "list_projects",
+    description: "List all of the user's projects.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "create_project",
+    description: "Create a new project.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Project name." },
+        description: { type: "string" },
+        color: { type: "string", description: "Hex color like #3B82F6." },
+        hourlyRate: { type: "number", description: "Override the user's default rate." },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "list_tasks",
+    description: "List tasks. Optionally filter by project.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "create_task",
+    description: "Create a new task under a project.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        projectId: { type: "string" },
+        description: { type: "string" },
+        hourlyRate: { type: "number" },
+      },
+      required: ["name", "projectId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "update_task",
+    description: "Update an existing task (rename, change rate, mark complete).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        description: { type: "string" },
+        hourlyRate: { type: "number" },
+        isCompleted: { type: "boolean" },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "whoami",
+    description: "Return the authenticated user. Useful to confirm the right account before mutating.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+];
+
+type ToolResult = {
+  content: Array<{ type: "text"; text: string }>;
+  isError?: boolean;
+};
+
+const ok = (data: unknown): ToolResult => ({
+  content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+});
+
+const err = (e: unknown): ToolResult => {
+  const message =
+    e instanceof TimeTrackError
+      ? e.message
+      : e instanceof Error
+        ? e.message
+        : String(e);
+  return {
+    content: [{ type: "text", text: `Error: ${message}` }],
+    isError: true,
+  };
+};
+
+async function main() {
+  const client = new TimeTrackClient();
+
+  const server = new Server(
+    { name: "timetrack", version: "0.1.0" },
+    { capabilities: { tools: {} } }
+  );
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+
+  const handleCall = async (
+    req: { params: { name: string; arguments?: Record<string, unknown> } }
+  ): Promise<ToolResult> => {
+    const { name, arguments: args = {} } = req.params;
+    const a = args;
+    try {
+      switch (name) {
+        case "current_timer":
+          return ok(await client.currentTimer());
+        case "start_timer":
+          return ok(
+            await client.startTimer({
+              description: a.description as string | undefined,
+              projectId: a.projectId as string | undefined,
+              taskId: a.taskId as string | undefined,
+            })
+          );
+        case "stop_timer": {
+          let id = a.id as string | undefined;
+          if (!id) {
+            const current = (await client.currentTimer()) as {
+              timeEntry?: { id?: string } | null;
+            };
+            id = current.timeEntry?.id;
+            if (!id) {
+              return ok({ message: "No timer is currently running." });
+            }
+          }
+          return ok(await client.stopTimer(id, a.endTime as string | undefined));
+        }
+        case "recent_entries":
+          return ok(await client.recentEntries((a.limit as number | undefined) ?? 10));
+        case "list_projects":
+          return ok(await client.listProjects());
+        case "create_project":
+          return ok(
+            await client.createProject({
+              name: a.name as string,
+              description: a.description as string | undefined,
+              color: a.color as string | undefined,
+              hourlyRate: a.hourlyRate as number | undefined,
+            })
+          );
+        case "list_tasks":
+          return ok(await client.listTasks(a.projectId as string | undefined));
+        case "create_task":
+          return ok(
+            await client.createTask({
+              name: a.name as string,
+              projectId: a.projectId as string,
+              description: a.description as string | undefined,
+              hourlyRate: a.hourlyRate as number | undefined,
+            })
+          );
+        case "update_task":
+          return ok(
+            await client.updateTask(a.id as string, {
+              name: a.name as string | undefined,
+              description: a.description as string | undefined,
+              hourlyRate: a.hourlyRate as number | undefined,
+              isCompleted: a.isCompleted as boolean | undefined,
+            })
+          );
+        case "whoami":
+          return ok(await client.whoami());
+        default:
+          return err(`Unknown tool: ${name}`);
+      }
+    } catch (e) {
+      return err(e);
+    }
+  };
+
+  // The SDK's setRequestHandler generic type explodes when many handlers stack;
+  // cast the handler to the broad shape to keep type-checking fast.
+  server.setRequestHandler(
+    CallToolRequestSchema,
+    handleCall as unknown as Parameters<typeof server.setRequestHandler>[1]
+  );
+
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+main().catch((e) => {
+  // eslint-disable-next-line no-console
+  console.error("timetrack-mcp failed to start:", e);
+  process.exit(1);
+});
