@@ -142,6 +142,10 @@ todos/
 github_key_id_*
 .worktrees
 
+# App Store Connect API keys (never commit)
+*.p8
+AuthKey_*
+
 # Fastlane (runtime output, do not check in)
 **/fastlane/report.xml
 **/fastlane/Preview.html
@@ -152,4 +156,4 @@ github_key_id_*
 !**/fastlane/.env.template
 
 # Ad-hoc local files (e.g. bootstrap drafts) — keep out of the repo
-PABLO-BOOTSTRAP-MESSAGE.md
+PABLO-BOOTSTRAP-MESSAGE.*
