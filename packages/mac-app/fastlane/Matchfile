@@ -4,7 +4,7 @@ storage_mode "git"
 type "appstore"
 platform "macos"
 
-app_identifier(["com.orbitalabworks.timetrack.mac"])
+app_identifier(["com.orbitalabworks.timetrack"])
 
 additional_cert_types(["mac_installer_distribution"])
 
