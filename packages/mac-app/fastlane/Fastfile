@@ -69,6 +69,16 @@ platform :mac do
       build_number: next_build
     )
 
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path:                  XCODE_PROJECT,
+      code_sign_identity:    "Apple Distribution",
+      profile_name:          "match AppStore com.orbitalabworks.timetrack macos",
+      bundle_identifier:     APP_IDS.first,
+      team_id:               "HL8D756J57",
+      targets:               [SCHEME]
+    )
+
     build_mac_app(
       project:          XCODE_PROJECT,
       scheme:           SCHEME,
@@ -77,8 +87,7 @@ platform :mac do
       output_directory: "build",
       output_name:      "TimeTrack.pkg",
       clean:            true,
-      include_symbols:  true,
-      xcargs:           "-allowProvisioningUpdates"
+      include_symbols:  true
     )
 
     upload_to_testflight(
