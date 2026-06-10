@@ -85,7 +85,7 @@ platform :mac do
       configuration:    "Release",
       export_method:    "app-store",
       output_directory: "build",
-      output_name:      "TimeTrack.pkg",
+      output_name:      "TimeTrack",
       clean:            true,
       include_symbols:  true
     )
@@ -94,7 +94,7 @@ platform :mac do
       api_key:                           api_key,
       app_identifier:                    APP_IDS.first,
       app_platform:                      "osx",
-      pkg:                               File.expand_path("build/TimeTrack.pkg"),
+      pkg:                               lane_context[SharedValues::PKG_OUTPUT_PATH],
       skip_waiting_for_build_processing: true,
       changelog:                         options[:release_notes] || "Automated build #{next_build} from GitHub Actions"
     )
