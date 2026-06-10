@@ -55,6 +55,14 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -t rsa,ed25519 github.com >> ~/.ssh/known_hosts
 
+      - name: Materialize App Store Connect API key
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          printf '%s' "${APP_STORE_CONNECT_API_KEY_CONTENT}" | base64 -d > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "ASC_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
       - name: Run fastlane beta
         run: bundle exec fastlane ios beta release_notes:"${{ inputs.release_notes }}"
 

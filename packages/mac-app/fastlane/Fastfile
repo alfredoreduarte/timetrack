@@ -5,13 +5,25 @@ SCHEME        = "TimeTrack"
 APP_IDS       = ["com.orbitalabworks.timetrack"]
 
 def asc_api_key
-  app_store_connect_api_key(
-    key_id:                ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
-    issuer_id:             ENV.fetch("APP_STORE_CONNECT_API_KEY_ISSUER_ID"),
-    key_content:           ENV.fetch("APP_STORE_CONNECT_API_KEY_CONTENT"),
-    is_key_content_base64: true,
-    in_house:              false
-  )
+  # Prefer key_filepath when the workflow materializes the .p8 to disk.
+  # altool (used by upload_to_testflight) is finicky about in-memory keys
+  # and reliably reads from ~/.appstoreconnect/private_keys/AuthKey_<id>.p8.
+  if ENV["ASC_API_KEY_PATH"]
+    app_store_connect_api_key(
+      key_id:       ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id:    ENV.fetch("APP_STORE_CONNECT_API_KEY_ISSUER_ID"),
+      key_filepath: ENV.fetch("ASC_API_KEY_PATH"),
+      in_house:     false
+    )
+  else
+    app_store_connect_api_key(
+      key_id:                ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id:             ENV.fetch("APP_STORE_CONNECT_API_KEY_ISSUER_ID"),
+      key_content:           ENV.fetch("APP_STORE_CONNECT_API_KEY_CONTENT"),
+      is_key_content_base64: true,
+      in_house:              false
+    )
+  end
 end
 
 platform :mac do

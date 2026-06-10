@@ -9,13 +9,25 @@ APP_IDS = [
 ]
 
 def asc_api_key
-  app_store_connect_api_key(
-    key_id:              ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
-    issuer_id:           ENV.fetch("APP_STORE_CONNECT_API_KEY_ISSUER_ID"),
-    key_content:         ENV.fetch("APP_STORE_CONNECT_API_KEY_CONTENT"),
-    is_key_content_base64: true,
-    in_house:            false
-  )
+  # Prefer key_filepath when the workflow materializes the .p8 to disk.
+  # altool (used by upload_to_testflight) is finicky about in-memory keys
+  # and reliably reads from ~/.appstoreconnect/private_keys/AuthKey_<id>.p8.
+  if ENV["ASC_API_KEY_PATH"]
+    app_store_connect_api_key(
+      key_id:       ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id:    ENV.fetch("APP_STORE_CONNECT_API_KEY_ISSUER_ID"),
+      key_filepath: ENV.fetch("ASC_API_KEY_PATH"),
+      in_house:     false
+    )
+  else
+    app_store_connect_api_key(
+      key_id:                ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id:             ENV.fetch("APP_STORE_CONNECT_API_KEY_ISSUER_ID"),
+      key_content:           ENV.fetch("APP_STORE_CONNECT_API_KEY_CONTENT"),
+      is_key_content_base64: true,
+      in_house:              false
+    )
+  end
 end
 
 platform :ios do
@@ -66,6 +78,22 @@ platform :ios do
       build_number: next_build
     )
 
+    {
+      "Timetrack"                      => "com.orbitalabworks.timetrack",
+      "Timetrack Watch Watch App"      => "com.orbitalabworks.timetrack.watchkitapp",
+      "TimetrackLiveActivityExtension" => "com.orbitalabworks.timetrack.liveactivity"
+    }.each do |target, bundle_id|
+      update_code_signing_settings(
+        use_automatic_signing: false,
+        path:                  XCODE_PROJECT,
+        code_sign_identity:    "Apple Distribution",
+        profile_name:          "match AppStore #{bundle_id}",
+        bundle_identifier:     bundle_id,
+        team_id:               "HL8D756J57",
+        targets:               [target]
+      )
+    end
+
     build_app(
       project:          XCODE_PROJECT,
       scheme:           SCHEME,
@@ -75,8 +103,7 @@ platform :ios do
       output_name:      "Timetrack.ipa",
       clean:            true,
       include_symbols:  true,
-      include_bitcode:  false,
-      xcargs:           "-allowProvisioningUpdates"
+      include_bitcode:  false
     )
 
     upload_to_testflight(
