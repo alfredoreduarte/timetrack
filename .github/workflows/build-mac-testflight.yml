@@ -1,0 +1,68 @@
+name: macOS → TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: "Release notes shown in TestFlight (optional)"
+        required: false
+        type: string
+
+concurrency:
+  group: mac-testflight
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    name: Build & upload
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        working-directory: packages/mac-app
+
+    env:
+      APP_STORE_CONNECT_API_KEY_ID:        ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_CONTENT:   ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+      MATCH_PASSWORD:                      ${{ secrets.MATCH_PASSWORD }}
+      MATCH_KEYCHAIN_PASSWORD:             ${{ secrets.MATCH_KEYCHAIN_PASSWORD }}
+      FASTLANE_HIDE_CHANGELOG: "1"
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+      LC_ALL: en_US.UTF-8
+      LANG: en_US.UTF-8
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -switch /Applications/Xcode_16.app
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: .
+
+      - name: Configure SSH for Match storage repo
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.MATCH_SSH_PRIVATE_KEY }}
+
+      - name: Trust github.com host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -t rsa,ed25519 github.com >> ~/.ssh/known_hosts
+
+      - name: Run fastlane beta
+        run: bundle exec fastlane mac beta release_notes:"${{ inputs.release_notes }}"
+
+      - name: Upload PKG artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TimeTrack-pkg
+          path: packages/mac-app/build/TimeTrack.pkg
+          if-no-files-found: ignore
+          retention-days: 14
