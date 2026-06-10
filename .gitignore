@@ -141,3 +141,15 @@ todos/
 # Local dev artifacts
 github_key_id_*
 .worktrees
+
+# Fastlane (runtime output, do not check in)
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots/
+**/fastlane/test_output/
+**/fastlane/README.md
+**/fastlane/.env*
+!**/fastlane/.env.template
+
+# Ad-hoc local files (e.g. bootstrap drafts) — keep out of the repo
+PABLO-BOOTSTRAP-MESSAGE.md
