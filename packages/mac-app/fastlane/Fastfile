@@ -1,0 +1,93 @@
+default_platform(:mac)
+
+XCODE_PROJECT = "TimeTrack.xcodeproj"
+SCHEME        = "TimeTrack"
+APP_IDS       = ["com.orbitalabworks.timetrack.mac"]
+
+def asc_api_key
+  app_store_connect_api_key(
+    key_id:                ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+    issuer_id:             ENV.fetch("APP_STORE_CONNECT_API_KEY_ISSUER_ID"),
+    key_content:           ENV.fetch("APP_STORE_CONNECT_API_KEY_CONTENT"),
+    is_key_content_base64: true,
+    in_house:              false
+  )
+end
+
+platform :mac do
+  before_all do
+    setup_ci if ENV["CI"]
+  end
+
+  desc "One-time: seed Mac App Store distribution certs & profiles into Match storage. Run locally."
+  lane :match_setup do
+    match(
+      type:                  "appstore",
+      app_identifier:        APP_IDS,
+      platform:              "macos",
+      additional_cert_types: ["mac_installer_distribution"],
+      api_key:               asc_api_key,
+      readonly:              false,
+      force_for_new_devices: false
+    )
+  end
+
+  desc "Sync existing signing assets from Match (readonly). Useful sanity check."
+  lane :match_sync do
+    match(
+      type:                  "appstore",
+      app_identifier:        APP_IDS,
+      platform:              "macos",
+      additional_cert_types: ["mac_installer_distribution"],
+      api_key:               asc_api_key,
+      readonly:              true
+    )
+  end
+
+  desc "Build the Mac app and ship to TestFlight."
+  lane :beta do |options|
+    api_key = asc_api_key
+
+    match(
+      type:                  "appstore",
+      app_identifier:        APP_IDS,
+      platform:              "macos",
+      additional_cert_types: ["mac_installer_distribution"],
+      api_key:               api_key,
+      readonly:              true
+    )
+
+    next_build = latest_testflight_build_number(
+      app_identifier:       APP_IDS.first,
+      api_key:              api_key,
+      platform:             "osx",
+      initial_build_number: 0
+    ) + 1
+
+    increment_build_number(
+      xcodeproj:    XCODE_PROJECT,
+      build_number: next_build
+    )
+
+    build_mac_app(
+      project:          XCODE_PROJECT,
+      scheme:           SCHEME,
+      configuration:    "Release",
+      export_method:    "app-store",
+      output_directory: "build",
+      output_name:      "TimeTrack.pkg",
+      clean:            true,
+      include_symbols:  true,
+      xcargs:           "-allowProvisioningUpdates"
+    )
+
+    upload_to_testflight(
+      api_key:                           api_key,
+      app_identifier:                    APP_IDS.first,
+      app_platform:                      "osx",
+      pkg:                               File.expand_path("build/TimeTrack.pkg"),
+      skip_waiting_for_build_processing: true,
+      changelog:                         options[:release_notes] || "Automated build #{next_build} from GitHub Actions"
+    )
+  end
+end
