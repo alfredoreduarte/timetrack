@@ -1,0 +1,4 @@
+app_identifier "com.orbitalabworks.timetrack"
+apple_id ENV["FASTLANE_APPLE_ID"]
+team_id "HL8D756J57"
+itc_team_id ENV["FASTLANE_ITC_TEAM_ID"]
