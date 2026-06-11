@@ -102,13 +102,17 @@ platform :mac do
       include_symbols:  true
     )
 
+    # Note: passing changelog forces fastlane to wait for the build to
+    # appear in App Store Connect's build list (overrides
+    # skip_waiting_for_build_processing). For first uploads of a new app
+    # that wait is 10-30min and trips the job cap. Skip the changelog
+    # here — set it from the ASC UI, or via a future set_changelog lane.
     upload_to_testflight(
       api_key:                           api_key,
       app_identifier:                    APP_IDS.first,
       app_platform:                      "osx",
       pkg:                               lane_context[SharedValues::PKG_OUTPUT_PATH],
-      skip_waiting_for_build_processing: true,
-      changelog:                         options[:release_notes] || "Automated build #{next_build} from GitHub Actions"
+      skip_waiting_for_build_processing: true
     )
   end
 end
