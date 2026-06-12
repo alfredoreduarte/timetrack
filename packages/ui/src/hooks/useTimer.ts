@@ -45,7 +45,9 @@ export const useTimer = (): UseTimerReturn => {
     (state: RootState) => state.timer
   );
 
-  // Timer tick effect - only one instance across the app
+  // Timer tick effect — runs once per mounted useTimer caller. Idempotent:
+  // tick() recomputes elapsed from wall-clock startTime, so multiple intervals
+  // converge to the same value rather than racing each other.
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isRunning) {

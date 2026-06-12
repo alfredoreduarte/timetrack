@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
 import timerSlice, {
   startTimer,
@@ -47,30 +47,51 @@ describe("timerSlice", () => {
   });
 
   describe("reducers", () => {
-    it("should handle tick action when timer is running", () => {
-      const store = createTestStore();
+    it("tick computes elapsed from wall-clock startTime and is idempotent", () => {
+      // Regression test for the "timer adds N seconds per second" bug:
+      // 12 components call useTimer(), each setting up its own 1Hz interval
+      // dispatching tick(). The previous +1-per-call implementation caused
+      // elapsed to grow at N seconds per real second with N mounts. tick()
+      // must now be idempotent — recomputing from startTime so multiple
+      // intervals converge to the same value.
+      vi.useFakeTimers();
+      try {
+        const t0 = new Date("2026-06-12T00:00:00Z");
+        vi.setSystemTime(t0);
 
-      // Set up running state
-      store.dispatch({
-        type: "timer/startTimer/fulfilled",
-        payload: {
-          id: "test-entry",
-          description: "Test work",
-          startTime: new Date().toISOString(),
-          duration: 0,
-          projectId: "project-1",
-          userId: "user-1",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      });
+        const store = createTestStore();
+        store.dispatch({
+          type: "timer/startTimer/fulfilled",
+          payload: {
+            id: "test-entry",
+            description: "Test work",
+            startTime: t0.toISOString(),
+            duration: 0,
+            projectId: "project-1",
+            userId: "user-1",
+            createdAt: t0.toISOString(),
+            updatedAt: t0.toISOString(),
+          },
+        });
 
-      // Tick the timer
-      store.dispatch(tick());
+        // Advance wall-clock 5 seconds, tick once
+        vi.setSystemTime(new Date(t0.getTime() + 5_000));
+        store.dispatch(tick());
+        expect(store.getState().timer.elapsedTime).toBe(5);
 
-      const state = store.getState().timer;
-      expect(state.elapsedTime).toBe(1);
-      expect(state.currentEntry?.duration).toBe(1);
+        // Idempotency: ticking many more times at the same wall-clock instant
+        // must NOT advance elapsed past 5. Before this fix, 15 calls would
+        // bump elapsed by 15 — the exact symptom users reported in prod.
+        for (let i = 0; i < 15; i++) store.dispatch(tick());
+        expect(store.getState().timer.elapsedTime).toBe(5);
+
+        // Advancing the clock another 3s + ticking lands at 8, not 8+15.
+        vi.setSystemTime(new Date(t0.getTime() + 8_000));
+        store.dispatch(tick());
+        expect(store.getState().timer.elapsedTime).toBe(8);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("should not tick when timer is not running", () => {
