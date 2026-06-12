@@ -112,14 +112,13 @@ const timerSlice = createSlice({
   initialState,
   reducers: {
     tick: (state) => {
+      // Recompute elapsed from wall-clock startTime so multiple useTimer
+      // instances (12 components call it; ~6 mount on Dashboard at once)
+      // converge to the same value. The previous +1-per-call implementation
+      // grew at N seconds per real second with N mounted instances.
       for (const entry of state.runningEntries) {
-        const prev = state.elapsedById[entry.id];
-        const next = Number.isFinite(prev) ? prev + 1 : 1;
-        state.elapsedById[entry.id] = next;
+        state.elapsedById[entry.id] = elapsedFromStart(entry);
       }
-      // Source of truth for live elapsed is elapsedById — don't mutate the
-      // entry.duration field, since that's the stored value at last sync and
-      // mutating it makes "what's the entry's real duration" ambiguous.
       syncMirrors(state);
     },
     syncTimer: (state) => {
