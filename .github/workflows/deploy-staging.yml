@@ -12,7 +12,7 @@ jobs:
   deploy-pr:
     name: Deploy PR to Staging
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     if: >-
       (github.event.action == 'labeled' && github.event.label.name == 'deploy-staging') ||
       (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'deploy-staging'))
@@ -24,7 +24,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 25m
+          command_timeout: 40m
           script: |
             set -euo pipefail
             REPO_URL="https://github.com/alfredoreduarte/timetrack.git"
@@ -32,7 +32,11 @@ jobs:
 
             echo "=== Freeing disk space ==="
             docker system prune -af --volumes --filter "until=24h" || true
-            docker builder prune -af || true
+            # Filter mirrors the system prune above. Critical because staging
+            # and prod share the same docker daemon / BuildKit instance on this
+            # droplet — an unfiltered prune here wipes the cache mounts that
+            # the prod deploy depends on (see deploy.yml).
+            docker builder prune -af --filter "until=24h" || true
 
             # Clone on first deploy, otherwise just fetch
             if [ ! -d "$DEPLOY_DIR/.git" ]; then
@@ -84,7 +88,7 @@ jobs:
   rollback:
     name: Roll Back Staging to Main
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     if: >-
       (github.event.action == 'unlabeled' && github.event.label.name == 'deploy-staging') ||
       (github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'deploy-staging'))
@@ -96,14 +100,18 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 25m
+          command_timeout: 40m
           script: |
             set -euo pipefail
             DEPLOY_DIR=~/websites/timetrack-staging
 
             echo "=== Freeing disk space ==="
             docker system prune -af --volumes --filter "until=24h" || true
-            docker builder prune -af || true
+            # Filter mirrors the system prune above. Critical because staging
+            # and prod share the same docker daemon / BuildKit instance on this
+            # droplet — an unfiltered prune here wipes the cache mounts that
+            # the prod deploy depends on (see deploy.yml).
+            docker builder prune -af --filter "until=24h" || true
 
             # Nothing to roll back if staging was never deployed
             if [ ! -d "$DEPLOY_DIR/.git" ]; then
