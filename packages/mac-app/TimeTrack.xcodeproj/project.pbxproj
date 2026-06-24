@@ -269,15 +269,18 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
 			);
 			name = "Inject ITSAppUsesNonExemptEncryption";
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+				"$(DERIVED_FILE_DIR)/ITSAppUsesNonExemptEncryption.stamp",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Xcode's INFOPLIST_KEY_<key> mechanism silently drops boolean values\n# of NO during plist synthesis, so we inject ITSAppUsesNonExemptEncryption\n# directly into the built app's Info.plist before code-signing.\nset -e\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ ! -f \"$PLIST\" ]; then\n  echo \"error: Info.plist not found at $PLIST\" >&2\n  exit 1\nfi\n/usr/libexec/PlistBuddy -c \"Add :ITSAppUsesNonExemptEncryption bool false\" \"$PLIST\" 2>/dev/null \\\n  || /usr/libexec/PlistBuddy -c \"Set :ITSAppUsesNonExemptEncryption false\" \"$PLIST\"\n";
+			shellScript = "# Xcode's INFOPLIST_KEY_<key> mechanism silently drops boolean values\n# of NO during plist synthesis, so we inject ITSAppUsesNonExemptEncryption\n# directly into the built app's Info.plist before code-signing.\n#\n# inputPaths/outputPaths above are required so User Script Sandboxing\n# allowlists the .app's Info.plist for read/write — otherwise PlistBuddy\n# silently no-ops under the sandbox and ASC parks the build in\n# Missing Compliance with no visible build error.\n#\n# The stamp file is a separate \"virtual output\" that Xcode's build system\n# requires when an input is also a mutable output, so the dependency graph\n# has a non-self-referential node to track.\nset -e\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ ! -f \"$PLIST\" ]; then\n  echo \"error: Info.plist not found at $PLIST\" >&2\n  exit 1\nfi\n/usr/libexec/PlistBuddy -c \"Add :ITSAppUsesNonExemptEncryption bool false\" \"$PLIST\" 2>/dev/null \\\n  || /usr/libexec/PlistBuddy -c \"Set :ITSAppUsesNonExemptEncryption false\" \"$PLIST\"\n# Verify the key actually landed — protects against a future sandbox/path regression\n# producing a silent no-op (the same failure mode this PR is fixing).\nVALUE=$(/usr/libexec/PlistBuddy -c \"Print :ITSAppUsesNonExemptEncryption\" \"$PLIST\" 2>/dev/null || true)\nif [ \"$VALUE\" != \"false\" ]; then\n  echo \"error: ITSAppUsesNonExemptEncryption not set to false in $PLIST (got: '$VALUE')\" >&2\n  exit 1\nfi\nmkdir -p \"${DERIVED_FILE_DIR}\"\ntouch \"${DERIVED_FILE_DIR}/ITSAppUsesNonExemptEncryption.stamp\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
