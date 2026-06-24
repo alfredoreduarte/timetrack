@@ -81,15 +81,25 @@ TestFlight for Mac apps requires Apple's dedicated **TestFlight** Mac app (separ
 
 > Adding internal testers requires an App Store Connect role of **App Manager**, **Admin**, or **Account Holder** on the Apple team. Developer-only roles cannot manage TestFlight testers. If your user picker is empty, check **Users and Access** in ASC.
 
+### "I added myself but no builds appear" — diagnostic flow
+
+This was the exact scenario hit on 2026-06-23. Walk these in order:
+
+1. **ASC role.** Open **Users and Access** in ASC. Your Apple ID must have App Manager / Admin / Account Holder. Developer-only can't see TestFlight builds at all.
+2. **Build still processing.** TestFlight → Builds → macOS. The build must show **Complete** (green check) in the Build Uploads table, not Processing / Failed. First Mac build for a new app routinely takes 15–30 min to process even after fastlane reports the upload succeeded.
+3. **Export compliance.** Below Build Uploads, the per-version Builds table must not say **Missing Compliance**. If it does, either answer the question in the build's Test Information tab (only visible to App Manager+ roles, in some account states the form is absent entirely) or — better — bake the answer into Info.plist via the build script described in the gotcha section below. Builds in Missing Compliance never appear to testers regardless of group membership.
+4. **Build attached to the group.** Internal Testing → \<your group\> → **Builds** tab → click **+** → pick the build. The group has its own per-build attach step; it does NOT auto-pull builds. (The Testers tab on the group is for adding people; the Builds tab is for attaching builds. These are independent.)
+5. **Correct TestFlight client.** Apple's TestFlight app for Mac is **distinct** from the iOS TestFlight app, free on the Mac App Store, developer "Apple". Sign in with the same Apple ID that's listed under your Internal Testing group's testers.
+
 ---
 
 ## Gotchas hit and fixed (state as of 2026-06-24)
 
 Everything in this section is already wired up in the repo — the gotchas are documented for context (and so the iOS pipeline can pre-emptively avoid the same traps).
 
-### Info.plist keys ASC requires (PRs #146, #148)
+### Info.plist keys ASC requires (PRs #146, #147 [failed attempt], #148)
 
-altool / TestFlight validation now requires two Info.plist keys for every Mac App Store upload. Missing either silently lands the build in "Missing Compliance" or rejects the upload with a 409. Both are handled in `TimeTrack.xcodeproj/project.pbxproj`:
+altool / TestFlight validation now requires two Info.plist keys for every Mac App Store upload. Missing either silently lands the build in "Missing Compliance" or rejects the upload with a 409. PR #147 attempted the obvious `INFOPLIST_KEY_*` route for the encryption key and silently failed (Xcode drops boolean `NO`); PR #148 replaced it with the build-script approach below. Both required keys are handled in `TimeTrack.xcodeproj/project.pbxproj`:
 
 | Key | How it's set | Why it can't be set the obvious way |
 |---|---|---|
@@ -116,6 +126,18 @@ These are already baked in but document why the Fastfile looks the way it does:
 ### Apple's MAS validation tightened twice between 2026-06-10 and 2026-06-23
 
 Both `LSApplicationCategoryType` and `ITSAppUsesNonExemptEncryption` were unenforced when the first successful Mac TestFlight build went up on 2026-06-10. By 2026-06-23 both were required. Treat the gotcha section as a moving target — Apple may add another required key without warning.
+
+If a future build fails the same way, the diagnostic phrase to grep for in the fastlane log is `Validation failed (409)` (for the altool reject path) or "Missing Compliance" in the ASC build list (for the silent-park path). Both surface the missing Info.plist key name explicitly in the error message; the fix template is the same as either the `INFOPLIST_KEY_*` setting (for string values) or the Run Script + PlistBuddy phase (for booleans that need to be `NO/false`).
+
+---
+
+## Design decisions and trade-offs
+
+Captured so a future engineer doesn't re-litigate the same calls:
+
+- **Universal Purchase** (one bundle ID for iOS + macOS, one ASC app record). Trade-off: customers who buy on one platform get the other free, the App Store listing is a single page covering both platforms, and there's one set of release notes / screenshots / ratings to maintain. The cost is no per-platform pricing (one price covers both, or you set both free). For a time tracker we want the cross-buy, and per-platform pricing isn't useful, so Universal Purchase is the right call. Reversing would require a new ASC record + a new bundle ID for one of the platforms.
+- **Category = `public.app-category.productivity`** matches the existing TimeTrack iOS app and the user-facing product positioning (time tracking is productivity, not utilities or business). Changing it is non-destructive: edit the build setting, ship a new build, and ASC updates the listing's category. Alternative reasonable categories: `public.app-category.business` (if pivoting to team / invoicing positioning) or `public.app-category.utilities` (if narrowing scope).
+- **Run Script + PlistBuddy** over `GENERATE_INFOPLIST_FILE = NO` + a checked-in Info.plist. The static-plist alternative is conventionally cleaner, but it requires migrating every key Xcode currently synthesizes (CFBundleName, CFBundleExecutable, CFBundleSupportedPlatforms, CFBundlePackageType, etc.) into a hand-maintained file — significant diff, every miss is a runtime regression, and future synthesizable keys (Xcode adds them periodically) won't auto-flow into the plist. The Run Script approach is surgical: it leaves the synthesizer in charge of everything except the one key it can't write correctly. If Apple ever adds more boolean-NO keys we need to set, the same Run Script can grow more `PlistBuddy Add` lines.
 
 ---
 

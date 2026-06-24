@@ -10,7 +10,7 @@ App Group: `group.com.timetrack.shared`.
 
 ## Step 1 — Pablo (Account Holder)
 
-Forward the message at `PABLO-BOOTSTRAP-MESSAGE.md` (repo root, gitignored). He owes you:
+Forward the message at `PABLO-BOOTSTRAP-MESSAGE.md` (repo root, **gitignored** — does not survive a fresh clone; if missing, reconstruct from the bootstrap items below). Note: the on-disk copy still mentions a fourth bundle ID `com.orbitalabworks.timetrack.mac` as historical residue from a pre-Universal-Purchase plan — disregard, the Mac and iOS apps share `com.orbitalabworks.timetrack`. He owes you:
 
 1. Acceptance of the updated Apple Developer Program License Agreement at <https://developer.apple.com/account>.
 2. An App Store Connect **API Key** (role: **App Manager**, "Access to Cloud Managed Distribution Certificate" enabled). He sends you the `.p8` file, the **Key ID**, and the **Issuer ID**.
@@ -170,10 +170,13 @@ The main app's `com.orbitalabworks.timetrack` App ID is already registered (shar
 
 ### Resumption checklist (when Pablo is done)
 
-1. Confirm all three App IDs exist and have the App Group ticked under their Capabilities tab.
-2. `cd packages/ios-app && bundle exec fastlane ios match_setup` — seeds iOS distribution certs and profiles for all three bundle IDs. Requires the four env vars from `~/.appstoreconnect/match-passwords.env` plus the three `APP_STORE_CONNECT_API_KEY_*` env vars.
-3. **Apply the preemptive Info.plist fixes from the Mac side** to the iOS target's `project.pbxproj` (see next section). Skipping this guarantees the first iOS upload lands in the same Missing Compliance / 409 validation traps the Mac side hit on builds 1.0 (1) through 1.0 (3).
-4. Trigger the `iOS → TestFlight` workflow on main. Job should complete in ~10 min.
+1. Confirm all three App IDs exist and have the App Group ticked, in the developer portal at <https://developer.apple.com/account/resources/identifiers/list> → select each App ID → **Capabilities** tab → verify "App Groups" is checked AND the specific `group.com.timetrack.shared` group is selected (the two are separate steps in Apple's UI — easy to miss the second). If Pablo only registered the bundle IDs without ticking App Groups, ping him to edit each identifier.
+2. **Check whether iOS Match was already seeded before re-running.** `git ls-remote git@github.com:alfredoreduarte/timetrack-signing.git | grep ios` — if profiles for the three iOS bundle IDs already exist under `profiles/appstore/ios/` in that repo, skip step 3 (or use the readonly `match_sync` lane). Otherwise:
+3. `cd packages/ios-app && bundle exec fastlane ios match_setup` — seeds iOS distribution certs and profiles for all three bundle IDs. Requires two env vars from `~/.appstoreconnect/match-passwords.env` (`MATCH_PASSWORD`, `MATCH_KEYCHAIN_PASSWORD`) plus the three `APP_STORE_CONNECT_API_KEY_*` env vars (set them via `source ~/.appstoreconnect/match-passwords.env` and an export-from-1Password / similar for the API key triple).
+4. **Apply the preemptive Info.plist fixes from the Mac side** to the iOS target's `project.pbxproj` (see next section). Skipping this guarantees the first iOS upload lands in the same Missing Compliance / 409 validation traps the Mac side hit on builds 1.0 (1) through 1.0 (3).
+5. Trigger the `iOS → TestFlight` workflow on main. Job should complete in ~10 min.
+
+The iOS Xcode project lives one directory deeper than the Mac project: `packages/ios-app/Timetrack/Timetrack.xcodeproj/project.pbxproj` (note the extra `Timetrack/` level), vs. the Mac's `packages/mac-app/TimeTrack.xcodeproj/project.pbxproj`.
 
 ---
 
@@ -183,7 +186,20 @@ The Mac pipeline went through four sequential failures between 2026-06-10 and 20
 
 1. **`LSApplicationCategoryType` is required.** Add `INFOPLIST_KEY_LSApplicationCategoryType` (likely `"public.app-category.productivity"` for iOS too) to Debug + Release configs of the main app target.
 
-2. **`ITSAppUsesNonExemptEncryption` is required.** Xcode silently strips boolean `NO` from `INFOPLIST_KEY_*` settings during plist synthesis, so the obvious approach won't work. The Mac side uses a Run Script build phase that calls `PlistBuddy` to inject the key into the built `.app`'s `Info.plist`. Port that phase to the iOS target verbatim (UUID can be reused; phase ordering, `inputPaths`/`outputPaths` sandbox allowlist, virtual stamp output, and read-back verification all transfer 1:1). The Mac Fastfile already handles three targets (main app + Watch + Live Activity extension) for `update_code_signing_settings`; the Run Script only needs to run on the main app target (the extensions inherit `ITSAppUsesNonExemptEncryption` from the bundling app per Apple's docs, but verify).
+2. **`ITSAppUsesNonExemptEncryption` is required.** Xcode silently strips boolean `NO` from `INFOPLIST_KEY_*` settings during plist synthesis, so the obvious approach won't work. The Mac side uses a Run Script build phase that calls `PlistBuddy` to inject the key into the built `.app`'s `Info.plist`. Port that phase to the iOS main app target verbatim. The complete `PBXShellScriptBuildPhase` block to copy lives in the Mac pbxproj at `packages/mac-app/TimeTrack.xcodeproj/project.pbxproj` lines 263–284 (the entry with UUID `38E1C0DE00000001FA5E0001`), and the reference inside the target's `buildPhases` array is at line 200. Pick a fresh UUID for the iOS pbxproj (any unused 24-hex-char string), copy the whole block, and append the new reference as the **last** entry in the iOS app target's `buildPhases` (after Sources/Frameworks/Resources, before Xcode's implicit codesign step). Keep all four invariants from the Mac side: phase ordering, `inputPaths`/`outputPaths` sandbox allowlist, the `$(DERIVED_FILE_DIR)/...stamp` virtual output, and the in-script read-back verification.
+
+   Apple's docs say extensions inherit `ITSAppUsesNonExemptEncryption` from the bundling app, so the Run Script only needs to run on the main app target. **Verify after the first iOS TestFlight upload**: if the watchOS or Live Activity extension lands in Missing Compliance separately, port the same Run Script phase to those targets too.
+
+   The iOS Fastfile already iterates over three target/bundle-id pairs for `update_code_signing_settings` (the Mac Fastfile only signs one target, since the Mac app has no extensions); the new Run Script doesn't need any Fastfile changes — it's a target build phase, run by xcodebuild during archive.
+
+   **Local verification** after porting and before the CI run:
+   ```bash
+   xcodebuild -project Timetrack/Timetrack.xcodeproj -scheme Timetrack -configuration Debug \
+     -derivedDataPath /tmp/ios-verify CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO build
+   /usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" \
+     /tmp/ios-verify/Build/Products/Debug-iphonesimulator/Timetrack.app/Info.plist
+   # → must print: false
+   ```
 
 3. **`CODE_SIGN_STYLE = Manual` override at build time.** Already in place in the iOS Fastfile for all three shipping targets (Timetrack, Watch app, LiveActivity extension). Don't remove it — the pbxproj stays Automatic for local dev, the Fastfile flips to Manual for CI.
 
