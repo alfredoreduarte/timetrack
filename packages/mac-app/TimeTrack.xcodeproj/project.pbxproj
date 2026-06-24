@@ -197,6 +197,7 @@
 				D0000001000000013 /* Sources */,
 				D0000001000000002 /* Frameworks */,
 				D0000001000000014 /* Resources */,
+				38E1C0DE00000001FA5E0001 /* Inject ITSAppUsesNonExemptEncryption */,
 			);
 			buildRules = (
 			);
@@ -257,6 +258,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		38E1C0DE00000001FA5E0001 /* Inject ITSAppUsesNonExemptEncryption */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Inject ITSAppUsesNonExemptEncryption";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Xcode's INFOPLIST_KEY_<key> mechanism silently drops boolean values\n# of NO during plist synthesis, so we inject ITSAppUsesNonExemptEncryption\n# directly into the built app's Info.plist before code-signing.\nset -e\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ ! -f \"$PLIST\" ]; then\n  echo \"error: Info.plist not found at $PLIST\" >&2\n  exit 1\nfi\n/usr/libexec/PlistBuddy -c \"Add :ITSAppUsesNonExemptEncryption bool false\" \"$PLIST\" 2>/dev/null \\\n  || /usr/libexec/PlistBuddy -c \"Set :ITSAppUsesNonExemptEncryption false\" \"$PLIST\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		D0000001000000013 /* Sources */ = {
@@ -422,7 +445,6 @@
 				DEVELOPMENT_TEAM = HL8D756J57;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -450,7 +472,6 @@
 				DEVELOPMENT_TEAM = HL8D756J57;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
