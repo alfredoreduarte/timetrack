@@ -3,16 +3,77 @@ name: Deploy to Production
 on:
   push:
     branches: [main]
+  # Manual trigger builds + pushes images WITHOUT deploying — used to publish
+  # the GHCR packages the first time (so they can be made public) before the
+  # first pull-based deploy. The deploy job is gated to `push` only (see below).
+  workflow_dispatch:
 
 concurrency:
   group: production-deploy
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Deploy
+  build:
+    name: Build & push images
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - service: api
+            dockerfile: ./packages/api/Dockerfile
+            build-args: ""
+          - service: web
+            dockerfile: ./packages/ui/Dockerfile
+            # Baked at build time (Vite). Must match today's prod value so the
+            # image is behavior-identical. Non-secret (it's a public URL).
+            build-args: |
+              VITE_API_URL=https://api.track.alfredo.re
+          - service: landing
+            dockerfile: ./packages/landing/Dockerfile
+            build-args: |
+              PUBLIC_URL=/
+              VITE_APP_URL=https://app.track.alfredo.re
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: production
+          build-args: ${{ matrix.build-args }}
+          push: true
+          # Moving tag `prod` is what the droplet pulls; immutable `sha-<commit>`
+          # is the manual rollback handle (docker pull <sha> && up -d).
+          tags: |
+            ghcr.io/alfredoreduarte/timetrack-${{ matrix.service }}:prod
+            ghcr.io/alfredoreduarte/timetrack-${{ matrix.service }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/alfredoreduarte/timetrack
+
+  deploy:
+    name: Deploy to production
+    needs: build
+    # Only deploy on push to main. A manual workflow_dispatch run just publishes
+    # images (bootstrap), it does not touch the running site.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Deploy via SSH
@@ -21,29 +82,19 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          # Bumped from 25m. Cold-cache web builds were hanging npm ci past
-          # the cap; the builder-prune filter below should keep the cache warm
-          # going forward, but headroom is cheap insurance.
-          command_timeout: 40m
+          command_timeout: 10m
           script: |
             set -euo pipefail
             REPO_URL="https://github.com/alfredoreduarte/timetrack.git"
             DEPLOY_DIR=~/websites/timetrack-production
 
             echo "=== Freeing disk space ==="
-            # Images only — never --volumes. The until= filter does NOT apply to
-            # volumes, so `system prune --volumes` can delete postgres_data if the
-            # DB container is briefly down during a deploy (data-loss footgun on a
-            # box whose only backup is a pg_dump to the same disk).
+            # Images only — never --volumes (the until= filter does not protect
+            # volumes; --volumes could delete postgres_data).
             docker image prune -af --filter "until=24h" || true
-            # Keep BuildKit cache from the last 24h so the npm ci cache mounts
-            # added in #125 (cd1da9 etc.) actually survive deploy-to-deploy.
-            # Without the filter, every deploy starts from cold cache and the
-            # web container's npm ci over the full monorepo can blow the SSH
-            # command_timeout (root cause of today's PR #143/#144 failures).
-            docker builder prune -af --filter "until=24h" || true
 
-            # Clone on first deploy, otherwise just fetch
+            # Clone on first deploy, otherwise just fetch. The host still needs
+            # the repo for the compose file, deploy.sh, and init.sql.
             if [ ! -d "$DEPLOY_DIR/.git" ]; then
               echo "=== First deploy: cloning repo ==="
               git clone "$REPO_URL" "$DEPLOY_DIR"
@@ -51,14 +102,14 @@ jobs:
 
             cd "$DEPLOY_DIR"
 
-            echo "=== Pulling latest changes ==="
+            echo "=== Pulling latest compose/config ==="
             git fetch --prune origin main
             git reset --hard origin/main
 
-            echo "=== Deploying ==="
+            echo "=== Deploying (pull prebuilt images — no on-host build) ==="
             ./deploy.sh prod
 
-            echo "=== Verifying health ==="
+            echo "=== Verifying container health ==="
             for service in "3011/health" "3010/health"; do
               echo "Waiting for localhost:${service}..."
               for i in $(seq 1 30); do
@@ -74,5 +125,14 @@ jobs:
                 sleep 2
               done
             done
+
+            # Functional check through the public API edge (host nginx -> api
+            # container). The web container's /health is a static nginx 200 and
+            # would pass even if the SPA could not reach the API, so verify the
+            # real edge here.
+            echo "=== Verifying public API edge ==="
+            curl -fsS https://api.track.alfredo.re/health > /dev/null \
+              && echo "✓ https://api.track.alfredo.re/health OK" \
+              || { echo "✗ public API edge unreachable"; exit 1; }
 
             echo "=== Deploy complete ==="

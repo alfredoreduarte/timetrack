@@ -29,10 +29,8 @@ services:
 
   # API Service
   api:
-    build:
-      context: .
-      dockerfile: ./packages/api/Dockerfile
-      target: production
+    # Built in CI, pulled from GHCR (no on-host build). See deploy.yml.
+    image: ghcr.io/alfredoreduarte/timetrack-api:prod
     container_name: timetrack-api-prod
     restart: unless-stopped
     env_file: docker.env
@@ -69,12 +67,8 @@ services:
 
   # Web UI Service (includes nginx for serving React app and proxying API)
   web:
-    build:
-      context: .
-      dockerfile: ./packages/ui/Dockerfile
-      target: production
-      args:
-        VITE_API_URL: ${VITE_API_URL}
+    # Built in CI with VITE_API_URL baked in, pulled from GHCR. See deploy.yml.
+    image: ghcr.io/alfredoreduarte/timetrack-web:prod
     container_name: timetrack-web-prod
     restart: unless-stopped
     env_file: docker.env
@@ -113,13 +107,8 @@ services:
 
   # Marketing Landing Service (static nginx)
   landing:
-    build:
-      context: .
-      dockerfile: ./packages/landing/Dockerfile
-      target: production
-      args:
-        PUBLIC_URL: "/"
-        VITE_APP_URL: "${VITE_APP_URL:-https://app.track.alfredo.re}"
+    # Built in CI with PUBLIC_URL / VITE_APP_URL baked in, pulled from GHCR.
+    image: ghcr.io/alfredoreduarte/timetrack-landing:prod
     container_name: timetrack-landing-prod
     restart: unless-stopped
     environment:

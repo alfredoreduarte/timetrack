@@ -167,16 +167,24 @@ deploy() {
     source "$env_file"
     set +a
 
-    if [ "$mode" = "prod" ] || [ "$mode" = "staging" ]; then
-        # Build new images while old containers keep serving traffic.
-        # Sequential builds avoid overwhelming the server when cache is cold.
+    if [ "$mode" = "prod" ]; then
+        # Images are built in CI and pushed to GHCR (.github/workflows/deploy.yml).
+        # The host only PULLS prebuilt images — no on-host build, no OOM risk.
+        log_info "Pulling prebuilt images from registry..."
+        docker_compose -f "$compose_file" pull
+
+        # Recreate only containers whose image/config changed.
+        # Postgres and redis are untouched (stock images, no rebuild needed).
+        log_info "Replacing containers with new images..."
+        docker_compose -f "$compose_file" up -d --remove-orphans
+    elif [ "$mode" = "staging" ]; then
+        # Staging still builds on-host. Migration to CI-built images is tracked
+        # separately (per-PR + rollback need staging-baked frontend URLs).
         log_info "Building new images (old containers still serving traffic)..."
         docker_compose -f "$compose_file" build api
         docker_compose -f "$compose_file" build web
         docker_compose -f "$compose_file" build landing
 
-        # Recreate only containers whose image/config changed.
-        # Postgres and redis are untouched (stock images, no rebuild needed).
         log_info "Replacing containers with new images..."
         docker_compose -f "$compose_file" up -d --remove-orphans
     else
