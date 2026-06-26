@@ -36,10 +36,9 @@ jobs:
             # DB container is briefly down during a deploy (data-loss footgun on a
             # box whose only backup is a pg_dump to the same disk).
             docker image prune -af --filter "until=24h" || true
-            # Filter mirrors the image prune above. Critical because staging
-            # and prod share the same docker daemon / BuildKit instance on this
-            # droplet — an unfiltered prune here wipes the cache mounts that
-            # the prod deploy depends on (see deploy.yml).
+            # Staging still builds on-host, so prune only its own stale BuildKit
+            # cache (filtered to keep the last 24h warm). Prod no longer builds
+            # on this droplet, so nothing here protects the prod deploy anymore.
             docker builder prune -af --filter "until=24h" || true
 
             # Clone on first deploy, otherwise just fetch
@@ -115,10 +114,9 @@ jobs:
             # DB container is briefly down during a deploy (data-loss footgun on a
             # box whose only backup is a pg_dump to the same disk).
             docker image prune -af --filter "until=24h" || true
-            # Filter mirrors the image prune above. Critical because staging
-            # and prod share the same docker daemon / BuildKit instance on this
-            # droplet — an unfiltered prune here wipes the cache mounts that
-            # the prod deploy depends on (see deploy.yml).
+            # Staging still builds on-host, so prune only its own stale BuildKit
+            # cache (filtered to keep the last 24h warm). Prod no longer builds
+            # on this droplet, so nothing here protects the prod deploy anymore.
             docker builder prune -af --filter "until=24h" || true
 
             # Nothing to roll back if staging was never deployed
