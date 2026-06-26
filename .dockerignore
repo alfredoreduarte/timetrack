@@ -12,6 +12,17 @@ pnpm-debug.log*
 .env.test.local
 .env.production.local
 docker.env
+docker.staging.env
+docker.*.env
+
+# Secrets & signing keys (must never enter an image layer, esp. once
+# staging also builds in CI / pushes to a registry)
+*.pem
+*.p8
+AuthKey_*.p8
+*.mobileprovision
+github_key*
+**/fastlane/.env*
 
 # Git
 .git

@@ -180,6 +180,8 @@ deploy() {
     elif [ "$mode" = "staging" ]; then
         # Staging still builds on-host. Migration to CI-built images is tracked
         # separately (per-PR + rollback need staging-baked frontend URLs).
+        # Build sequentially (not a single `build`) to avoid overwhelming the
+        # shared 1.9GB droplet's memory while old containers keep serving.
         log_info "Building new images (old containers still serving traffic)..."
         docker_compose -f "$compose_file" build api
         docker_compose -f "$compose_file" build web

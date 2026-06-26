@@ -12,6 +12,11 @@ concurrency:
   group: production-deploy
   cancel-in-progress: true
 
+# Floor the token to read-only by default; the build job widens it to
+# packages: write for itself. The deploy job needs no token scope (SSH only).
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build & push images
@@ -82,7 +87,9 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 10m
+          # Pull-only deploy is fast, but the FIRST pull (or any after an image
+          # prune) downloads three full images cold — keep headroom over 10m.
+          command_timeout: 15m
           script: |
             set -euo pipefail
             REPO_URL="https://github.com/alfredoreduarte/timetrack.git"
