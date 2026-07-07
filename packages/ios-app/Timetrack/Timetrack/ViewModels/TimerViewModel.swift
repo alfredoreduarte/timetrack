@@ -188,6 +188,9 @@ class TimerViewModel: ObservableObject {
             // Start Live Activity
             await LiveActivityManager.shared.startActivity(entry: entry)
 
+            // Notify watch of timer start
+            notifyWatch()
+
             // Refresh recent entries
             await loadRecentEntries()
 
@@ -212,6 +215,9 @@ class TimerViewModel: ObservableObject {
 
             // Stop Live Activity
             await LiveActivityManager.shared.stopActivity()
+
+            // Notify watch of timer stop
+            notifyWatch()
 
             // Refresh recent entries
             await loadRecentEntries()
@@ -334,6 +340,19 @@ class TimerViewModel: ObservableObject {
 
     func clearError() {
         errorMessage = nil
+    }
+
+    // MARK: - Watch Sync
+    private func notifyWatch() {
+        let projectName = currentEntry?.project?.name ?? ""
+        let startTime = currentEntry?.startTime
+        let entryId = currentEntry?.id
+        WatchConnectivityService.shared.sendTimerState(
+            isRunning: isRunning,
+            projectName: projectName,
+            startTime: startTime,
+            entryId: entryId
+        )
     }
 
     // MARK: - Auto Refresh Setup
@@ -553,6 +572,8 @@ class TimerViewModel: ObservableObject {
                 await LiveActivityManager.shared.startActivity(entry: entry)
             }
         }
+
+        notifyWatch()
     }
 
     private func handleRemoteTimerStopped(_ entry: TimeEntry) {
@@ -569,6 +590,8 @@ class TimerViewModel: ObservableObject {
                 await LiveActivityManager.shared.stopActivity()
             }
         }
+
+        notifyWatch()
 
         // Refresh recent entries list
         Task {
