@@ -4,7 +4,7 @@ import { AppDispatch, RootState } from "../store";
 import { useTimer } from "../hooks/useTimer";
 import {
   fetchDashboardEarnings,
-  updateCurrentTimerEarnings,
+  selectLiveEarnings,
 } from "../store/slices/dashboardSlice";
 import { fetchTimeEntries, TimeEntry } from "../store/slices/timeEntriesSlice";
 import { fetchProjects } from "../store/slices/projectsSlice";
@@ -20,11 +20,15 @@ const Dashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
 
   // Use centralized timer hook
-  const { isRunning, currentEntry, elapsedTime, startTimer } = useTimer();
+  const { isRunning, startTimer } = useTimer();
 
   const { earnings, loading: earningsLoading } = useSelector(
     (state: RootState) => state.dashboard
   );
+  // Today / This Week / Earning Now all read from one derived source so they
+  // tick up together while a timer runs. See selectLiveEarnings for how the
+  // live portion is computed (idempotent, summed across all running timers).
+  const liveEarnings = useSelector(selectLiveEarnings);
   const { entries: timeEntries } = useSelector(
     (state: RootState) => state.timeEntries
   );
@@ -33,43 +37,17 @@ const Dashboard: React.FC = () => {
   // Safe defaults to prevent undefined errors
   const safeTimeEntries = Array.isArray(timeEntries) ? timeEntries : [];
 
+  // Only show the loading placeholder on the very first fetch — once we have
+  // earnings, keep rendering the live values through background refetches so
+  // Today / This Week don't blink back to "..." every time a timer stops.
+  const showEarningsPlaceholder = earningsLoading && !earnings;
+
   // Fetch earnings data on component mount
   useEffect(() => {
     dispatch(fetchDashboardEarnings());
     dispatch(fetchTimeEntries({ limit: 5 })); // Fetch recent entries for the section
     dispatch(fetchProjects()); // Fetch projects for the recent entries
   }, [dispatch]);
-
-  // Update current timer earnings in real-time
-  useEffect(() => {
-    if (
-      isRunning &&
-      currentEntry &&
-      earnings?.currentTimer?.isRunning &&
-      earnings?.currentTimer?.hourlyRate !== undefined &&
-      earnings?.currentTimer?.hourlyRate !== null
-    ) {
-      dispatch(
-        updateCurrentTimerEarnings({
-          duration: elapsedTime,
-          hourlyRate: earnings.currentTimer.hourlyRate,
-        })
-      );
-    }
-  }, [
-    dispatch,
-    isRunning,
-    elapsedTime,
-    currentEntry,
-    earnings?.currentTimer?.isRunning,
-    earnings?.currentTimer?.hourlyRate,
-  ]);
-
-  // Calculate current timer earnings in real-time
-  const getCurrentTimerEarnings = (): number => {
-    if (!isRunning || earnings?.currentTimer?.hourlyRate === undefined || earnings?.currentTimer?.hourlyRate === null) return 0;
-    return (earnings.currentTimer.hourlyRate * elapsedTime) / 3600;
-  };
 
   // Handle resume timer from entry
   const handleResumeTimer = async (entry: TimeEntry) => {
@@ -123,12 +101,9 @@ const Dashboard: React.FC = () => {
               <div className="flex-1">
                 <p className="text-sm font-medium text-gray-600">Today</p>
                 <p className="text-xl font-bold text-gray-900 tabular-nums">
-                  {earningsLoading
+                  {showEarningsPlaceholder
                     ? "..."
-                    : `$${(typeof earnings?.today === "object"
-                        ? earnings.today.earnings
-                        : 0
-                      ).toFixed(2)}`}
+                    : `$${liveEarnings.today.toFixed(2)}`}
                 </p>
               </div>
               <div className="h-10 w-10 bg-blue-50 rounded-lg flex items-center justify-center">
@@ -143,12 +118,9 @@ const Dashboard: React.FC = () => {
               <div className="flex-1">
                 <p className="text-sm font-medium text-gray-600">This Week</p>
                 <p className="text-xl font-bold text-gray-900 tabular-nums">
-                  {earningsLoading
+                  {showEarningsPlaceholder
                     ? "..."
-                    : `$${(typeof earnings?.thisWeek === "object"
-                        ? earnings.thisWeek.earnings
-                        : 0
-                      ).toFixed(2)}`}
+                    : `$${liveEarnings.thisWeek.toFixed(2)}`}
                 </p>
               </div>
               <div className="h-10 w-10 bg-green-50 rounded-lg flex items-center justify-center">
@@ -158,25 +130,23 @@ const Dashboard: React.FC = () => {
           </div>
 
           {/* Currently Earning */}
-          {earnings?.currentTimer?.hourlyRate !== undefined &&
-            earnings?.currentTimer?.hourlyRate !== null &&
-            earnings.currentTimer.hourlyRate > 0 && (
-              <div className="card p-4 bg-green-50 border-green-200">
-                <div className="flex items-center">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-green-600">
-                      Earning Now
-                    </p>
-                    <p className="text-xl font-bold text-green-700 tabular-nums">
-                      ${getCurrentTimerEarnings().toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <ClockIcon className="h-5 w-5 text-green-600 animate-pulse" />
-                  </div>
+          {liveEarnings.isEarning && (
+            <div className="card p-4 bg-green-50 border-green-200">
+              <div className="flex items-center">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-green-600">
+                    Earning Now
+                  </p>
+                  <p className="text-xl font-bold text-green-700 tabular-nums">
+                    ${liveEarnings.currentTimer.toFixed(2)}
+                  </p>
+                </div>
+                <div className="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <ClockIcon className="h-5 w-5 text-green-600 animate-pulse" />
                 </div>
               </div>
-            )}
+            </div>
+          )}
         </div>
       </div>
 
