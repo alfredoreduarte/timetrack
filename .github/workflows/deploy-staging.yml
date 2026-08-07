@@ -31,8 +31,12 @@ jobs:
             DEPLOY_DIR=~/websites/timetrack-staging
 
             echo "=== Freeing disk space ==="
-            docker system prune -af --volumes --filter "until=24h" || true
-            # Filter mirrors the system prune above. Critical because staging
+            # Images only — never --volumes. The until= filter does NOT apply to
+            # volumes, so `system prune --volumes` can delete postgres_data if the
+            # DB container is briefly down during a deploy (data-loss footgun on a
+            # box whose only backup is a pg_dump to the same disk).
+            docker image prune -af --filter "until=24h" || true
+            # Filter mirrors the image prune above. Critical because staging
             # and prod share the same docker daemon / BuildKit instance on this
             # droplet — an unfiltered prune here wipes the cache mounts that
             # the prod deploy depends on (see deploy.yml).
@@ -106,8 +110,12 @@ jobs:
             DEPLOY_DIR=~/websites/timetrack-staging
 
             echo "=== Freeing disk space ==="
-            docker system prune -af --volumes --filter "until=24h" || true
-            # Filter mirrors the system prune above. Critical because staging
+            # Images only — never --volumes. The until= filter does NOT apply to
+            # volumes, so `system prune --volumes` can delete postgres_data if the
+            # DB container is briefly down during a deploy (data-loss footgun on a
+            # box whose only backup is a pg_dump to the same disk).
+            docker image prune -af --filter "until=24h" || true
+            # Filter mirrors the image prune above. Critical because staging
             # and prod share the same docker daemon / BuildKit instance on this
             # droplet — an unfiltered prune here wipes the cache mounts that
             # the prod deploy depends on (see deploy.yml).
