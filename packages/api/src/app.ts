@@ -25,6 +25,9 @@ import reportRoutes from "./routes/reports";
 import favoriteRoutes from "./routes/favorites";
 import apiKeyRoutes from "./routes/apiKeys";
 import timerRoutes from "./routes/timers";
+import agentEventRoutes from "./routes/agentEvents";
+import mcpRoutes from "./routes/mcp";
+import agentSessionRoutes from "./routes/agentSessions";
 
 // Load environment variables
 dotenv.config();
@@ -301,9 +304,26 @@ export function createApp() {
   ) => {
     // Different size limits based on endpoint - configurable via environment variables
     let sizeLimit = process.env.REQUEST_SIZE_DEFAULT || "1mb"; // Default limit
+    // Max count of objects/arrays in a body (cheap JSON-bomb guard).
+    let maxStructures = 20;
 
+    // Transcript import legitimately carries many sessions with many spans.
+    if (req.path.startsWith("/agent-sessions/import")) {
+      sizeLimit = process.env.REQUEST_SIZE_IMPORT || "5mb";
+      maxStructures = 20_000;
+    }
+    // Hook events are tiny; anything big is a misconfigured raw payload.
+    else if (req.path.startsWith("/agent-events")) {
+      sizeLimit = "64kb";
+      maxStructures = 200;
+    }
+    // MCP JSON-RPC: a handful of nested objects per call.
+    else if (req.path.startsWith("/mcp")) {
+      sizeLimit = "256kb";
+      maxStructures = 100;
+    }
     // Auth endpoints - smaller limit since they only need basic user data
-    if (req.path.startsWith("/auth/")) {
+    else if (req.path.startsWith("/auth/")) {
       sizeLimit = process.env.REQUEST_SIZE_AUTH || "50kb";
     }
     // Time entries and reports might need slightly more space
@@ -336,7 +356,7 @@ export function createApp() {
 
           // Detect potential JSON bombs or deeply nested objects
           const depth = (content.match(/\{|\[/g) || []).length;
-          if (depth > 20) {
+          if (depth > maxStructures) {
             const error = new Error("Request structure too complex");
             (error as any).statusCode = 413;
             throw error;
@@ -464,6 +484,9 @@ export function createApp() {
   app.use("/favorites", favoriteRoutes);
   app.use("/api-keys", apiKeyRoutes);
   app.use("/timers", timerRoutes);
+  app.use("/agent-events", agentEventRoutes);
+  app.use("/mcp", mcpRoutes);
+  app.use("/agent-sessions", agentSessionRoutes);
 
   // Socket.IO authentication middleware
   io.use(async (socket, next) => {

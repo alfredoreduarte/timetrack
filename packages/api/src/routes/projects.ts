@@ -5,6 +5,8 @@ import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, AuthenticatedRequest } from "../middleware/auth";
 import { contextFromRequest } from "../services/context";
 import { deleteProject } from "../services/deletions";
+import { createProject, listProjects, updateProject } from "../services/catalog";
+import { resolveProjectForRepo } from "../services/repos";
 
 const router = express.Router();
 
@@ -20,6 +22,7 @@ const createProjectSchema = z.object({
     .regex(/^#[0-9A-F]{6}$/i, "Invalid color format")
     .optional(),
   hourlyRate: z.number().nonnegative().optional(),
+  repoPatterns: z.array(z.string()).max(50).optional(),
 });
 
 const updateProjectSchema = z.object({
@@ -29,8 +32,14 @@ const updateProjectSchema = z.object({
     .string()
     .regex(/^#[0-9A-F]{6}$/i, "Invalid color format")
     .optional(),
-  hourlyRate: z.number().nonnegative().optional(),
+  hourlyRate: z.number().nonnegative().nullable().optional(),
   isActive: z.boolean().optional(),
+  repoPatterns: z.array(z.string()).max(50).optional(),
+});
+
+const resolveSchema = z.object({
+  gitRemote: z.string().max(500).nullable().optional(),
+  cwd: z.string().max(1000).nullable().optional(),
 });
 
 /**
@@ -80,38 +89,9 @@ router.get(
   "/",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { isActive } = req.query;
-
-    const where: any = {
-      userId: req.user!.id,
-    };
-
-    if (isActive !== undefined) {
-      where.isActive = isActive === "true";
-    }
-
-    const projects = await prisma.project.findMany({
-      where,
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        color: true,
-        hourlyRate: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: {
-            tasks: true,
-            timeEntries: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
+    const projects = await listProjects(contextFromRequest(req), {
+      isActive: isActive === undefined ? undefined : isActive === "true",
     });
-
     res.json({ projects });
   })
 );
@@ -152,38 +132,25 @@ router.get(
 router.post(
   "/",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { name, description, color, hourlyRate } = createProjectSchema.parse(
-      req.body
-    );
+    const input = createProjectSchema.parse(req.body);
+    const project = await createProject(contextFromRequest(req), input);
+    res.status(201).json({ message: "Project created successfully", project });
+  })
+);
 
-    const project = await prisma.project.create({
-      data: {
-        name,
-        description,
-        color: color || "#3B82F6",
-        hourlyRate,
-        userId: req.user!.id,
-      },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        color: true,
-        hourlyRate: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    // Emit real-time update
-    const io = req.app.get("io");
-    io.to(`user-${req.user!.id}`).emit("project-created", project);
-
-    res.status(201).json({
-      message: "Project created successfully",
-      project,
-    });
+/**
+ * @swagger
+ * /projects/resolve:
+ *   post:
+ *     summary: Find the project a repository belongs to (by git remote or path)
+ *     tags: [Projects]
+ */
+router.post(
+  "/resolve",
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const repo = resolveSchema.parse(req.body);
+    const match = await resolveProjectForRepo(prisma, req.user!.id, repo);
+    res.json({ project: match?.project ?? null, matchedPattern: match?.pattern ?? null });
   })
 );
 
@@ -223,6 +190,7 @@ router.get(
         description: true,
         color: true,
         hourlyRate: true,
+        repoPatterns: true,
         isActive: true,
         createdAt: true,
         updatedAt: true,
@@ -297,44 +265,9 @@ router.get(
 router.put(
   "/:id",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
-    const updateData = updateProjectSchema.parse(req.body);
-
-    // Check if project exists and belongs to user
-    const existingProject = await prisma.project.findFirst({
-      where: {
-        id,
-        userId: req.user!.id,
-      },
-    });
-
-    if (!existingProject) {
-      throw createError("Project not found", 404);
-    }
-
-    const project = await prisma.project.update({
-      where: { id },
-      data: updateData,
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        color: true,
-        hourlyRate: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    // Emit real-time update
-    const io = req.app.get("io");
-    io.to(`user-${req.user!.id}`).emit("project-updated", project);
-
-    res.json({
-      message: "Project updated successfully",
-      project,
-    });
+    const input = updateProjectSchema.parse(req.body);
+    const project = await updateProject(contextFromRequest(req), req.params.id, input);
+    res.json({ message: "Project updated successfully", project });
   })
 );
 

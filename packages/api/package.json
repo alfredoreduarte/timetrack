@@ -29,6 +29,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@prisma/client": "^5.22.0",
     "@timetrack/shared": "^1.0.0",
     "bcryptjs": "^2.4.3",

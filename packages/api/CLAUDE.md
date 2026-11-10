@@ -22,7 +22,16 @@
 - `/time-entries/*` — Entries/segments: legacy start/stop/current/running (routed through
   timers, shapes unchanged for native apps), CRUD incl. editing running entries, bulk update,
   per-entry audit history
-- `/projects/*`, `/tasks/*` — CRUD
+- `/agent-events` — Agent lifecycle ingestion (Claude Code / Cursor hook payloads or a
+  generic shape): session start → start/resume, any activity → heartbeat, session end →
+  stop. Whitelists fields; never stores prompts/tool payloads. `?format=claude-code` returns
+  hook output that tells the agent its timer id/project. Limits return 200 `not_tracked`
+- `/mcp` — Remote MCP server (Streamable HTTP, stateless, Bearer API key). Tools live in
+  `src/mcp/server.ts` and call the same services as REST
+- `/agent-sessions/import` — Backfill past agent sessions from activity spans (dry run supported)
+- `/projects/*`, `/tasks/*` — CRUD (`src/services/catalog.ts`); projects carry `repoPatterns`
+  (normalized git remotes or path prefixes) used to auto-assign agent timers;
+  `POST /projects/resolve`
 - `/reports/*` — Time and earnings analytics
 
 ## Key Files

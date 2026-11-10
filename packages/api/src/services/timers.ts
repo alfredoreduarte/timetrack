@@ -10,6 +10,7 @@ import { getHourlyRate } from "./rates";
 import { resolveProjectAndTask } from "./ownership";
 import { cleanText, DESCRIPTION_MAX } from "./text";
 import { assertCanRunTimer } from "./limits";
+import { learnRepoMapping, resolveProjectForRepo } from "./repos";
 
 /** How far ahead of server time a client clock may be before we reject. */
 export const FUTURE_SKEW_MS = 5 * 60 * 1000;
@@ -91,6 +92,8 @@ export interface TimerActionResult {
   /** False when the call was a no-op (already in the requested state). */
   changed: boolean;
   created?: boolean;
+  /** Set when the project was picked automatically from the repository. */
+  matchedRepoPattern?: string | null;
 }
 
 type PendingEvent = { event: string; payload: unknown };
@@ -413,10 +416,21 @@ export async function startTimer(
   let timerId: string;
   let entry: EntryView;
 
+  let matchedRepoPattern: string | null = null;
+
   try {
     ({ timerId, entry } = await prisma.$transaction(async (tx) => {
+      let requestedProjectId = input.projectId;
+      if (requestedProjectId === undefined && input.taskId === undefined && (gitRemote || cwd)) {
+        // No explicit assignment: use the project this repository is mapped to.
+        const match = await resolveProjectForRepo(tx, ctx.userId, { gitRemote, cwd });
+        if (match) {
+          requestedProjectId = match.project.id;
+          matchedRepoPattern = match.pattern;
+        }
+      }
       const ref = await resolveProjectAndTask(tx, ctx.userId, {
-        projectId: input.projectId,
+        projectId: requestedProjectId,
         taskId: input.taskId,
       });
       await assertCanRunTimer(tx, ctx, { isAiGenerated });
@@ -460,7 +474,7 @@ export async function startTimer(
 
   const timer = await loadTimerView(ctx, timerId);
   flush(ctx, [{ event: "timer-started", payload: timer }, ...events]);
-  return { timer, entry, changed: true, created: true };
+  return { timer, entry, changed: true, created: true, matchedRepoPattern };
 }
 
 export interface PauseOptions {
@@ -667,6 +681,11 @@ export interface UpdateTimerInput {
   taskId?: string | null;
   idleTimeoutSeconds?: number | null;
   isAiGenerated?: boolean;
+  /**
+   * When assigning a project to a timer whose repository no project claims
+   * yet, remember the mapping for future sessions (default true).
+   */
+  rememberRepo?: boolean;
 }
 
 /**
@@ -678,10 +697,13 @@ export async function updateTimer(
   ctx: ServiceContext,
   timerId: string,
   input: UpdateTimerInput
-): Promise<TimerActionResult & { entriesUpdated: number }> {
+): Promise<
+  TimerActionResult & { entriesUpdated: number; learnedRepoPattern: string | null }
+> {
   const description = cleanText(input.description, "description", DESCRIPTION_MAX);
   const idleTimeoutSeconds = cleanIdleTimeout(input.idleTimeoutSeconds);
   const events: PendingEvent[] = [];
+  let learnedRepoPattern: string | null = null;
 
   const { changed, entriesUpdated } = await prisma.$transaction(async (tx) => {
     const timer = await lockTimer(tx, ctx, timerId);
@@ -791,12 +813,24 @@ export async function updateTimer(
       action: "update",
       changes: timerChanges,
     });
+
+    if (
+      assignmentChanged &&
+      projectId &&
+      input.rememberRepo !== false &&
+      (timer.gitRemote || timer.cwd)
+    ) {
+      learnedRepoPattern = await learnRepoMapping(tx, ctx, projectId, {
+        gitRemote: timer.gitRemote,
+        cwd: timer.cwd,
+      });
+    }
     return { changed: true, entriesUpdated: touched };
   });
 
   const timer = await loadTimerView(ctx, timerId);
   if (changed) flush(ctx, [{ event: "timer-updated", payload: timer }, ...events]);
-  return { timer, entry: timer.currentEntry, changed, entriesUpdated };
+  return { timer, entry: timer.currentEntry, changed, entriesUpdated, learnedRepoPattern };
 }
 
 export async function addTimerNote(ctx: ServiceContext, timerId: string, body: string) {
