@@ -58,7 +58,8 @@ const passwordResetLimiter = rateLimit({
 // Store captcha sessions in memory (in production, use Redis or database)
 const captchaSessions = new Map<string, { text: string; expiresAt: number }>();
 
-// Clean up expired captcha sessions every 5 minutes
+// Clean up expired captcha sessions every 5 minutes. unref() so this timer
+// alone never keeps the process alive (tests, graceful shutdown).
 setInterval(() => {
   const now = Date.now();
   for (const [sessionId, session] of captchaSessions.entries()) {
@@ -66,7 +67,7 @@ setInterval(() => {
       captchaSessions.delete(sessionId);
     }
   }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 // Validation schemas
 const registerSchema = z.object({

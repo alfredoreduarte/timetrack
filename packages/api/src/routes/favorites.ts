@@ -1,6 +1,6 @@
 import express from "express";
 import { z } from "zod";
-import { prisma } from "../utils/database";
+import { prisma, TxClient } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, AuthenticatedRequest } from "../middleware/auth";
 
@@ -127,7 +127,7 @@ router.post(
     }
 
     // Use transaction for atomicity (count check + create)
-    const favorite = await prisma.$transaction(async (tx: typeof prisma) => {
+    const favorite = await prisma.$transaction(async (tx: TxClient) => {
       const count = await tx.favorite.count({
         where: { userId: req.user!.id },
       });
