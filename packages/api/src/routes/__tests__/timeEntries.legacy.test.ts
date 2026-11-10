@@ -13,6 +13,26 @@ import {
 beforeEach(resetDb);
 afterAll(disconnect);
 
+/**
+ * The fields the Swift Codable models (mac, iOS, watch: Models.swift /
+ * APIClient.swift) decode as NON-optional. If any is missing or mistyped the
+ * whole response fails to decode in the shipped apps.
+ */
+function expectNativeEntryShape(e: Record<string, any>) {
+  expect(e).toMatchObject({
+    id: expect.any(String),
+    startTime: expect.any(String),
+    isRunning: expect.any(Boolean),
+  });
+  if (e.project !== null && e.project !== undefined) {
+    expect(e.project).toMatchObject({ id: expect.any(String), name: expect.any(String) });
+    expect(e.project).toHaveProperty("color");
+  }
+  if (e.task !== null && e.task !== undefined) {
+    expect(e.task).toMatchObject({ id: expect.any(String), name: expect.any(String) });
+  }
+}
+
 describe("legacy time-entry endpoints", () => {
   it("starts a timer with the rate cascade task > project > user", async () => {
     const { user, auth } = await createUser({ defaultHourlyRate: 50 });
@@ -33,14 +53,31 @@ describe("legacy time-entry endpoints", () => {
       .set(auth)
       .send({ projectId: project.id, description: "Design review" });
     expect(withProject.body.timeEntry.hourlyRateSnapshot).toBe(80);
-    expect(withProject.body.timeEntry.project).toMatchObject({ id: project.id });
+    expect(withProject.body.timeEntry.project).toMatchObject({
+      id: project.id,
+      name: project.name,
+      color: project.color,
+    });
 
     const withTask = await api()
       .post("/time-entries/start")
       .set(auth)
       .send({ projectId: project.id, taskId: task.id });
     expect(withTask.body.timeEntry.hourlyRateSnapshot).toBe(120);
-    expect(withTask.body.timeEntry.task).toMatchObject({ id: task.id });
+    expect(withTask.body.timeEntry.task).toMatchObject({ id: task.id, name: task.name });
+    for (const r of [userOnly, withProject, withTask]) expectNativeEntryShape(r.body.timeEntry);
+
+    // /running, /current and the list must carry the same nested shape.
+    const running = await api().get("/time-entries/running").set(auth);
+    running.body.timeEntries.forEach(expectNativeEntryShape);
+    const withNested = running.body.timeEntries.find((e: any) => e.task);
+    expect(withNested.task).toMatchObject({ id: task.id, name: task.name });
+    expect(withNested.project).toMatchObject({ id: project.id, name: project.name });
+    const current = await api().get("/time-entries/current").set(auth);
+    expectNativeEntryShape(current.body.timeEntry);
+    const list = await api().get("/time-entries").set(auth);
+    list.body.entries.forEach(expectNativeEntryShape);
+    expect(list.body.entries.find((e: any) => e.task).task.name).toBe(task.name);
   });
 
   it("labels API-key entries as AI work and honours X-Client / X-AI-Generated", async () => {
@@ -100,6 +137,7 @@ describe("legacy time-entry endpoints", () => {
 
     const stopped = await api().post(`/time-entries/${id}/stop`).set(auth).send({ endTime });
     expect(stopped.status).toBe(200);
+    expectNativeEntryShape(stopped.body.timeEntry);
     expect(stopped.body.timeEntry).toMatchObject({ isRunning: false, duration: 90 });
 
     const again = await api().post(`/time-entries/${id}/stop`).set(auth).send({});
@@ -156,6 +194,7 @@ describe("legacy time-entry endpoints", () => {
 
     const byHours = await api().put(`/time-entries/${id}`).set(auth).send({ hours: 2 });
     expect(byHours.status).toBe(200);
+    expectNativeEntryShape(byHours.body.timeEntry);
     expect(byHours.body.timeEntry).toMatchObject({
       duration: 7200,
       endTime: "2026-01-10T11:00:00.000Z",
