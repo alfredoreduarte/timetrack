@@ -42,6 +42,11 @@ describe("remote MCP endpoint", () => {
       [
         "add_note",
         "bulk_update_entries",
+        "create_share_link",
+        "list_share_links",
+        "report_usage",
+        "revoke_share_link",
+        "timesheet",
         "create_entry",
         "create_project",
         "create_task",

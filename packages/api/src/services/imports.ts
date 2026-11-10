@@ -11,6 +11,7 @@ import { resolveProjectForRepo, repoLabel } from "./repos";
 import { cleanText } from "./text";
 import { cleanAgent, cleanSessionKey, cleanToken, FUTURE_SKEW_MS } from "./timers";
 import { agentLabel } from "./agentEvents";
+import { estimateCost } from "../billing/pricing";
 
 export const MAX_IMPORT_SESSIONS = 100;
 export const MAX_SPANS_PER_SESSION = 10_000;
@@ -220,6 +221,7 @@ async function importOne(
         // it goes quiet and pauses like any hook-tracked session.
         idleTimeoutSeconds,
         usage: (s.usage ?? undefined) as Prisma.InputJsonValue | undefined,
+        costUsd: s.usage ? estimateCost(s.usage).costUsd : null,
       };
       let timerId: string;
       if (existing) {

@@ -18,6 +18,11 @@ export const projectSelect = {
   hourlyRate: true,
   isActive: true,
   repoPatterns: true,
+  overlapMode: true,
+  aiMultiplier: true,
+  agentHourlyRate: true,
+  includeAiCosts: true,
+  aiCostMarkupPercent: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.ProjectSelect;
@@ -71,7 +76,48 @@ export interface ProjectInput {
   hourlyRate?: number | null;
   isActive?: boolean;
   repoPatterns?: string[];
+  // Billing policy (null = inherit from the user)
+  overlapMode?: "dedupe" | "sum" | null;
+  aiMultiplier?: number | null;
+  agentHourlyRate?: number | null;
+  includeAiCosts?: boolean;
+  aiCostMarkupPercent?: number;
 }
+
+const checkOverlap = (v: string | null | undefined) => {
+  if (v === undefined || v === null) return v;
+  if (v !== "dedupe" && v !== "sum") throw createError('overlapMode must be "dedupe" or "sum"', 400);
+  return v;
+};
+
+const checkRange = (v: number | null | undefined, field: string, min: number, max: number) => {
+  if (v === undefined || v === null) return v;
+  if (!Number.isFinite(v) || v < min || v > max) {
+    throw createError(`${field} must be between ${min} and ${max}`, 400);
+  }
+  return v;
+};
+
+/** Validated billing-policy fields present in the input. */
+type PolicyFields = {
+  overlapMode?: string | null;
+  aiMultiplier?: number | null;
+  agentHourlyRate?: number | null;
+  includeAiCosts?: boolean;
+  aiCostMarkupPercent?: number;
+};
+
+const policyData = (input: ProjectInput): PolicyFields => {
+  const data: PolicyFields = {};
+  if (input.overlapMode !== undefined) data.overlapMode = checkOverlap(input.overlapMode);
+  if (input.aiMultiplier !== undefined) data.aiMultiplier = checkRange(input.aiMultiplier, "aiMultiplier", 0, 20);
+  if (input.agentHourlyRate !== undefined) data.agentHourlyRate = checkRate(input.agentHourlyRate);
+  if (input.includeAiCosts !== undefined) data.includeAiCosts = input.includeAiCosts;
+  if (input.aiCostMarkupPercent !== undefined) {
+    data.aiCostMarkupPercent = checkRange(input.aiCostMarkupPercent, "aiCostMarkupPercent", 0, 100) ?? 0;
+  }
+  return data;
+};
 
 export async function createProject(ctx: ServiceContext, input: ProjectInput) {
   const project = await prisma.project.create({
@@ -82,6 +128,7 @@ export async function createProject(ctx: ServiceContext, input: ProjectInput) {
       color: checkColor(input.color) ?? "#3B82F6",
       hourlyRate: checkRate(input.hourlyRate) ?? null,
       repoPatterns: input.repoPatterns ? normalizeRepoPatterns(input.repoPatterns) : [],
+      ...policyData(input),
     },
     select: projectSelect,
   });
@@ -109,6 +156,7 @@ export async function updateProject(ctx: ServiceContext, id: string, input: Proj
   }
   if (input.isActive !== undefined) data.isActive = input.isActive;
   if (input.repoPatterns !== undefined) data.repoPatterns = normalizeRepoPatterns(input.repoPatterns);
+  Object.assign(data, policyData(input));
 
   const project = await prisma.project.update({ where: { id }, data, select: projectSelect });
   emitToUser(ctx.userId, "project-updated", project);

@@ -14,6 +14,7 @@ import {
   stopTimer,
   touchTimer,
   updateTimer,
+  recordTimerUsage,
 } from "../services/timers";
 
 const router = express.Router();
@@ -55,6 +56,21 @@ const listSchema = z.object({
 });
 
 const noteSchema = z.object({ body: z.string().min(1).max(4000) }).strict();
+
+const tokenCounts = z
+  .object({
+    inputTokens: z.number().int().nonnegative().optional(),
+    outputTokens: z.number().int().nonnegative().optional(),
+    cacheReadTokens: z.number().int().nonnegative().optional(),
+    cacheWriteTokens: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+const usageSchema = z
+  .object({
+    usage: z.record(z.string().min(1).max(100), tokenCounts),
+    mode: z.enum(["replace", "add"]).optional(),
+  })
+  .strict();
 
 /**
  * @swagger
@@ -164,6 +180,21 @@ router.post(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { body } = noteSchema.parse(req.body);
     res.status(201).json({ note: await addTimerNote(contextFromRequest(req), req.params.id, body) });
+  })
+);
+
+/**
+ * @swagger
+ * /timers/{id}/usage:
+ *   post:
+ *     summary: Report the agent's token usage per model (API-equivalent cost is computed)
+ *     tags: [Timers]
+ */
+router.post(
+  "/:id/usage",
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { usage, mode } = usageSchema.parse(req.body);
+    res.json(await recordTimerUsage(contextFromRequest(req), req.params.id, usage, mode));
   })
 );
 

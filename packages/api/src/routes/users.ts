@@ -91,6 +91,13 @@ const updateProfileSchema = z.object({
     .min(60, "Agent idle timeout must be at least 60 seconds")
     .max(86400, "Agent idle timeout cannot exceed 24 hours")
     .optional(),
+  // Default for projects: bill overlapping parallel timers once (dedupe)
+  // or per timer (sum).
+  overlapMode: z.enum(["dedupe", "sum"]).optional(),
+  currency: z
+    .string()
+    .regex(/^[A-Z]{3}$/, "Currency must be a 3-letter ISO code like USD or EUR")
+    .optional(),
 });
 
 const changePasswordSchema = z.object({
@@ -160,6 +167,8 @@ router.put(
         idleTimeoutSeconds: true,
         aiMultiplier: true,
         agentIdleTimeoutSeconds: true,
+        overlapMode: true,
+        currency: true,
         createdAt: true,
         updatedAt: true,
       },
