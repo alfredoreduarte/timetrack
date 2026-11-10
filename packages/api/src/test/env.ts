@@ -10,10 +10,12 @@ process.env.JWT_SECRET = "test-jwt-secret";
 process.env.NODE_ENV = "test";
 process.env.DISABLE_RATE_LIMIT = "true";
 
-if (!/test/i.test(new URL(process.env.DATABASE_URL).pathname)) {
+const dbUrl = new URL(process.env.DATABASE_URL);
+if (!/test/i.test(dbUrl.pathname)) {
   // Tests TRUNCATE every table. Refuse to point them at anything that
-  // doesn't look like a dedicated test database.
+  // doesn't look like a dedicated test database. (Host + db only — never
+  // print credentials.)
   throw new Error(
-    `Refusing to run tests against non-test database: ${process.env.DATABASE_URL}`
+    `Refusing to run tests against non-test database: ${dbUrl.host}${dbUrl.pathname}`
   );
 }
