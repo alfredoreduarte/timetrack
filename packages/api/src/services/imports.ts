@@ -12,6 +12,7 @@ import { cleanText } from "./text";
 import { cleanAgent, cleanSessionKey, cleanToken, FUTURE_SKEW_MS } from "./timers";
 import { agentLabel } from "./agentEvents";
 import { estimateCost } from "../billing/pricing";
+import { getEntitlements, historyFloor } from "./entitlements";
 
 export const MAX_IMPORT_SESSIONS = 100;
 export const MAX_SPANS_PER_SESSION = 10_000;
@@ -286,6 +287,9 @@ export async function importAgentSessions(
   });
   const gapSeconds = opts.gapSeconds ?? user.agentIdleTimeoutSeconds;
   const now = ctx.now();
+  // Free plan: only the most recent days are imported.
+  const entitlements = await getEntitlements(ctx.userId, prisma, now);
+  const floor = historyFloor(entitlements, now);
   const results: ImportSessionResult[] = [];
 
   for (const s of sessions) {
@@ -316,6 +320,11 @@ export async function importAgentSessions(
       continue;
     }
 
+    if (floor) {
+      spans = spans
+        .filter(([, b]) => b > floor)
+        .map(([a, b]) => [a < floor ? floor : a, b] as Span);
+    }
     const segments = segmentSpans(spans, gapSeconds);
     if (segments.length === 0) {
       results.push({ ...base, sessionKey, status: "empty" });
@@ -359,5 +368,11 @@ export async function importAgentSessions(
   if (!opts.dryRun && counted.length > 0) {
     emitToUser(ctx.userId, "timers-imported", { sessions: counted.length });
   }
-  return { dryRun: Boolean(opts.dryRun), gapSeconds, totals, sessions: results };
+  return {
+    dryRun: Boolean(opts.dryRun),
+    gapSeconds,
+    limitedByPlan: floor ? { historyDays: entitlements.limits.historyDays, since: floor.toISOString() } : null,
+    totals,
+    sessions: results,
+  };
 }
