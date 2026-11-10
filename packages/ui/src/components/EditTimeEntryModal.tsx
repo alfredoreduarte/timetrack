@@ -4,6 +4,13 @@ import { TimeEntry } from "../store/slices/timeEntriesSlice";
 import { Project, Task } from "../store/slices/projectsSlice";
 import api from "../services/api";
 
+// Date/time inputs are in the viewer's local time. Build both from local
+// parts — mixing toISOString() (UTC date) with local hours shifted evening
+// entries by a day.
+const pad = (n: number) => String(n).padStart(2, "0");
+const localDateInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const localTimeInput = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
 interface EditTimeEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -32,6 +39,11 @@ const EditTimeEntryModal: React.FC<EditTimeEntryModalProps> = ({
   const [useHours, setUseHours] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // What the inputs showed when the modal opened: times are only sent if the
+  // user changed them, so an edit to the description never rewrites (and
+  // truncates the seconds of) the start/end.
+  const [initialStart, setInitialStart] = useState({ date: "", time: "" });
+  const [initialEnd, setInitialEnd] = useState({ date: "", time: "" });
 
   // Filter tasks based on selected project
   const filteredTasks = taskId
@@ -41,13 +53,17 @@ const EditTimeEntryModal: React.FC<EditTimeEntryModalProps> = ({
   useEffect(() => {
     if (entry.startTime) {
       const start = new Date(entry.startTime);
-      setStartDate(start.toISOString().split("T")[0]);
-      setStartTime(start.toTimeString().slice(0, 5));
+      const initial = { date: localDateInput(start), time: localTimeInput(start) };
+      setStartDate(initial.date);
+      setStartTime(initial.time);
+      setInitialStart(initial);
     }
     if (entry.endTime) {
       const end = new Date(entry.endTime);
-      setEndDate(end.toISOString().split("T")[0]);
-      setEndTime(end.toTimeString().slice(0, 5));
+      const initial = { date: localDateInput(end), time: localTimeInput(end) };
+      setEndDate(initial.date);
+      setEndTime(initial.time);
+      setInitialEnd(initial);
 
       // Calculate hours
       if (entry.duration) {
@@ -69,16 +85,19 @@ const EditTimeEntryModal: React.FC<EditTimeEntryModalProps> = ({
         taskId: taskId || null,
       };
 
-      // Handle time updates
-      if (startDate && startTime) {
+      // Handle time updates — only the fields the user actually changed.
+      const startEdited = startDate !== initialStart.date || startTime !== initialStart.time;
+      if (startDate && startTime && startEdited) {
         const startDateTime = new Date(`${startDate}T${startTime}`);
         updateData.startTime = startDateTime.toISOString();
       }
 
-      if (useHours && hours) {
+      const endEdited = endDate !== initialEnd.date || endTime !== initialEnd.time;
+      const originalHours = entry.duration ? (entry.duration / 3600).toFixed(2) : "";
+      if (useHours && hours && hours !== originalHours) {
         // Use hours to calculate end time
         updateData.hours = parseFloat(hours);
-      } else if (endDate && endTime) {
+      } else if (!useHours && endDate && endTime && endEdited) {
         // Use explicit end time
         const endDateTime = new Date(`${endDate}T${endTime}`);
         updateData.endTime = endDateTime.toISOString();
