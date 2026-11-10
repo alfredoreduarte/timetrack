@@ -95,3 +95,35 @@ export async function createTask(
 }
 
 export const disconnect = () => prisma.$disconnect();
+
+/** A controllable clock for service-level tests. */
+export function testClock(startIso = "2026-03-02T09:00:00.000Z") {
+  let t = new Date(startIso).getTime();
+  return {
+    now: () => new Date(t),
+    set: (iso: string) => {
+      t = new Date(iso).getTime();
+    },
+    advance: (ms: number) => {
+      t += ms;
+    },
+  };
+}
+
+export function serviceCtx(
+  userId: string,
+  overrides: Partial<import("../services/context").ServiceContext> = {}
+): import("../services/context").ServiceContext {
+  return {
+    userId,
+    actorType: "api_key",
+    actorId: "test-key",
+    actorLabel: "Test agent",
+    via: "mcp",
+    aiDefault: true,
+    now: () => new Date(),
+    ...overrides,
+  };
+}
+
+export const MIN = 60_000;

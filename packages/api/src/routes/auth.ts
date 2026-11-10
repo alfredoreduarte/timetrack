@@ -297,6 +297,7 @@ router.post(
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
         aiMultiplier: true,
+        agentIdleTimeoutSeconds: true,
         createdAt: true,
       },
     });
@@ -457,6 +458,7 @@ router.get(
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
         aiMultiplier: true,
+        agentIdleTimeoutSeconds: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -671,6 +673,7 @@ router.post(
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
         aiMultiplier: true,
+        agentIdleTimeoutSeconds: true,
       },
     });
 

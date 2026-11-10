@@ -20,6 +20,8 @@ model User {
   defaultHourlyRate Float?
   idleTimeoutSeconds Int? @default(600) @map("idle_timeout_seconds")
   aiMultiplier Float? @default(3.0) @map("ai_multiplier")
+  // Agent timers fed by heartbeats (hooks) pause after this much silence.
+  agentIdleTimeoutSeconds Int @default(900) @map("agent_idle_timeout_seconds")
   passwordResetToken    String?
   passwordResetExpiresAt DateTime?
 
@@ -30,6 +32,8 @@ model User {
   apiKeys      ApiKey[]
   favorites    Favorite[]
   auditEvents  AuditEvent[]
+  timers       Timer[]
+  timerNotes   TimerNote[]
 
   @@map("users")
   @@index([email])
@@ -52,6 +56,7 @@ model Project {
   tasks       Task[]
   timeEntries TimeEntry[]
   favorites   Favorite[]
+  timers      Timer[]
 
   @@map("projects")
   @@index([userId])
@@ -74,6 +79,7 @@ model Task {
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   timeEntries TimeEntry[]
   favorites   Favorite[]
+  timers      Timer[]
 
   @@map("tasks")
   @@index([projectId])
@@ -93,6 +99,8 @@ model TimeEntry {
   hourlyRateSnapshot  Float?    // Snapshot of hourly rate at time of creation
   createdVia          String    @default("web") @map("created_via")
   isAiGenerated       Boolean   @default(false) @map("is_ai_generated")
+  // Why the segment ended: manual | paused | idle | stopped | session_end | import
+  stopReason          String?   @map("stop_reason")
 
   // Relations
   userId    String
@@ -101,6 +109,9 @@ model TimeEntry {
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   taskId    String?
   task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  // The pausable timer this entry is a segment of (null for pre-timer entries).
+  timerId   String?  @map("timer_id")
+  timer     Timer?   @relation(fields: [timerId], references: [id], onDelete: SetNull)
 
   @@map("time_entries")
   @@index([userId])
@@ -109,6 +120,65 @@ model TimeEntry {
   @@index([userId, isAiGenerated])
   @@index([projectId])
   @@index([taskId])
+  @@index([timerId])
+}
+
+// A unit of work that can be paused and resumed — typically one AI agent
+// session (keyed by its sessionKey) or one human task. Each running stretch is
+// a TimeEntry segment; a running timer has exactly one running entry.
+model Timer {
+  id                 String    @id @default(cuid())
+  status             String    @default("running") // running | paused | stopped
+  description        String?
+  // Client-supplied idempotency key, e.g. a Claude Code session_id.
+  sessionKey         String?   @map("session_key")
+  agent              String? // claude_code | cursor | codex | human | ...
+  createdVia         String    @default("web") @map("created_via")
+  isAiGenerated      Boolean   @default(false) @map("is_ai_generated")
+  cwd                String?
+  gitRemote          String?   @map("git_remote") // normalized, credential-free
+  gitBranch          String?   @map("git_branch")
+  // null = never auto-pause (no reliable heartbeats for this timer)
+  idleTimeoutSeconds Int?      @map("idle_timeout_seconds")
+  lastActivityAt     DateTime  @default(now()) @map("last_activity_at")
+  pauseReason        String?   @map("pause_reason") // manual | idle
+  startedAt          DateTime  @default(now()) @map("started_at")
+  stoppedAt          DateTime? @map("stopped_at")
+  usage              Json? // per-model token counts reported by the agent
+  costUsd            Float?    @map("cost_usd")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String?  @map("project_id")
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  taskId    String?  @map("task_id")
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  entries   TimeEntry[]
+  notes     TimerNote[]
+
+  @@unique([userId, sessionKey])
+  @@index([userId, status])
+  @@index([status, lastActivityAt])
+  @@map("timers")
+}
+
+// Work-log lines attached to a timer ("refactored auth middleware").
+model TimerNote {
+  id        String   @id @default(cuid())
+  body      String
+  via       String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  timerId String @map("timer_id")
+  timer   Timer  @relation(fields: [timerId], references: [id], onDelete: Cascade)
+  userId  String @map("user_id")
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([timerId, createdAt])
+  @@index([userId, createdAt])
+  @@map("timer_notes")
 }
 
 model ApiKey {
