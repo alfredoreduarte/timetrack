@@ -5,6 +5,7 @@ import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, AuthenticatedRequest } from "../middleware/auth";
 import { contextFromRequest } from "../services/context";
 import { deleteTask } from "../services/deletions";
+import { createTask, listTasks, updateTask } from "../services/catalog";
 
 const router = express.Router();
 
@@ -53,47 +54,10 @@ router.get(
   "/",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { projectId, isCompleted } = req.query;
-
-    const where: any = {
-      userId: req.user!.id,
-    };
-
-    if (projectId) {
-      where.projectId = projectId;
-    }
-
-    if (isCompleted !== undefined) {
-      where.isCompleted = isCompleted === "true";
-    }
-
-    const tasks = await prisma.task.findMany({
-      where,
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        isCompleted: true,
-        hourlyRate: true,
-        createdAt: true,
-        updatedAt: true,
-        project: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-          },
-        },
-        _count: {
-          select: {
-            timeEntries: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
+    const tasks = await listTasks(contextFromRequest(req), {
+      projectId: typeof projectId === "string" && projectId ? projectId : undefined,
+      isCompleted: isCompleted === undefined ? undefined : isCompleted === "true",
     });
-
     res.json({ tasks });
   })
 );
@@ -132,56 +96,9 @@ router.get(
 router.post(
   "/",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { name, description, projectId, hourlyRate } = createTaskSchema.parse(
-      req.body
-    );
-
-    // Verify project belongs to user
-    const project = await prisma.project.findFirst({
-      where: {
-        id: projectId,
-        userId: req.user!.id,
-      },
-    });
-
-    if (!project) {
-      throw createError("Project not found", 404);
-    }
-
-    const task = await prisma.task.create({
-      data: {
-        name,
-        description,
-        projectId,
-        hourlyRate,
-        userId: req.user!.id,
-      },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        isCompleted: true,
-        hourlyRate: true,
-        createdAt: true,
-        updatedAt: true,
-        project: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-          },
-        },
-      },
-    });
-
-    // Emit real-time update
-    const io = req.app.get("io");
-    io.to(`user-${req.user!.id}`).emit("task-created", task);
-
-    res.status(201).json({
-      message: "Task created successfully",
-      task,
-    });
+    const input = createTaskSchema.parse(req.body);
+    const task = await createTask(contextFromRequest(req), input);
+    res.status(201).json({ message: "Task created successfully", task });
   })
 );
 
@@ -295,50 +212,9 @@ router.get(
 router.put(
   "/:id",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
-    const updateData = updateTaskSchema.parse(req.body);
-
-    // Check if task exists and belongs to user
-    const existingTask = await prisma.task.findFirst({
-      where: {
-        id,
-        userId: req.user!.id,
-      },
-    });
-
-    if (!existingTask) {
-      throw createError("Task not found", 404);
-    }
-
-    const task = await prisma.task.update({
-      where: { id },
-      data: updateData,
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        isCompleted: true,
-        hourlyRate: true,
-        createdAt: true,
-        updatedAt: true,
-        project: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-          },
-        },
-      },
-    });
-
-    // Emit real-time update
-    const io = req.app.get("io");
-    io.to(`user-${req.user!.id}`).emit("task-updated", task);
-
-    res.json({
-      message: "Task updated successfully",
-      task,
-    });
+    const input = updateTaskSchema.parse(req.body);
+    const task = await updateTask(contextFromRequest(req), req.params.id, input);
+    res.json({ message: "Task updated successfully", task });
   })
 );
 

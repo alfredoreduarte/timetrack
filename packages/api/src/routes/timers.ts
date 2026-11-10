@@ -45,6 +45,7 @@ const updateSchema = z
     taskId: z.string().nullable().optional(),
     idleTimeoutSeconds: z.number().int().nullable().optional(),
     isAiGenerated: z.boolean().optional(),
+    rememberRepo: z.boolean().optional(),
   })
   .strict();
 

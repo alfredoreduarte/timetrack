@@ -49,6 +49,10 @@ model Project {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   hourlyRate  Float?
+  // Repositories that belong to this project: normalized git remotes
+  // (github.com/acme/web) or absolute path prefixes. Agent timers started in
+  // a matching repo are assigned to this project automatically.
+  repoPatterns String[] @default([]) @map("repo_patterns")
 
   // Relations
   userId      String

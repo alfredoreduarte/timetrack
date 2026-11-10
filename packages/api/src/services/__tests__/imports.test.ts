@@ -1,0 +1,102 @@
+import { prisma } from "../../utils/database";
+import { segmentSpans, Span } from "../imports";
+import { api, resetDb, createUser, createProject, disconnect } from "../../test/helpers";
+
+const t = (min: number) => new Date(Date.UTC(2026, 2, 2, 9, 0, 0) + min * 60_000);
+const iso = (min: number) => t(min).toISOString();
+
+describe("segmentSpans", () => {
+  it("merges spans separated by less than the gap and drops empty segments", () => {
+    const spans: Span[] = [
+      [t(0), t(1)],
+      [t(3), t(5)], // 2 min gap -> same segment
+      [t(40), t(40)], // isolated point -> zero length -> dropped
+      [t(70), t(71)],
+      [t(72), t(80)],
+    ];
+    const segs = segmentSpans(spans, 600);
+    expect(segs.map(([a, b]) => [a.toISOString(), b.toISOString()])).toEqual([
+      [iso(0), iso(5)],
+      [iso(70), iso(80)],
+    ]);
+  });
+
+  it("handles unsorted and overlapping input", () => {
+    const segs = segmentSpans([[t(10), t(20)], [t(0), t(15)], [t(12), t(13)]], 60);
+    expect(segs).toEqual([[t(0), t(20)]]);
+  });
+});
+
+describe("POST /agent-sessions/import", () => {
+  beforeEach(resetDb);
+  afterAll(disconnect);
+
+  const session = (key: string, extra: Record<string, unknown> = {}) => ({
+    sessionKey: key,
+    agent: "claude_code",
+    gitRemote: "git@github.com:acme/web.git",
+    gitBranch: "main",
+    spans: [
+      [iso(0), iso(20)],
+      [iso(25), iso(30)],
+      [iso(120), iso(150)],
+    ],
+    ...extra,
+  });
+
+  it("previews with dryRun, then imports mapped sessions as stopped timers", async () => {
+    const { user, auth } = await createUser({ agentIdleTimeoutSeconds: 900 });
+    const acme = await createProject(user.id, { name: "Acme", hourlyRate: 100, repoPatterns: ["github.com/acme/web"] });
+
+    const preview = await api()
+      .post("/agent-sessions/import")
+      .set(auth)
+      .send({ dryRun: true, sessions: [session("s1"), session("s2", { gitRemote: null, cwd: "/tmp/other" })] });
+    expect(preview.status).toBe(200);
+    expect(preview.body.totals).toMatchObject({ sessions: 2, trackedSeconds: 2 * 60 * 60, unassignedSeconds: 60 * 60 });
+    expect(await prisma.timer.count()).toBe(0);
+
+    const real = await api().post("/agent-sessions/import").set(auth).send({ sessions: [session("s1")] });
+    expect(real.body.sessions[0]).toMatchObject({ status: "imported", segments: 2, trackedSeconds: 3600 });
+    const timer = await prisma.timer.findFirstOrThrow({ where: { sessionKey: "s1" } });
+    expect(timer).toMatchObject({ status: "stopped", createdVia: "import", isAiGenerated: true, projectId: acme.id });
+    const entries = await prisma.timeEntry.findMany({ where: { timerId: timer.id }, orderBy: { startTime: "asc" } });
+    expect(entries.map((e) => e.duration)).toEqual([30 * 60, 30 * 60]);
+    expect(entries.every((e) => e.hourlyRateSnapshot === 100 && e.stopReason === "import")).toBe(true);
+  });
+
+  it("re-imports idempotently and never touches live-tracked sessions", async () => {
+    const { user, auth } = await createUser();
+    await api().post("/agent-sessions/import").set(auth).send({ sessions: [session("s1")] });
+    const longer = session("s1", { spans: [[iso(0), iso(60)]] });
+    const again = await api().post("/agent-sessions/import").set(auth).send({ sessions: [longer] });
+    expect(again.body.sessions[0].status).toBe("replaced");
+    expect(await prisma.timer.count()).toBe(1);
+    expect(await prisma.timeEntry.count()).toBe(1);
+
+    await api().post("/timers").set(auth).send({ sessionKey: "live-1" });
+    const live = await api().post("/agent-sessions/import").set(auth).send({ sessions: [session("live-1")] });
+    expect(live.body.sessions[0].status).toBe("skipped_live");
+    expect(await prisma.timeEntry.count({ where: { timer: { sessionKey: "live-1" } } })).toBe(1);
+    expect(user.id).toBeTruthy();
+  });
+
+  it("rejects future timestamps per session without failing the batch", async () => {
+    const { auth } = await createUser();
+    const future = new Date(Date.now() + 3600_000).toISOString();
+    const res = await api()
+      .post("/agent-sessions/import")
+      .set(auth)
+      .send({ sessions: [session("ok"), session("bad", { spans: [[iso(0), future]] })] });
+    expect(res.status).toBe(200);
+    expect(res.body.sessions.map((s: { status: string }) => s.status)).toEqual(["imported", "invalid"]);
+  });
+
+  it("accepts large payloads that the generic JSON guard would reject", async () => {
+    const { auth } = await createUser();
+    const spans = Array.from({ length: 2000 }, (_, i) => [iso(i), iso(i)]);
+    const res = await api().post("/agent-sessions/import").set(auth).send({ sessions: [session("big", { spans })] });
+    expect(res.status).toBe(200);
+    expect(res.body.sessions[0].status).toBe("imported");
+  });
+});
