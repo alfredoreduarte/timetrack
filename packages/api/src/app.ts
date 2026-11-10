@@ -28,6 +28,7 @@ import timerRoutes from "./routes/timers";
 import agentEventRoutes from "./routes/agentEvents";
 import mcpRoutes from "./routes/mcp";
 import agentSessionRoutes from "./routes/agentSessions";
+import { shareLinksRouter, publicRouter } from "./routes/shareLinks";
 
 // Load environment variables
 dotenv.config();
@@ -492,6 +493,8 @@ export function createApp() {
   app.use("/agent-events", agentEventRoutes);
   app.use("/mcp", mcpRoutes);
   app.use("/agent-sessions", agentSessionRoutes);
+  app.use("/share-links", shareLinksRouter);
+  app.use("/public", publicRouter);
 
   // Socket.IO authentication middleware
   io.use(async (socket, next) => {

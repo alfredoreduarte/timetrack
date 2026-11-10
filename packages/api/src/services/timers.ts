@@ -11,6 +11,7 @@ import { resolveProjectAndTask } from "./ownership";
 import { cleanText, DESCRIPTION_MAX } from "./text";
 import { assertCanRunTimer } from "./limits";
 import { learnRepoMapping, resolveProjectForRepo } from "./repos";
+import { estimateCost, TokenCounts } from "../billing/pricing";
 
 /** How far ahead of server time a client clock may be before we reject. */
 export const FUTURE_SKEW_MS = 5 * 60 * 1000;
@@ -866,6 +867,64 @@ export async function addTimerNote(ctx: ServiceContext, timerId: string, body: s
   if (timer.status === "running") await touchTimer(ctx, timerId, {});
   emitToUser(ctx.userId, "timer-note-added", note);
   return note;
+}
+
+const TOKEN_FIELDS = ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"] as const;
+const MAX_MODELS_PER_TIMER = 20;
+
+/**
+ * Records an agent's token usage on its timer and recomputes the
+ * API-equivalent cost. `replace` sets the totals (idempotent — preferred
+ * when the client knows cumulative usage); `add` increments them.
+ */
+export async function recordTimerUsage(
+  ctx: ServiceContext,
+  timerId: string,
+  usage: Record<string, TokenCounts>,
+  mode: "replace" | "add" = "replace"
+) {
+  const models = Object.keys(usage);
+  if (models.length === 0) throw createError("usage cannot be empty", 400);
+  if (models.length > MAX_MODELS_PER_TIMER) throw createError(`At most ${MAX_MODELS_PER_TIMER} models per timer`, 400);
+  for (const [model, counts] of Object.entries(usage)) {
+    if (!model || model.length > 100) throw createError("Invalid model name", 400);
+    for (const f of TOKEN_FIELDS) {
+      const v = counts[f];
+      if (v !== undefined && (!Number.isInteger(v) || v < 0 || v > 1e12)) {
+        throw createError(`${f} must be a non-negative integer`, 400);
+      }
+    }
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const timer = await lockTimer(tx, ctx, timerId);
+    const current = (timer.usage ?? {}) as Record<string, TokenCounts>;
+    // Models not mentioned keep their totals in either mode.
+    const next: Record<string, TokenCounts> = { ...current };
+    for (const [model, counts] of Object.entries(usage)) {
+      const base = mode === "add" ? next[model] ?? {} : {};
+      const merged: TokenCounts = {};
+      for (const f of TOKEN_FIELDS) merged[f] = (base[f] ?? 0) + (counts[f] ?? 0);
+      next[model] = merged;
+    }
+    if (Object.keys(next).length > MAX_MODELS_PER_TIMER) {
+      throw createError(`At most ${MAX_MODELS_PER_TIMER} models per timer`, 400);
+    }
+    const { costUsd, unpricedModels } = estimateCost(next);
+    await tx.timer.update({
+      where: { id: timer.id },
+      data: { usage: next as Prisma.InputJsonValue, costUsd },
+    });
+    await recordAudit(tx, ctx, {
+      entityType: "timer",
+      entityId: timer.id,
+      action: "usage",
+      changes: { costUsd: { from: timer.costUsd, to: costUsd } },
+    });
+    return { costUsd, unpricedModels, usage: next };
+  });
+  emitToUser(ctx.userId, "timer-updated", { id: timerId });
+  return result;
 }
 
 // ---------------------------------------------------------------------------

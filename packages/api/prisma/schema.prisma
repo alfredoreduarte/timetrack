@@ -19,7 +19,11 @@ model User {
   updatedAt         DateTime    @updatedAt
   defaultHourlyRate Float?
   idleTimeoutSeconds Int? @default(600) @map("idle_timeout_seconds")
-  aiMultiplier Float? @default(3.0) @map("ai_multiplier")
+  // New users bill AI time at their normal rate; existing users keep theirs.
+  aiMultiplier Float? @default(1.0) @map("ai_multiplier")
+  // How parallel timers on one project are billed: dedupe | sum
+  overlapMode  String @default("dedupe") @map("overlap_mode")
+  currency     String @default("USD")
   // Agent timers fed by heartbeats (hooks) pause after this much silence.
   agentIdleTimeoutSeconds Int @default(900) @map("agent_idle_timeout_seconds")
   passwordResetToken    String?
@@ -34,6 +38,7 @@ model User {
   auditEvents  AuditEvent[]
   timers       Timer[]
   timerNotes   TimerNote[]
+  shareLinks   ShareLink[]
 
   @@map("users")
   @@index([email])
@@ -53,6 +58,14 @@ model Project {
   // (github.com/acme/web) or absolute path prefixes. Agent timers started in
   // a matching repo are assigned to this project automatically.
   repoPatterns String[] @default([]) @map("repo_patterns")
+  // Billing policy overrides (null = inherit the user's setting).
+  overlapMode         String? @map("overlap_mode")
+  aiMultiplier        Float?  @map("ai_multiplier")
+  // Flat hourly rate for AI-assisted time; overrides rate x multiplier.
+  agentHourlyRate     Float?  @map("agent_hourly_rate")
+  // Pass agents' API-equivalent token cost through to the client.
+  includeAiCosts      Boolean @default(false) @map("include_ai_costs")
+  aiCostMarkupPercent Float   @default(0) @map("ai_cost_markup_percent")
 
   // Relations
   userId      String
@@ -61,6 +74,7 @@ model Project {
   timeEntries TimeEntry[]
   favorites   Favorite[]
   timers      Timer[]
+  shareLinks  ShareLink[]
 
   @@map("projects")
   @@index([userId])
@@ -247,4 +261,33 @@ model AuditEvent {
   @@map("audit_events")
   @@index([userId, entityType, entityId])
   @@index([userId, createdAt])
+}
+
+// Read-only timesheet link a developer sends to a client. The token is
+// shown once; only its SHA-256 hash is stored.
+model ShareLink {
+  id           String    @id @default(cuid())
+  name         String?
+  tokenHash    String    @unique @map("token_hash")
+  tokenPrefix  String    @map("token_prefix")
+  // Fixed range, or a rolling window ending now (e.g. last 30 days).
+  startDate    DateTime? @map("start_date")
+  endDate      DateTime? @map("end_date")
+  rollingDays  Int?      @map("rolling_days")
+  timezone     String    @default("UTC")
+  showAmounts  Boolean   @default(true) @map("show_amounts")
+  showNotes    Boolean   @default(true) @map("show_notes")
+  expiresAt    DateTime? @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  lastViewedAt DateTime? @map("last_viewed_at")
+  viewCount    Int       @default(0) @map("view_count")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String?  @map("project_id")
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("share_links")
 }

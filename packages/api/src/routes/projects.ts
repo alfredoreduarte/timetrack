@@ -23,6 +23,11 @@ const createProjectSchema = z.object({
     .optional(),
   hourlyRate: z.number().nonnegative().optional(),
   repoPatterns: z.array(z.string()).max(50).optional(),
+  overlapMode: z.enum(["dedupe", "sum"]).nullable().optional(),
+  aiMultiplier: z.number().min(0).max(20).nullable().optional(),
+  agentHourlyRate: z.number().nonnegative().nullable().optional(),
+  includeAiCosts: z.boolean().optional(),
+  aiCostMarkupPercent: z.number().min(0).max(100).optional(),
 });
 
 const updateProjectSchema = z.object({
@@ -35,6 +40,11 @@ const updateProjectSchema = z.object({
   hourlyRate: z.number().nonnegative().nullable().optional(),
   isActive: z.boolean().optional(),
   repoPatterns: z.array(z.string()).max(50).optional(),
+  overlapMode: z.enum(["dedupe", "sum"]).nullable().optional(),
+  aiMultiplier: z.number().min(0).max(20).nullable().optional(),
+  agentHourlyRate: z.number().nonnegative().nullable().optional(),
+  includeAiCosts: z.boolean().optional(),
+  aiCostMarkupPercent: z.number().min(0).max(100).optional(),
 });
 
 const resolveSchema = z.object({

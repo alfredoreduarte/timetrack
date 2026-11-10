@@ -298,6 +298,8 @@ router.post(
         idleTimeoutSeconds: true,
         aiMultiplier: true,
         agentIdleTimeoutSeconds: true,
+        overlapMode: true,
+        currency: true,
         createdAt: true,
       },
     });
@@ -459,6 +461,8 @@ router.get(
         idleTimeoutSeconds: true,
         aiMultiplier: true,
         agentIdleTimeoutSeconds: true,
+        overlapMode: true,
+        currency: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -674,6 +678,8 @@ router.post(
         idleTimeoutSeconds: true,
         aiMultiplier: true,
         agentIdleTimeoutSeconds: true,
+        overlapMode: true,
+        currency: true,
       },
     });
 

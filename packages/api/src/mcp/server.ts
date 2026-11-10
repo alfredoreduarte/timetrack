@@ -23,6 +23,10 @@ import {
   listEntries,
   updateEntry,
 } from "../services/entries";
+import { buildTimesheet } from "../services/timesheets";
+import { timesheetToMarkdown } from "../billing/render";
+import { createShareLink, listShareLinks, revokeShareLink } from "../services/shareLinks";
+import { recordTimerUsage } from "../services/timers";
 import {
   createProject,
   createTask,
@@ -60,9 +64,9 @@ const fail = (message: string): ToolResult => ({
  * Runs a tool body, turning service errors into MCP tool errors. Anything
  * unexpected is logged and reported generically — never with internals.
  */
-const run = async (fn: () => Promise<unknown>): Promise<ToolResult> => {
+const guard = async (fn: () => Promise<ToolResult>): Promise<ToolResult> => {
   try {
-    return ok(await fn());
+    return await fn();
   } catch (e) {
     const err = e as AppError;
     if (err && typeof err.statusCode === "number" && err.statusCode < 500) return fail(err.message);
@@ -71,6 +75,9 @@ const run = async (fn: () => Promise<unknown>): Promise<ToolResult> => {
     return fail("Internal error; the change was not made. Try again, or report it if it keeps happening.");
   }
 };
+
+/** Same as guard, for tools that return JSON data. */
+const run = (fn: () => Promise<unknown>): Promise<ToolResult> => guard(async () => ok(await fn()));
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
 const iso = z
@@ -203,7 +210,7 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
   register(
     "update_project",
     {
-      description: "Update a project. repoPatterns replaces the whole list; addRepoPattern appends one.",
+      description: "Update a project, including its billing policy. repoPatterns replaces the whole list; addRepoPattern appends one.",
       inputSchema: {
         projectId: id("Project"),
         name: z.string().optional(),
@@ -212,6 +219,11 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
         isActive: z.boolean().optional(),
         repoPatterns: z.array(z.string()).max(50).optional(),
         addRepoPattern: z.string().optional(),
+        overlapMode: z.enum(["dedupe", "sum"]).nullable().optional().describe("dedupe: overlapping parallel timers billed once; sum: each timer billed in full"),
+        aiMultiplier: z.number().min(0).max(20).nullable().optional(),
+        agentHourlyRate: z.number().nonnegative().nullable().optional().describe("Flat hourly rate for AI-assisted time"),
+        includeAiCosts: z.boolean().optional().describe("Pass agents' API-equivalent token cost through to the client"),
+        aiCostMarkupPercent: z.number().min(0).max(100).optional(),
       },
     },
     ({ projectId, addRepoPattern, ...rest }) =>
@@ -559,6 +571,96 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
       annotations: { readOnlyHint: true },
     },
     ({ entryId }) => run(async () => ({ events: await getEntryHistory(ctx, entryId) }))
+  );
+
+  // ---- Billing --------------------------------------------------------------
+  register(
+    "timesheet",
+    {
+      description:
+        "Client-ready timesheet for a period: billed time per project (overlapping parallel agents handled per the project's policy), lines per day with agent notes, AI cost lines and a disclosure. format=markdown (default) is ready to paste into an invoice email.",
+      inputSchema: {
+        startDate: iso.optional().describe("Default: start of the current month"),
+        endDate: iso.optional().describe("Default: now"),
+        projectId: optId("Project"),
+        timezone: z.string().optional().describe("IANA timezone for day boundaries, e.g. Europe/Madrid"),
+        format: z.enum(["markdown", "json"]).optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    ({ startDate, endDate, projectId, timezone, format }) =>
+      guard(async () => {
+        const sheet = await buildTimesheet(ctx.userId, {
+          startDate: startDate ? new Date(startDate) : undefined,
+          endDate: endDate ? new Date(endDate) : undefined,
+          projectId,
+          timezone,
+        });
+        if (format === "json") return ok({ timesheet: sheet });
+        return { content: [{ type: "text", text: timesheetToMarkdown(sheet) }] };
+      })
+  );
+
+  register(
+    "create_share_link",
+    {
+      description:
+        "Create a read-only timesheet link to send to a client. Use rollingDays for a live link (e.g. 30), or a fixed startDate/endDate. The URL is returned once.",
+      inputSchema: {
+        name: z.string().optional(),
+        projectId: optId("Project"),
+        startDate: iso.optional(),
+        endDate: iso.optional(),
+        rollingDays: z.number().int().min(1).max(366).optional(),
+        timezone: z.string().optional(),
+        showAmounts: z.boolean().optional().describe("Default true; false shows hours only"),
+        showNotes: z.boolean().optional(),
+        expiresAt: iso.optional(),
+      },
+    },
+    (args) =>
+      run(async () => {
+        const r = await createShareLink(ctx, args);
+        return { url: r.url, shareLink: r.shareLink };
+      })
+  );
+
+  register(
+    "list_share_links",
+    { description: "List timesheet share links (tokens are never shown again).", inputSchema: {}, annotations: { readOnlyHint: true } },
+    () => run(async () => ({ shareLinks: await listShareLinks(ctx) }))
+  );
+
+  register(
+    "revoke_share_link",
+    { description: "Revoke a timesheet share link.", inputSchema: { shareLinkId: id("Share link") }, annotations: { destructiveHint: true } },
+    ({ shareLinkId }) =>
+      run(async () => {
+        await revokeShareLink(ctx, shareLinkId);
+        return { revoked: true };
+      })
+  );
+
+  register(
+    "report_usage",
+    {
+      description:
+        "Report your token usage for a timer, per model (cumulative totals with mode=replace, the default). TimeTrack computes the API-equivalent cost, which projects can pass through to the client.",
+      inputSchema: {
+        timerId: id("Timer"),
+        usage: z.record(
+          z.string(),
+          z.object({
+            inputTokens: z.number().int().nonnegative().optional(),
+            outputTokens: z.number().int().nonnegative().optional(),
+            cacheReadTokens: z.number().int().nonnegative().optional(),
+            cacheWriteTokens: z.number().int().nonnegative().optional(),
+          })
+        ).describe('e.g. {"claude-opus-5-5": {"inputTokens": 12000, "outputTokens": 3400}}'),
+        mode: z.enum(["replace", "add"]).optional(),
+      },
+    },
+    ({ timerId, usage, mode }) => run(async () => recordTimerUsage(ctx, timerId, usage, mode))
   );
 
   return server;
