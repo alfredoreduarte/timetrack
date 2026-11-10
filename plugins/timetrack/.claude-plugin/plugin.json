@@ -1,0 +1,32 @@
+{
+  "name": "timetrack",
+  "displayName": "TimeTrack",
+  "version": "1.0.0",
+  "description": "Automatic billable-time tracking for Claude Code: a pausable timer per session, auto-pause when the agent goes idle, projects matched by repository, and TimeTrack MCP tools to edit entries, log work notes and build client timesheets.",
+  "author": { "name": "TimeTrack", "url": "https://track.alfredo.re" },
+  "homepage": "https://track.alfredo.re",
+  "repository": "https://github.com/alfredoreduarte/timetrack",
+  "license": "MIT",
+  "keywords": ["time-tracking", "billing", "timesheets", "freelance", "mcp"],
+  "userConfig": {
+    "api_key": {
+      "type": "string",
+      "title": "TimeTrack API key",
+      "description": "Create one in TimeTrack under Settings → API keys. It starts with tt_.",
+      "sensitive": true,
+      "required": true
+    },
+    "api_url": {
+      "type": "string",
+      "title": "TimeTrack API URL",
+      "description": "Leave the default unless you run your own TimeTrack server.",
+      "default": "https://api.track.alfredo.re"
+    },
+    "import_history": {
+      "type": "boolean",
+      "title": "Import past sessions",
+      "description": "On the first session after install, import your last 30 days of Claude Code sessions (timestamps, repos and token counts only — never prompts or code).",
+      "default": true
+    }
+  }
+}
