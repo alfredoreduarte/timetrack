@@ -188,3 +188,86 @@ describe("S1 review fixes", () => {
     expect(await prisma.timeEntry.count({ where: { userId: user.id, isRunning: true } })).toBe(MAX_RUNNING_ENTRIES);
   });
 });
+
+describe("S1 review round 2 fixes", () => {
+  it("changing an existing idle timeout keeps the real last heartbeat", async () => {
+    const { user } = await createUser();
+    const clock = testClock();
+    const ctx = serviceCtx(user.id, { now: clock.now });
+    const { timer } = await startTimer(ctx, { idleTimeoutSeconds: 3600 });
+    clock.advance(5 * MIN);
+    await touchTimer(ctx, timer.id);
+    const lastBeat = clock.now();
+    clock.advance(40 * MIN);
+    await updateTimer(ctx, timer.id, { idleTimeoutSeconds: 600 });
+    expect(await sweepIdleTimers(clock.now())).toBe(1);
+    const seg = await prisma.timeEntry.findFirstOrThrow({ where: { timerId: timer.id } });
+    // Cut at the last real heartbeat (5 min in), not at the PATCH (45 min in).
+    expect(seg.endTime).toEqual(lastBeat);
+    expect(seg.duration).toBe(5 * 60);
+  });
+
+  it("deleting a project removes only its own entries and pauses its running timers", async () => {
+    const { user, auth } = await createUser();
+    const doomed = await createProject(user.id, { name: "Doomed" });
+    const kept = await createProject(user.id, { name: "Kept" });
+    const onDoomed = await api().post("/timers").set(auth).send({ projectId: doomed.id, startedAt: ago(30) });
+    const unassigned = await api().post("/timers").set(auth).send({ startedAt: ago(30) });
+    const manual = await api().post("/time-entries").set(auth).send({ startTime: ago(300), endTime: ago(240) });
+    const keptEntry = await api().post("/time-entries").set(auth).send({ startTime: ago(200), endTime: ago(150), projectId: kept.id });
+
+    expect((await api().delete(`/projects/${doomed.id}`).set(auth)).status).toBe(200);
+
+    // Unrelated unassigned work survives (it used to be wiped).
+    expect(await prisma.timeEntry.findUnique({ where: { id: manual.body.timeEntry.id } })).not.toBeNull();
+    expect(await prisma.timeEntry.findUnique({ where: { id: keptEntry.body.timeEntry.id } })).not.toBeNull();
+    const stillRunning = await prisma.timer.findUniqueOrThrow({ where: { id: unassigned.body.timer.id } });
+    expect(stillRunning.status).toBe("running");
+    const paused = await prisma.timer.findUniqueOrThrow({ where: { id: onDoomed.body.timer.id } });
+    expect(paused).toMatchObject({ status: "paused", projectId: null });
+    await invariants(user.id);
+  });
+
+  it("project/task deletes don't deadlock with concurrent pauses", async () => {
+    const { user, auth } = await createUser();
+    for (let i = 0; i < 8; i++) {
+      const p = await createProject(user.id, { name: `P${i}` });
+      const task = await createTask(user.id, p.id);
+      const t = await api().post("/timers").set(auth).send({ projectId: p.id, taskId: task.id, startedAt: ago(20) });
+      const [pause, delTask] = await Promise.all([
+        api().post(`/timers/${t.body.timer.id}/pause`).set(auth).send({}),
+        api().delete(`/tasks/${task.id}`).set(auth),
+      ]);
+      expect([pause.status, delTask.status]).toEqual([200, 200]);
+      await api().post(`/timers/${t.body.timer.id}/resume`).set(auth).send({});
+      const [pause2, delProject] = await Promise.all([
+        api().post(`/timers/${t.body.timer.id}/pause`).set(auth).send({}),
+        api().delete(`/projects/${p.id}`).set(auth),
+      ]);
+      expect([pause2.status, delProject.status]).toEqual([200, 200]);
+    }
+    await invariants(user.id);
+  });
+
+  it("a backfill racing a reassignment lands on the timer's final project", async () => {
+    const { user, auth } = await createUser();
+    for (let i = 0; i < 6; i++) {
+      const p1 = await createProject(user.id, { hourlyRate: 50 });
+      const p2 = await createProject(user.id, { hourlyRate: 90 });
+      const t = await api().post("/timers").set(auth).send({ projectId: p1.id, startedAt: ago(10) });
+      await Promise.all([
+        api().patch(`/timers/${t.body.timer.id}`).set(auth).send({ projectId: p2.id }),
+        api().post("/time-entries").set(auth).send({ startTime: ago(300), endTime: ago(290), timerId: t.body.timer.id }),
+      ]);
+      const timer = await prisma.timer.findUniqueOrThrow({ where: { id: t.body.timer.id }, include: { entries: true } });
+      expect(timer.entries.every((e) => e.projectId === timer.projectId)).toBe(true);
+    }
+  });
+
+  it("truncation never splits an emoji", async () => {
+    const { auth } = await createUser();
+    const res = await api().post("/time-entries/start").set(auth).send({ description: "a".repeat(1999) + "\u{1F600}tail" });
+    expect(res.status).toBe(201);
+    expect(res.body.timeEntry.description).toBe("a".repeat(1999));
+  });
+});

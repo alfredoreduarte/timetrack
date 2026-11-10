@@ -3,6 +3,7 @@ import { XMarkIcon } from "@heroicons/react/24/outline";
 import { TimeEntry } from "../store/slices/timeEntriesSlice";
 import { Project, Task } from "../store/slices/projectsSlice";
 import api from "../services/api";
+import { buildEntryUpdate } from "./editTimeEntryPayload";
 
 // Date/time inputs are in the viewer's local time. Build both from local
 // parts — mixing toISOString() (UTC date) with local hours shifted evening
@@ -79,29 +80,14 @@ const EditTimeEntryModal: React.FC<EditTimeEntryModalProps> = ({
     setLoading(true);
 
     try {
-      const updateData: any = {
-        description: description || null,
-        projectId: projectId || null,
-        taskId: taskId || null,
-      };
-
-      // Handle time updates — only the fields the user actually changed.
-      const startEdited = startDate !== initialStart.date || startTime !== initialStart.time;
-      if (startDate && startTime && startEdited) {
-        const startDateTime = new Date(`${startDate}T${startTime}`);
-        updateData.startTime = startDateTime.toISOString();
-      }
-
-      const endEdited = endDate !== initialEnd.date || endTime !== initialEnd.time;
-      const originalHours = entry.duration ? (entry.duration / 3600).toFixed(2) : "";
-      if (useHours && hours && hours !== originalHours) {
-        // Use hours to calculate end time
-        updateData.hours = parseFloat(hours);
-      } else if (!useHours && endDate && endTime && endEdited) {
-        // Use explicit end time
-        const endDateTime = new Date(`${endDate}T${endTime}`);
-        updateData.endTime = endDateTime.toISOString();
-      }
+      const updateData = buildEntryUpdate(
+        { description, projectId, taskId, startDate, startTime, endDate, endTime, hours, useHours },
+        {
+          start: initialStart,
+          end: initialEnd,
+          hours: entry.duration ? (entry.duration / 3600).toFixed(2) : "",
+        }
+      );
 
       const response = await api.timeEntries.updateTimeEntry(entry.id, updateData);
       onSave(response);

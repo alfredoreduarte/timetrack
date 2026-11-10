@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, AuthenticatedRequest } from "../middleware/auth";
+import { contextFromRequest } from "../services/context";
+import { deleteTask } from "../services/deletions";
 
 const router = express.Router();
 
@@ -363,31 +365,8 @@ router.put(
 router.delete(
   "/:id",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
-
-    // Check if task exists and belongs to user
-    const existingTask = await prisma.task.findFirst({
-      where: {
-        id,
-        userId: req.user!.id,
-      },
-    });
-
-    if (!existingTask) {
-      throw createError("Task not found", 404);
-    }
-
-    await prisma.task.delete({
-      where: { id },
-    });
-
-    // Emit real-time update
-    const io = req.app.get("io");
-    io.to(`user-${req.user!.id}`).emit("task-deleted", { id });
-
-    res.json({
-      message: "Task deleted successfully",
-    });
+    await deleteTask(contextFromRequest(req), req.params.id);
+    res.json({ message: "Task deleted successfully" });
   })
 );
 

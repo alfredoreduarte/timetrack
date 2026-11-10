@@ -203,11 +203,15 @@ export async function createEntry(ctx: ServiceContext, input: CreateEntryInput):
   const entry = await prisma.$transaction(async (tx) => {
     let timer: { id: string; projectId: string | null; taskId: string | null } | null = null;
     if (input.timerId) {
-      timer = await tx.timer.findFirst({
-        where: { id: input.timerId, userId: ctx.userId },
+      // Lock before reading the assignment we may inherit, so a concurrent
+      // reassignment can't leave this segment on the old project.
+      const owned = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM timers WHERE id = ${input.timerId} AND user_id = ${ctx.userId} FOR UPDATE`;
+      if (owned.length === 0) throw createError("Timer not found", 404);
+      timer = await tx.timer.findUniqueOrThrow({
+        where: { id: input.timerId },
         select: { id: true, projectId: true, taskId: true },
       });
-      if (!timer) throw createError("Timer not found", 404);
     }
     // Inherit the timer's task only along with its project.
     const ref = await resolveProjectAndTask(tx, ctx.userId, {
@@ -219,10 +223,7 @@ export async function createEntry(ctx: ServiceContext, input: CreateEntryInput):
             ? timer?.taskId
             : undefined,
     });
-    if (timer) {
-      await lockTimerRow(tx, timer.id);
-      await assertNoSegmentOverlap(tx, ctx, timer.id, start, end);
-    }
+    if (timer) await assertNoSegmentOverlap(tx, ctx, timer.id, start, end);
     const rate = await getHourlyRate(tx, ctx.userId, ref.projectId, ref.taskId);
     const created = await tx.timeEntry.create({
       data: {
@@ -554,7 +555,8 @@ export async function stopEntry(
   const entry = await prisma.$transaction(async (tx) => {
     const fresh = await lockAndLoadEntry(tx, ctx, id);
     if (!fresh || !fresh.isRunning) throw createError("Time entry is not running", 400);
-    const duration = Math.floor((end.getTime() - existing.startTime.getTime()) / 1000);
+    if (end < fresh.startTime) throw createError("End time must be after start time", 400);
+    const duration = Math.floor((end.getTime() - fresh.startTime.getTime()) / 1000);
     const updated = await tx.timeEntry.update({
       where: { id },
       data: { endTime: end, duration, isRunning: false, stopReason: "stopped" },
