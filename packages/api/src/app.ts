@@ -29,6 +29,7 @@ import agentEventRoutes from "./routes/agentEvents";
 import mcpRoutes from "./routes/mcp";
 import agentSessionRoutes from "./routes/agentSessions";
 import { shareLinksRouter, publicRouter } from "./routes/shareLinks";
+import billingRoutes, { stripeWebhook } from "./routes/billing";
 
 // Load environment variables
 dotenv.config();
@@ -297,6 +298,10 @@ export function createApp() {
     logger.info("Rate limiting disabled for development");
   }
 
+  // Stripe webhook: raw body for signature verification, so it must be
+  // registered before the JSON parser below.
+  app.post("/billing/webhook", express.raw({ type: "application/json", limit: "1mb" }), stripeWebhook);
+
   // Request size limiting and upload protection
   const requestSizeLimiter = (
     req: express.Request,
@@ -495,6 +500,7 @@ export function createApp() {
   app.use("/agent-sessions", agentSessionRoutes);
   app.use("/share-links", shareLinksRouter);
   app.use("/public", publicRouter);
+  app.use("/billing", billingRoutes);
 
   // Socket.IO authentication middleware
   io.use(async (socket, next) => {

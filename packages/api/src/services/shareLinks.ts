@@ -5,6 +5,7 @@ import { ServiceContext } from "./context";
 import { recordAudit } from "./audit";
 import { cleanText } from "./text";
 import { buildTimesheet, redactTimesheet, resolveTimezone, Timesheet, MAX_TIMESHEET_DAYS } from "./timesheets";
+import { getEntitlements, planLimitError } from "./entitlements";
 
 export const SHARE_TOKEN_PREFIX = "ts_";
 
@@ -49,6 +50,8 @@ export const shareUrl = (token: string) =>
   `${(process.env.APPLICATION_URL || "http://localhost:3010").replace(/\/$/, "")}/share/${token}`;
 
 export async function createShareLink(ctx: ServiceContext, input: CreateShareLinkInput) {
+  const { limits } = await getEntitlements(ctx.userId, prisma, ctx.now());
+  if (!limits.shareLinks) throw planLimitError("Client share links are a Pro feature.");
   const timezone = resolveTimezone(input.timezone);
   const now = ctx.now();
   const startDate = input.startDate ? new Date(input.startDate) : null;

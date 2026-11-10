@@ -5,6 +5,8 @@ import { ZodError } from "zod";
 export interface AppError extends Error {
   statusCode?: number;
   isOperational?: boolean;
+  /** Machine-readable reason, e.g. "plan_limit" (sent as `code`). */
+  code?: string;
 }
 
 export const errorHandler = (
@@ -64,17 +66,23 @@ export const errorHandler = (
 
   res.status(statusCode).json({
     error: message,
+    // Only codes we set ourselves (createError) — never library codes like Prisma's.
+    ...((err as AppError).isOperational && typeof (err as AppError).code === "string" && statusCode < 500
+      ? { code: (err as AppError).code }
+      : {}),
     ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
   });
 };
 
 export const createError = (
   message: string,
-  statusCode: number = 500
+  statusCode: number = 500,
+  code?: string
 ): AppError => {
   const error = new Error(message) as AppError;
   error.statusCode = statusCode;
   error.isOperational = true;
+  if (code) error.code = code;
   return error;
 };
 

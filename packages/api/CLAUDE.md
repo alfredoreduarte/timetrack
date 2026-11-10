@@ -29,6 +29,12 @@
 - `/mcp` — Remote MCP server (Streamable HTTP, stateless, Bearer API key). Tools live in
   `src/mcp/server.ts` and call the same services as REST
 - `/agent-sessions/import` — Backfill past agent sessions from activity spans (dry run supported)
+- `/reports/timesheet` — Overlap-aware, client-ready timesheet (JSON/Markdown/CSV); billing math
+  in `src/billing/engine.ts` (pure, property-tested), policies per project
+- `/share-links`, `/public/timesheets/:token` — Read-only client timesheet links (hashed tokens)
+- `/billing/*` — Plan status, Stripe checkout/portal (JWT only), `/billing/webhook` (raw body,
+  mounted before the JSON parser). Plans in `src/services/entitlements.ts`; billing is enforced only
+  when all `STRIPE_*` env vars are set (`scripts/stripe-setup.ts` creates product/prices/webhook)
 - `/projects/*`, `/tasks/*` — CRUD (`src/services/catalog.ts`); projects carry `repoPatterns`
   (normalized git remotes or path prefixes) used to auto-assign agent timers;
   `POST /projects/resolve`

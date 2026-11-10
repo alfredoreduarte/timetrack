@@ -27,6 +27,7 @@ import { buildTimesheet, parseRangeDate, resolveTimezone } from "../services/tim
 import { timesheetToMarkdown } from "../billing/render";
 import { createShareLink, listShareLinks, revokeShareLink } from "../services/shareLinks";
 import { recordTimerUsage } from "../services/timers";
+import { getEntitlements } from "../services/entitlements";
 import {
   createProject,
   createTask,
@@ -168,7 +169,13 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
           },
         });
         const timers = await listTimers(ctx, { status: "active" });
-        return { user, actingAs: ctx.actorLabel ?? ctx.actorType, activeTimers: timers.map(compactTimer) };
+        const plan = await getEntitlements(ctx.userId);
+        return {
+          user,
+          plan: { plan: plan.plan, reason: plan.reason, trialEndsAt: plan.trialEndsAt, limits: plan.limits },
+          actingAs: ctx.actorLabel ?? ctx.actorType,
+          activeTimers: timers.map(compactTimer),
+        };
       })
   );
 

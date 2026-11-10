@@ -4,6 +4,7 @@ import { billProject, BillingPolicy, OverlapMode, unionMs, BillableEntry } from 
 import { canonicalTimezone, localDateKey, startOfLocalDate } from "../billing/time";
 import { PRICING_AS_OF } from "../billing/pricing";
 import { agentLabel } from "./agentEvents";
+import { getEntitlements, historyFloor, planLimitError } from "./entitlements";
 
 export const MAX_TIMESHEET_DAYS = 366;
 /** Keeps one timesheet build to well under a second of event-loop time. */
@@ -72,6 +73,8 @@ export interface ProjectTimesheet {
 
 export interface Timesheet {
   generatedAt: string;
+  /** Set when the plan shortened the requested range. */
+  limitedByPlan: { historyDays: number; requestedStartDate: string } | null;
   range: { startDate: string; endDate: string; timezone: string };
   currency: string;
   user: { name: string };
@@ -222,8 +225,24 @@ export async function buildTimesheet(
   opts: { now?: Date; showNotes?: boolean } = {}
 ): Promise<Timesheet> {
   const now = opts.now ?? new Date();
-  const { start, end: requestedEnd, timezone } = resolveRange(q, now);
+  const range = resolveRange(q, now);
+  const { end: requestedEnd, timezone } = range;
+  let start = range.start;
   const end = requestedEnd > now ? now : requestedEnd;
+
+  // Free plan: timesheets reach back a limited number of days.
+  const entitlements = await getEntitlements(userId, prisma, now);
+  const floor = historyFloor(entitlements, now);
+  let limitedByPlan: Timesheet["limitedByPlan"] = null;
+  if (floor && start < floor) {
+    if (end <= floor) {
+      throw planLimitError(
+        `The Free plan covers the last ${entitlements.limits.historyDays} days of timesheets.`
+      );
+    }
+    limitedByPlan = { historyDays: entitlements.limits.historyDays!, requestedStartDate: start.toISOString() };
+    start = floor;
+  }
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
@@ -326,7 +345,7 @@ export async function buildTimesheet(
       overlapMode: ((project?.overlapMode ?? user.overlapMode) as OverlapMode) === "sum" ? "sum" : "dedupe",
       aiMultiplier: project?.aiMultiplier ?? user.aiMultiplier ?? 1,
       agentHourlyRate: project?.agentHourlyRate ?? null,
-      includeAiCosts: project?.includeAiCosts ?? false,
+      includeAiCosts: (project?.includeAiCosts ?? false) && entitlements.limits.aiCostLines,
       aiCostMarkupPercent: project?.aiCostMarkupPercent ?? 0,
     };
 
@@ -433,6 +452,7 @@ export async function buildTimesheet(
 
   return {
     generatedAt: now.toISOString(),
+    limitedByPlan,
     range: { startDate: start.toISOString(), endDate: end.toISOString(), timezone },
     currency: user.currency,
     user: { name: user.name },

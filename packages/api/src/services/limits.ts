@@ -1,18 +1,19 @@
 import { TxClient } from "../utils/database";
 import { createError } from "../middleware/errorHandler";
 import { ServiceContext } from "./context";
+import { getEntitlements, planLimitError } from "./entitlements";
 
 /**
  * Hard ceiling on simultaneously running segments per user, regardless of
  * plan — keeps a runaway agent (or a leaked key looping start) from filling
- * the table. Plan-based limits for AI timers layer on top (Stage 4).
+ * the table. Plan limits on parallel AI-agent timers layer on top.
  */
 export const MAX_RUNNING_ENTRIES = 25;
 
 export async function assertCanRunTimer(
   tx: TxClient,
   ctx: ServiceContext,
-  _opts: { isAiGenerated: boolean }
+  opts: { isAiGenerated: boolean }
 ): Promise<void> {
   // Serialize starts/resumes per user so concurrent requests can't all pass
   // the count before any of them inserts (held until the transaction ends).
@@ -25,5 +26,18 @@ export async function assertCanRunTimer(
       `You can have at most ${MAX_RUNNING_ENTRIES} timers running at once. Pause or stop one first.`,
       429
     );
+  }
+  if (opts.isAiGenerated) {
+    const { limits } = await getEntitlements(ctx.userId, tx, ctx.now());
+    if (limits.maxRunningAgentTimers !== null) {
+      const runningAgents = await tx.timeEntry.count({
+        where: { userId: ctx.userId, isRunning: true, isAiGenerated: true },
+      });
+      if (runningAgents >= limits.maxRunningAgentTimers) {
+        throw planLimitError(
+          `Your Free plan runs ${limits.maxRunningAgentTimers} AI agent timers at once; pause or stop one, or track unlimited parallel agents with Pro.`
+        );
+      }
+    }
   }
 }
