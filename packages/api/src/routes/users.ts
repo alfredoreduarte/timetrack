@@ -83,6 +83,14 @@ const updateProfileSchema = z.object({
     .min(1, "AI multiplier must be at least 1")
     .max(20, "AI multiplier cannot exceed 20")
     .optional(),
+  // How long an agent timer fed by heartbeats may stay silent before it
+  // auto-pauses (at its last activity).
+  agentIdleTimeoutSeconds: z
+    .number()
+    .int("Agent idle timeout must be a whole number of seconds")
+    .min(60, "Agent idle timeout must be at least 60 seconds")
+    .max(86400, "Agent idle timeout cannot exceed 24 hours")
+    .optional(),
 });
 
 const changePasswordSchema = z.object({
@@ -151,6 +159,7 @@ router.put(
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
         aiMultiplier: true,
+        agentIdleTimeoutSeconds: true,
         createdAt: true,
         updatedAt: true,
       },

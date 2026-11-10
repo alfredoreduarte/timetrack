@@ -9,6 +9,7 @@ import {
   createTask,
   disconnect,
 } from "../../test/helpers";
+import { prisma } from "../../utils/database";
 
 beforeEach(resetDb);
 afterAll(disconnect);
@@ -131,9 +132,10 @@ describe("legacy time-entry endpoints", () => {
     const { auth } = await createUser();
     const started = await api().post("/time-entries/start").set(auth).send({});
     const id = started.body.timeEntry.id;
-    const endTime = new Date(
-      new Date(started.body.timeEntry.startTime).getTime() + 90_000
-    ).toISOString();
+    // Pretend it started 10 minutes ago, then stop it 90s after its start.
+    const start = new Date(Date.now() - 10 * 60_000);
+    await prisma.timeEntry.update({ where: { id }, data: { startTime: start } });
+    const endTime = new Date(start.getTime() + 90_000).toISOString();
 
     const stopped = await api().post(`/time-entries/${id}/stop`).set(auth).send({ endTime });
     expect(stopped.status).toBe(200);
@@ -142,6 +144,22 @@ describe("legacy time-entry endpoints", () => {
 
     const again = await api().post(`/time-entries/${id}/stop`).set(auth).send({});
     expect(again.status).toBe(400);
+  });
+
+  // Deliberate change (AI-first S1): end times are never billed into the
+  // future. Small client clock skew is clamped to now; far future is rejected.
+  it("clamps a slightly-future endTime to now and rejects the far future", async () => {
+    const { auth } = await createUser();
+    const a = await api().post("/time-entries/start").set(auth).send({});
+    const skewed = new Date(Date.now() + 60_000).toISOString();
+    const stopped = await api().post(`/time-entries/${a.body.timeEntry.id}/stop`).set(auth).send({ endTime: skewed });
+    expect(stopped.status).toBe(200);
+    expect(stopped.body.timeEntry.duration).toBeLessThan(5);
+
+    const b = await api().post("/time-entries/start").set(auth).send({});
+    const far = new Date(Date.now() + 60 * 60_000).toISOString();
+    const rejected = await api().post(`/time-entries/${b.body.timeEntry.id}/stop`).set(auth).send({ endTime: far });
+    expect(rejected.status).toBe(400);
   });
 
   it("isolates users from each other's entries, projects and tasks", async () => {

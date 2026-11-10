@@ -1,13 +1,17 @@
 import { createApp } from "./app";
 import { logger } from "./utils/logger";
 import { prisma } from "./utils/database";
+import { startIdleSweeper } from "./jobs/idleSweeper";
 
 const { httpServer, io } = createApp();
 
 const PORT = process.env.PORT || 3011;
 
+const stopIdleSweeper = startIdleSweeper();
+
 const shutdown = (signal: string) => async () => {
   logger.info(`${signal} received, shutting down gracefully`);
+  stopIdleSweeper();
   await prisma.$disconnect();
   httpServer.close(() => {
     logger.info("Process terminated");

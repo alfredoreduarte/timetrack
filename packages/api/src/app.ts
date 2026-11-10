@@ -24,6 +24,7 @@ import timeEntryRoutes from "./routes/timeEntries";
 import reportRoutes from "./routes/reports";
 import favoriteRoutes from "./routes/favorites";
 import apiKeyRoutes from "./routes/apiKeys";
+import timerRoutes from "./routes/timers";
 
 // Load environment variables
 dotenv.config();
@@ -308,6 +309,7 @@ export function createApp() {
     // Time entries and reports might need slightly more space
     else if (
       req.path.startsWith("/time-entries/") ||
+      req.path.startsWith("/timers") ||
       req.path.startsWith("/reports/")
     ) {
       sizeLimit = process.env.REQUEST_SIZE_TIME_ENTRIES || "500kb";
@@ -461,6 +463,7 @@ export function createApp() {
   app.use("/reports", reportRoutes);
   app.use("/favorites", favoriteRoutes);
   app.use("/api-keys", apiKeyRoutes);
+  app.use("/timers", timerRoutes);
 
   // Socket.IO authentication middleware
   io.use(async (socket, next) => {

@@ -15,7 +15,13 @@
 ## Key Endpoints
 
 - `/auth/*` — Registration, login, password reset
-- `/time-entries/*` — Timer operations (start/stop/current)
+- `/timers/*` — Pausable timers (one per agent session or task): start (idempotent by
+  `sessionKey`), pause, resume, stop, heartbeat, notes, history. Each running stretch is a
+  TimeEntry segment; the idle sweeper (`src/jobs/idleSweeper.ts`) pauses heartbeat-fed timers
+  at their last activity
+- `/time-entries/*` — Entries/segments: legacy start/stop/current/running (routed through
+  timers, shapes unchanged for native apps), CRUD incl. editing running entries, bulk update,
+  per-entry audit history
 - `/projects/*`, `/tasks/*` — CRUD
 - `/reports/*` — Time and earnings analytics
 
