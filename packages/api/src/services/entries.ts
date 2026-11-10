@@ -6,8 +6,15 @@ import { ServiceContext } from "./context";
 import { diffFields, recordAudit, listAuditEvents } from "./audit";
 import { getHourlyRate } from "./rates";
 import { resolveProjectAndTask } from "./ownership";
-import { cleanText } from "./text";
-import { entrySelect, EntryView, resolveAt, stopTimer } from "./timers";
+import { cleanText, DESCRIPTION_MAX } from "./text";
+import {
+  entrySelect,
+  EntryView,
+  loadTimerViews,
+  MAX_BACKDATE_MS,
+  resolveAt,
+  stopTimer,
+} from "./timers";
 
 /** Manually entered or edited entries may not span more than this. */
 export const MAX_ENTRY_SECONDS = 24 * 60 * 60;
@@ -26,8 +33,29 @@ const AUDITED_ENTRY_FIELDS = [
 ] as const;
 
 type PendingEvent = { event: string; payload: unknown };
-const flush = (ctx: ServiceContext, events: PendingEvent[]) => {
-  for (const e of events) emitToUser(ctx.userId, e.event, e.payload);
+
+/**
+ * Emits queued events after commit. Timer events are queued as
+ * `{ timerId }` and sent with the full TimerView, the same payload the
+ * timer service emits, so clients get one shape per event name.
+ */
+const flush = async (ctx: ServiceContext, events: PendingEvent[]) => {
+  const timerIds = Array.from(
+    new Set(
+      events
+        .filter((e) => e.event.startsWith("timer-"))
+        .map((e) => (e.payload as { timerId: string }).timerId)
+    )
+  );
+  const views = new Map((await loadTimerViews(ctx, timerIds)).map((v) => [v.id, v]));
+  for (const e of events) {
+    if (e.event.startsWith("timer-")) {
+      const view = views.get((e.payload as { timerId: string }).timerId);
+      if (view) emitToUser(ctx.userId, e.event, view);
+    } else {
+      emitToUser(ctx.userId, e.event, e.payload);
+    }
+  }
 };
 
 const parseTime = (ctx: ServiceContext, value: string | Date, field: string) => {
@@ -37,6 +65,23 @@ const parseTime = (ctx: ServiceContext, value: string | Date, field: string) => 
 
 async function lockTimerRow(tx: TxClient, timerId: string) {
   await tx.$queryRaw`SELECT id FROM timers WHERE id = ${timerId} FOR UPDATE`;
+}
+
+/**
+ * Locks an entry for modification and returns a fresh copy. Lock order is
+ * always timer → entry (the timer service closes/opens segments while
+ * holding the timer lock), so concurrent pause/stop can't interleave with
+ * an edit and leave it acting on a stale snapshot.
+ */
+async function lockAndLoadEntry(tx: TxClient, ctx: ServiceContext, id: string) {
+  const head = await tx.timeEntry.findFirst({
+    where: { id, userId: ctx.userId },
+    select: { id: true, timerId: true },
+  });
+  if (!head) return null;
+  if (head.timerId) await lockTimerRow(tx, head.timerId);
+  await tx.$queryRaw`SELECT id FROM time_entries WHERE id = ${id} FOR UPDATE`;
+  return tx.timeEntry.findFirst({ where: { id, userId: ctx.userId }, select: entrySelect });
 }
 
 /**
@@ -153,7 +198,7 @@ export async function createEntry(ctx: ServiceContext, input: CreateEntryInput):
   if (duration > MAX_ENTRY_SECONDS) {
     throw createError("A single entry can span at most 24 hours", 400);
   }
-  const description = cleanText(input.description, "description", 500) ?? null;
+  const description = cleanText(input.description, "description", DESCRIPTION_MAX) ?? null;
 
   const entry = await prisma.$transaction(async (tx) => {
     let timer: { id: string; projectId: string | null; taskId: string | null } | null = null;
@@ -164,9 +209,15 @@ export async function createEntry(ctx: ServiceContext, input: CreateEntryInput):
       });
       if (!timer) throw createError("Timer not found", 404);
     }
+    // Inherit the timer's task only along with its project.
     const ref = await resolveProjectAndTask(tx, ctx.userId, {
       projectId: input.projectId !== undefined ? input.projectId : timer?.projectId,
-      taskId: input.taskId !== undefined ? input.taskId : timer?.taskId,
+      taskId:
+        input.taskId !== undefined
+          ? input.taskId
+          : input.projectId === undefined
+            ? timer?.taskId
+            : undefined,
     });
     if (timer) {
       await lockTimerRow(tx, timer.id);
@@ -214,17 +265,21 @@ export interface UpdateEntryInput {
   isAiGenerated?: boolean;
 }
 
-type ExistingEntry = NonNullable<Awaited<ReturnType<typeof findOwnedEntry>>>;
+type ExistingEntry = EntryView;
 
 async function findOwnedEntry(tx: TxClient, ctx: ServiceContext, id: string) {
   return tx.timeEntry.findFirst({ where: { id, userId: ctx.userId }, select: entrySelect });
 }
 
+const sameInstant = (value: string | Date | undefined, stored: Date | null) =>
+  value !== undefined && stored !== null && new Date(value).getTime() === stored.getTime();
+
 /**
- * Applies a patch to one entry inside an open transaction. Running entries
- * accept everything except their end (stop/pause the timer for that); edits
- * to a timer's running segment are mirrored onto the timer so its next
- * segments match.
+ * Applies a patch to one entry inside an open transaction. The caller must
+ * have locked it (lockAndLoadEntry). Only fields that actually change are
+ * written. Running entries accept everything except their end (stop/pause
+ * the timer for that); edits to a timer's running segment are mirrored onto
+ * the timer so its next segments match.
  */
 async function applyEntryUpdate(
   tx: TxClient,
@@ -233,15 +288,24 @@ async function applyEntryUpdate(
   patch: UpdateEntryInput,
   events: PendingEvent[]
 ): Promise<EntryView> {
-  if (existing.isRunning && (patch.endTime !== undefined || patch.hours !== undefined)) {
+  const startChanged = patch.startTime !== undefined && !sameInstant(patch.startTime, existing.startTime);
+  const endChanged = patch.endTime !== undefined && !sameInstant(patch.endTime, existing.endTime);
+  const hoursGiven = patch.hours !== undefined;
+
+  if (existing.isRunning && (endChanged || hoursGiven)) {
     throw createError(
       "Cannot set the end of a running entry. Pause or stop its timer instead.",
       400
     );
   }
-  if (existing.isRunning && existing.timerId) await lockTimerRow(tx, existing.timerId);
 
-  const description = cleanText(patch.description, "description", 500);
+  // Unchanged descriptions pass through untouched (older ones may exceed today's cap).
+  const descriptionChanged =
+    patch.description !== undefined && patch.description !== existing.description;
+  const description = descriptionChanged
+    ? cleanText(patch.description, "description", DESCRIPTION_MAX)
+    : undefined;
+
   const ref = await resolveProjectAndTask(tx, ctx.userId, {
     projectId: patch.projectId,
     taskId: patch.taskId,
@@ -254,58 +318,67 @@ async function applyEntryUpdate(
   }
   if (!projectId) taskId = null;
 
-  // Times
+  const data: Prisma.TimeEntryUncheckedUpdateInput = {};
+  const now = ctx.now();
+
+  // Times — validated only when they actually change.
   let startTime = existing.startTime;
   let endTime = existing.endTime;
-  let duration = existing.duration;
-  const timesChanged =
-    patch.startTime !== undefined || patch.endTime !== undefined || patch.hours !== undefined;
-  if (patch.startTime !== undefined) startTime = parseTime(ctx, patch.startTime, "startTime");
-  if (!existing.isRunning) {
-    if (patch.hours !== undefined) {
-      if (!(patch.hours > 0) || patch.hours > 24) {
+  if (startChanged) startTime = resolveAt(ctx, patch.startTime!, "startTime");
+  if (existing.isRunning) {
+    if (startChanged) {
+      if (now.getTime() - startTime.getTime() > MAX_BACKDATE_MS) {
+        throw createError(
+          "A running entry can start at most 24 hours ago. Create a separate entry for older work.",
+          400
+        );
+      }
+      data.startTime = startTime;
+    }
+  } else if (startChanged || endChanged || hoursGiven) {
+    if (hoursGiven) {
+      if (!(patch.hours! > 0) || patch.hours! > 24) {
         throw createError("Hours must be between 0 and 24", 400);
       }
-      endTime = new Date(startTime.getTime() + patch.hours * 3600 * 1000);
-      if (endTime.getTime() > ctx.now().getTime()) {
-        throw createError("endTime cannot be in the future", 400);
-      }
-    } else if (patch.endTime !== undefined) {
-      endTime = parseTime(ctx, patch.endTime, "endTime");
+      endTime = new Date(startTime.getTime() + patch.hours! * 3600 * 1000);
+      if (endTime.getTime() > now.getTime()) throw createError("endTime cannot be in the future", 400);
+    } else if (endChanged) {
+      endTime = resolveAt(ctx, patch.endTime!, "endTime");
     }
-    if (timesChanged) {
-      if (!endTime || endTime <= startTime) {
-        throw createError("End time must be after start time", 400);
-      }
-      duration = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
-      if (duration > MAX_ENTRY_SECONDS) {
-        throw createError("A single entry can span at most 24 hours", 400);
-      }
+    if (!endTime || endTime <= startTime) {
+      throw createError("End time must be after start time", 400);
     }
+    const duration = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
+    // Only growing a span past 24h is rejected; long entries produced by a
+    // timer stay editable.
+    if (duration > MAX_ENTRY_SECONDS && duration > (existing.duration ?? 0)) {
+      throw createError("A single entry can span at most 24 hours", 400);
+    }
+    data.startTime = startTime;
+    data.endTime = endTime;
+    data.duration = duration;
   }
 
-  if (timesChanged && existing.timerId) {
-    if (!existing.isRunning) await lockTimerRow(tx, existing.timerId);
-    await assertNoSegmentOverlap(tx, ctx, existing.timerId, startTime, endTime, existing.id);
+  if (data.startTime !== undefined && existing.timerId) {
+    await assertNoSegmentOverlap(tx, ctx, existing.timerId, startTime, existing.isRunning ? null : endTime, existing.id);
   }
 
   const assignmentChanged = projectId !== existing.projectId || taskId !== existing.taskId;
-  const rate = assignmentChanged
-    ? await getHourlyRate(tx, ctx.userId, projectId, taskId)
-    : existing.hourlyRateSnapshot;
+  if (assignmentChanged) {
+    data.projectId = projectId;
+    data.taskId = taskId;
+    data.hourlyRateSnapshot = await getHourlyRate(tx, ctx.userId, projectId, taskId);
+  }
+  if (description !== undefined) data.description = description;
+  if (patch.isAiGenerated !== undefined && patch.isAiGenerated !== existing.isAiGenerated) {
+    data.isAiGenerated = patch.isAiGenerated;
+  }
+
+  if (Object.keys(data).length === 0) return existing;
 
   const updated = await tx.timeEntry.update({
     where: { id: existing.id },
-    data: {
-      description: description !== undefined ? description : existing.description,
-      projectId,
-      taskId,
-      startTime,
-      endTime,
-      duration,
-      hourlyRateSnapshot: rate,
-      isAiGenerated: patch.isAiGenerated ?? existing.isAiGenerated,
-    },
+    data,
     select: entrySelect,
   });
 
@@ -344,7 +417,7 @@ async function applyEntryUpdate(
         action: "update",
         changes: timerChanges,
       });
-      events.push({ event: "timer-updated", payload: { id: timer.id } });
+      events.push({ event: "timer-updated", payload: { timerId: timer.id } });
     }
   }
   return updated;
@@ -357,11 +430,11 @@ export async function updateEntry(
 ): Promise<EntryView> {
   const events: PendingEvent[] = [];
   const entry = await prisma.$transaction(async (tx) => {
-    const existing = await findOwnedEntry(tx, ctx, id);
+    const existing = await lockAndLoadEntry(tx, ctx, id);
     if (!existing) throw createError("Time entry not found", 404);
     return applyEntryUpdate(tx, ctx, existing, patch, events);
   });
-  flush(ctx, events);
+  await flush(ctx, events);
   return entry;
 }
 
@@ -383,13 +456,21 @@ export async function bulkUpdateEntries(ctx: ServiceContext, input: BulkUpdateIn
   const events: PendingEvent[] = [];
   const entries = await prisma.$transaction(
     async (tx) => {
+      const heads = await tx.timeEntry.findMany({
+        where: { id: { in: ids }, userId: ctx.userId },
+        select: { id: true, timerId: true },
+      });
+      if (heads.length !== ids.length) {
+        throw createError(`${ids.length - heads.length} of the entries were not found`, 404);
+      }
+      // Lock timers in a stable order (deadlock-free), then the entries.
+      const timerIds = Array.from(new Set(heads.map((h) => h.timerId).filter((t): t is string => !!t))).sort();
+      for (const t of timerIds) await lockTimerRow(tx, t);
+      await tx.$queryRaw`SELECT id FROM time_entries WHERE id = ANY(${ids}) ORDER BY id FOR UPDATE`;
       const found = await tx.timeEntry.findMany({
         where: { id: { in: ids }, userId: ctx.userId },
         select: entrySelect,
       });
-      if (found.length !== ids.length) {
-        throw createError(`${ids.length - found.length} of the entries were not found`, 404);
-      }
       const out: EntryView[] = [];
       for (const existing of found) {
         out.push(await applyEntryUpdate(tx, ctx, existing, input.set, events));
@@ -398,7 +479,7 @@ export async function bulkUpdateEntries(ctx: ServiceContext, input: BulkUpdateIn
     },
     { timeout: 30_000 }
   );
-  flush(ctx, events);
+  await flush(ctx, events);
   return { updated: entries.length, entries };
 }
 
@@ -410,21 +491,28 @@ export async function bulkUpdateEntries(ctx: ServiceContext, input: BulkUpdateIn
 export async function deleteEntry(ctx: ServiceContext, id: string): Promise<void> {
   const events: PendingEvent[] = [];
   await prisma.$transaction(async (tx) => {
-    const existing = await findOwnedEntry(tx, ctx, id);
+    const existing = await lockAndLoadEntry(tx, ctx, id);
     if (!existing) throw createError("Time entry not found", 404);
     if (existing.isRunning && existing.timerId) {
-      await lockTimerRow(tx, existing.timerId);
-      await tx.timer.update({
+      // Re-read under the lock: only pause if this is still the timer's
+      // running segment.
+      const timer = await tx.timer.findUniqueOrThrow({
         where: { id: existing.timerId },
-        data: { status: "paused", pauseReason: "manual" },
+        select: { id: true, status: true },
       });
-      await recordAudit(tx, ctx, {
-        entityType: "timer",
-        entityId: existing.timerId,
-        action: "pause",
-        changes: { status: { from: "running", to: "paused" } },
-      });
-      events.push({ event: "timer-paused", payload: { id: existing.timerId } });
+      if (timer.status === "running") {
+        await tx.timer.update({
+          where: { id: timer.id },
+          data: { status: "paused", pauseReason: "manual" },
+        });
+        await recordAudit(tx, ctx, {
+          entityType: "timer",
+          entityId: timer.id,
+          action: "pause",
+          changes: { status: { from: "running", to: "paused" } },
+        });
+        events.push({ event: "timer-paused", payload: { timerId: timer.id } });
+      }
     }
     await tx.timeEntry.delete({ where: { id } });
     await recordAudit(tx, ctx, {
@@ -435,7 +523,7 @@ export async function deleteEntry(ctx: ServiceContext, id: string): Promise<void
     });
     events.push({ event: "time-entry-deleted", payload: { id } });
   });
-  flush(ctx, events);
+  await flush(ctx, events);
 }
 
 /**
@@ -464,6 +552,8 @@ export async function stopEntry(
 
   // Pre-timer entry still running (created before timers existed).
   const entry = await prisma.$transaction(async (tx) => {
+    const fresh = await lockAndLoadEntry(tx, ctx, id);
+    if (!fresh || !fresh.isRunning) throw createError("Time entry is not running", 400);
     const duration = Math.floor((end.getTime() - existing.startTime.getTime()) / 1000);
     const updated = await tx.timeEntry.update({
       where: { id },

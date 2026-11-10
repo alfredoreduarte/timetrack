@@ -14,6 +14,9 @@ export async function assertCanRunTimer(
   ctx: ServiceContext,
   _opts: { isAiGenerated: boolean }
 ): Promise<void> {
+  // Serialize starts/resumes per user so concurrent requests can't all pass
+  // the count before any of them inserts (held until the transaction ends).
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${ctx.userId}))`;
   const running = await tx.timeEntry.count({
     where: { userId: ctx.userId, isRunning: true },
   });

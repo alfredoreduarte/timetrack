@@ -8,15 +8,15 @@ import { ServiceContext, systemContext } from "./context";
 import { diffFields, recordAudit, AuditChanges } from "./audit";
 import { getHourlyRate } from "./rates";
 import { resolveProjectAndTask } from "./ownership";
-import { cleanText } from "./text";
+import { cleanText, DESCRIPTION_MAX } from "./text";
 import { assertCanRunTimer } from "./limits";
 
 /** How far ahead of server time a client clock may be before we reject. */
 export const FUTURE_SKEW_MS = 5 * 60 * 1000;
 /** Heartbeats closer together than this don't write to the database. */
 export const TOUCH_DEBOUNCE_MS = 15_000;
-/** Timers may be started/backdated at most this far in the past. */
-const MAX_BACKDATE_MS = 24 * 60 * 60 * 1000;
+/** Timers may be started, resumed or moved back at most this far in the past. */
+export const MAX_BACKDATE_MS = 24 * 60 * 60 * 1000;
 export const MIN_IDLE_TIMEOUT_SECONDS = 60;
 export const MAX_IDLE_TIMEOUT_SECONDS = 24 * 60 * 60;
 
@@ -250,6 +250,10 @@ async function closeSegment(
       entityType: "time_entry",
       entityId: running.id,
       action: "discard_empty",
+      changes: {
+        startTime: { from: running.startTime.toISOString(), to: null },
+        requestedEnd: { from: null, to: endAt.toISOString() },
+      },
     });
     events.push({ event: "time-entry-deleted", payload: { id: running.id } });
     return null;
@@ -361,7 +365,10 @@ export async function startTimer(
   attempt = 0
 ): Promise<TimerActionResult> {
   const sessionKey = cleanSessionKey(input.sessionKey);
-  const description = cleanText(input.description, "description", 500) ?? null;
+  // Truncate rather than reject: legacy clients (native apps) start timers
+  // with whatever the user typed.
+  const description =
+    cleanText(input.description, "description", DESCRIPTION_MAX, { truncate: true }) ?? null;
   const agent = cleanAgent(input.agent) ?? null;
   const cwd = cleanToken(input.cwd, "cwd", 1000) ?? null;
   const gitBranch = cleanToken(input.gitBranch, "gitBranch", 255) ?? null;
@@ -477,6 +484,18 @@ export async function pauseTimer(
 
   const { entry, changed } = await prisma.$transaction(async (tx) => {
     const timer = await lockTimer(tx, ctx, timerId);
+    if (timer.status === "paused" && timer.pauseReason === "idle" && reason === "manual") {
+      // A human pausing an idle-paused timer means "keep it paused": stray
+      // heartbeats must no longer resume it.
+      await tx.timer.update({ where: { id: timer.id }, data: { pauseReason: "manual" } });
+      await recordAudit(tx, ctx, {
+        entityType: "timer",
+        entityId: timer.id,
+        action: "pause",
+        changes: { pauseReason: { from: "idle", to: "manual" } },
+      });
+      return { entry: null, changed: true };
+    }
     if (timer.status !== "running") return { entry: null, changed: false };
     if (
       opts.expectLastActivityAt &&
@@ -514,24 +533,36 @@ export async function pauseTimer(
 export async function resumeTimer(
   ctx: ServiceContext,
   timerId: string,
-  opts: { at?: Date | string | null } = {}
+  opts: {
+    at?: Date | string | null;
+    /** Heartbeat path: only resume if the timer is (still) idle-paused under the lock. */
+    onlyIfIdlePaused?: boolean;
+  } = {}
 ): Promise<TimerActionResult> {
   const requestedAt = resolveAt(ctx, opts.at);
+  if (ctx.now().getTime() - requestedAt.getTime() > MAX_BACKDATE_MS) {
+    throw createError("A timer can be resumed at most 24 hours in the past", 400);
+  }
   const events: PendingEvent[] = [];
 
   const { entry, changed } = await prisma.$transaction(async (tx) => {
     const timer = await lockTimer(tx, ctx, timerId);
     if (timer.status === "running") return { entry: null, changed: false };
+    if (opts.onlyIfIdlePaused && !(timer.status === "paused" && timer.pauseReason === "idle")) {
+      return { entry: null, changed: false };
+    }
     await assertCanRunTimer(tx, ctx, { isAiGenerated: timer.isAiGenerated });
 
-    // A backdated resume may not overlap the timer's previous segment —
-    // that would bill the same minutes twice.
+    // A backdated resume may not overlap the timer's previous segment (that
+    // would bill the same minutes twice) nor start before the timer did.
     const last = await tx.timeEntry.findFirst({
       where: { timerId: timer.id, endTime: { not: null } },
       orderBy: { endTime: "desc" },
       select: { endTime: true },
     });
-    const at = last?.endTime && requestedAt < last.endTime ? last.endTime : requestedAt;
+    let at = requestedAt;
+    if (last?.endTime && at < last.endTime) at = last.endTime;
+    if (at < timer.startedAt) at = timer.startedAt;
 
     const opened = await openSegment(tx, ctx, timer, at, events);
     const updated = await tx.timer.update({
@@ -610,7 +641,9 @@ export async function touchTimer(
   if (!timer) throw createError("Timer not found", 404);
 
   if (timer.status === "paused" && timer.pauseReason === "idle") {
-    const result = await resumeTimer(ctx, timer.id, {});
+    // Re-checked under the row lock: a stop or manual pause that lands
+    // between this read and the resume wins.
+    const result = await resumeTimer(ctx, timer.id, { onlyIfIdlePaused: true });
     return { timer: result.timer, resumed: result.changed };
   }
 
@@ -646,7 +679,7 @@ export async function updateTimer(
   timerId: string,
   input: UpdateTimerInput
 ): Promise<TimerActionResult & { entriesUpdated: number }> {
-  const description = cleanText(input.description, "description", 500);
+  const description = cleanText(input.description, "description", DESCRIPTION_MAX);
   const idleTimeoutSeconds = cleanIdleTimeout(input.idleTimeoutSeconds);
   const events: PendingEvent[] = [];
 
@@ -669,7 +702,13 @@ export async function updateTimer(
 
     const data: Prisma.TimerUpdateInput = {};
     if (description !== undefined) data.description = description;
-    if (idleTimeoutSeconds !== undefined) data.idleTimeoutSeconds = idleTimeoutSeconds;
+    if (idleTimeoutSeconds !== undefined && idleTimeoutSeconds !== timer.idleTimeoutSeconds) {
+      data.idleTimeoutSeconds = idleTimeoutSeconds;
+      // Turning idle detection on for a timer that never sent heartbeats
+      // must not let the sweeper cut it back to a stale lastActivityAt.
+      const now = ctx.now();
+      if (timer.status === "running" && timer.lastActivityAt < now) data.lastActivityAt = now;
+    }
     if (input.isAiGenerated !== undefined) data.isAiGenerated = input.isAiGenerated;
     const assignmentChanged = projectId !== timer.projectId || taskId !== timer.taskId;
     if (assignmentChanged) {
