@@ -11,8 +11,13 @@ packages/
 ├── mac-app/   # Native macOS SwiftUI — see packages/mac-app/CLAUDE.md
 ├── ios-app/   # Native iOS & watchOS SwiftUI — see packages/ios-app/CLAUDE.md
 ├── landing/   # SSR marketing page (React + Vite)
+├── mcp/       # stdio MCP bridge to the API's hosted /mcp endpoint
 └── shared/    # Shared TypeScript types and utilities
+plugins/
+└── timetrack/ # Claude Code plugin (hooks + remote MCP + commands), listed by .claude-plugin/marketplace.json
 ```
+
+Validate plugin changes with `claude plugin validate ./plugins/timetrack` (and `claude plugin validate .` for the marketplace).
 
 Core data model: **User → Projects → Tasks → TimeEntries**. Hourly rates cascade Task > Project > User.
 

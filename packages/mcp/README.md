@@ -1,84 +1,65 @@
 # @timetrack/mcp
 
-An MCP server that lets AI coding agents (Claude Code, Cursor, anything that speaks the [Model Context Protocol](https://modelcontextprotocol.io)) start/stop TimeTrack timers and manage projects and tasks without touching the UI.
+TimeTrack's MCP tools for AI agents: run **parallel timers** (one per agent
+session), **pause and resume** them, **edit, backfill or delete past entries**,
+log work notes, and build client-ready **timesheets**.
 
-Time entries created through this server are automatically flagged as AI work, so the billing multiplier in Reports applies to them.
+## Recommended: use the hosted server
 
-## Setup
+The tools are served by the TimeTrack API at `/mcp` (Streamable HTTP), so
+nothing needs installing and nothing goes stale.
 
-1. **Mint an API key.** In the TimeTrack web UI: Settings → API Keys → "+ New Key". Name it something like "Claude Code". Leave "Used by an AI agent" checked (the default). Copy the `tt_…` token — it's shown only once.
+- **Claude Code** — install the plugin, which also tracks sessions
+  automatically through hooks (see `plugins/timetrack/README.md`):
 
-2. **Install / build.**
+  ```
+  /plugin install timetrack --marketplace alfredoreduarte/timetrack
+  ```
 
-   ```bash
-   cd packages/mcp
-   npm install
-   npm run build
-   ```
+  Or add just the MCP server:
 
-3. **Set environment variables** (in your shell or in your MCP client's config):
+  ```bash
+  claude mcp add --transport http timetrack https://api.track.alfredo.re/mcp \
+    --header "Authorization: Bearer $TIMETRACK_API_KEY"
+  ```
 
-   ```bash
-   export TIMETRACK_API_URL=https://app.track.alfredo.re/api
-   export TIMETRACK_API_KEY=tt_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-   ```
+- **Any client with HTTP MCP support** — URL `https://api.track.alfredo.re/mcp`,
+  header `Authorization: Bearer tt_…`.
 
-   For local dev against `npm run dev`, use `TIMETRACK_API_URL=http://localhost:3011`.
+Create the `tt_…` key in TimeTrack under **Settings → API keys**.
 
-4. **Wire it into Claude Code**:
+## This package: stdio bridge
 
-   ```bash
-   claude mcp add timetrack -- node /absolute/path/to/packages/mcp/dist/index.js
-   ```
+For clients that only speak stdio. It forwards every request to the hosted
+endpoint, so the tool list always matches the server.
 
-   Or in your `~/.claude/mcp_servers.json`:
+```bash
+npm run build --workspace=@timetrack/mcp
+claude mcp add timetrack -e TIMETRACK_API_KEY=tt_… -- node /absolute/path/to/packages/mcp/dist/index.js
+```
 
-   ```json
-   {
-     "mcpServers": {
-       "timetrack": {
-         "command": "node",
-         "args": ["/absolute/path/to/packages/mcp/dist/index.js"],
-         "env": {
-           "TIMETRACK_API_URL": "https://app.track.alfredo.re/api",
-           "TIMETRACK_API_KEY": "tt_..."
-         }
-       }
-     }
-   }
-   ```
-
-   Restart Claude Code. The tools below become available.
+| Variable | Default | Notes |
+|---|---|---|
+| `TIMETRACK_API_KEY` | (required) | `tt_…` key |
+| `TIMETRACK_API_URL` | `https://api.track.alfredo.re` | API base; `https://app.track.alfredo.re/api` also works. Local dev: `http://localhost:3011` |
 
 ## Tools
 
-| Tool             | Description                                                                                  |
-| ---------------- | -------------------------------------------------------------------------------------------- |
-| `running_timers` | List all currently running timers. Concurrent timers are supported (parallel AI sessions).   |
-| `start_timer`    | Start a timer with optional `description`, `projectId`, `taskId`. Doesn't stop existing ones. |
-| `stop_timer`     | Stop a timer. If `id` is omitted and exactly one timer is running, that one is stopped.      |
-| `recent_entries` | List recent time entries (default 10).                                                       |
-| `list_projects`  | List the user's projects.                                                                    |
-| `create_project` | Create a project (`name` required).                                                          |
-| `list_tasks`     | List tasks, optionally filtered by `projectId`.                                              |
-| `create_task`    | Create a task under a project.                                                               |
-| `update_task`    | Patch a task — rename, change rate, or mark complete.                                        |
-| `whoami`         | Return the authenticated user; useful for verifying the right account.                       |
+| Tool | What it does |
+|---|---|
+| `whoami` | Account, billing settings, plan, active timers |
+| `start_timer` | Start a timer; idempotent with `sessionKey`; picks the project from `gitRemote`/`cwd` |
+| `pause_timer` / `resume_timer` / `stop_timer` | Control a timer (optional backdated `at`) |
+| `list_timers` / `get_timer` | Active, paused or stopped timers; one timer with segments and notes |
+| `update_timer` | Reassign project/task/description/AI flag for all segments; learns the repo → project mapping |
+| `add_note` | Work-log note shown on the client timesheet |
+| `list_entries` / `create_entry` / `update_entry` / `delete_entry` / `bulk_update_entries` | Full editing of past and running entries |
+| `entry_history` | Audit trail: who changed what, via which client |
+| `list_projects` / `create_project` / `update_project` | Projects (clients), rates, linked repos, billing policy |
+| `list_tasks` / `create_task` / `update_task` | Tasks |
+| `timesheet` | Client-ready timesheet (Markdown or JSON) with overlap-aware billing |
+| `create_share_link` / `list_share_links` / `revoke_share_link` | Read-only timesheet links for clients |
+| `report_usage` | Token usage per model → API-equivalent cost lines |
 
-## How AI labeling works
-
-Every request from this server sends `X-Client: mcp` so entries land with `createdVia: "mcp"`. The flag `isAiGenerated` defaults to whatever the API key's `aiByDefault` was set to (`true` for keys created with "Used by an AI agent" checked). Override per-request with `X-AI-Generated: false` if you ever need to.
-
-## Configuration reference
-
-| Variable             | Default                          | Notes                                       |
-| -------------------- | -------------------------------- | ------------------------------------------- |
-| `TIMETRACK_API_URL`  | `https://app.track.alfredo.re/api` | API base — the prod web app proxies `/api/*` to the API container. Trailing slash optional. For local dev: `http://localhost:3011`. |
-| `TIMETRACK_API_KEY`  | (required)                       | `tt_…` token from Settings → API Keys.      |
-
-## Troubleshooting
-
-- **`TIMETRACK_API_KEY is required`** — the env var isn't reaching the server process. Re-check your MCP client config.
-- **`401 Invalid API key`** — the token was revoked or copied wrong. Mint a new one.
-- **`401 API key expired`** — set a new expiry or mint a new key.
-- **Entries not flagged as AI** — confirm the key has `aiByDefault: true` (visible as an "AI" badge next to the key name in Settings). Or pass `X-AI-Generated: true` explicitly.
+Entries created through MCP are flagged as AI work (`isAiGenerated`) unless the
+API key was created with "Used by an AI agent" unchecked.

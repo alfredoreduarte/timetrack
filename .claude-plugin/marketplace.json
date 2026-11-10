@@ -1,0 +1,14 @@
+{
+  "name": "timetrack",
+  "owner": { "name": "TimeTrack", "url": "https://track.alfredo.re" },
+  "metadata": {
+    "description": "Billable hours for developers who ship with AI agents"
+  },
+  "plugins": [
+    {
+      "name": "timetrack",
+      "source": "./plugins/timetrack",
+      "description": "Track every Claude Code session as billable time automatically: one pausable timer per session, auto-pause when idle, projects matched by repo, and MCP tools to fix entries and build client timesheets."
+    }
+  ]
+}
