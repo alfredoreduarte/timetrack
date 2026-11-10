@@ -17,7 +17,8 @@ export function cleanText(
   const cleaned = sanitizeString(value);
   if (cleaned.length === 0) return null;
   if (cleaned.length > maxLength) {
-    if (opts.truncate) return cleaned.slice(0, maxLength);
+    // Never leave half of a surrogate pair (e.g. an emoji) at the cut.
+    if (opts.truncate) return cleaned.slice(0, maxLength).replace(/[\uD800-\uDBFF]$/, "");
     throw createError(`${field} must be at most ${maxLength} characters`, 400);
   }
   return cleaned;

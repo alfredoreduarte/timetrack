@@ -704,10 +704,19 @@ export async function updateTimer(
     if (description !== undefined) data.description = description;
     if (idleTimeoutSeconds !== undefined && idleTimeoutSeconds !== timer.idleTimeoutSeconds) {
       data.idleTimeoutSeconds = idleTimeoutSeconds;
-      // Turning idle detection on for a timer that never sent heartbeats
-      // must not let the sweeper cut it back to a stale lastActivityAt.
+      // Turning idle detection ON for a timer that had none: its
+      // lastActivityAt was never kept fresh, so start counting from now
+      // (otherwise the sweeper would cut it back to its start). Changing an
+      // existing timeout keeps the real last heartbeat.
       const now = ctx.now();
-      if (timer.status === "running" && timer.lastActivityAt < now) data.lastActivityAt = now;
+      if (
+        timer.idleTimeoutSeconds === null &&
+        idleTimeoutSeconds !== null &&
+        timer.status === "running" &&
+        timer.lastActivityAt < now
+      ) {
+        data.lastActivityAt = now;
+      }
     }
     if (input.isAiGenerated !== undefined) data.isAiGenerated = input.isAiGenerated;
     const assignmentChanged = projectId !== timer.projectId || taskId !== timer.taskId;

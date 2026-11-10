@@ -355,7 +355,7 @@ class APIClient {
     updateTimeEntry: async (
       id: string,
       entryData: {
-        description?: string;
+        description?: string | null;
         startTime?: string;
         endTime?: string;
         hours?: number;

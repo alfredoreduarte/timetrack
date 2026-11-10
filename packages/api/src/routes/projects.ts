@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, AuthenticatedRequest } from "../middleware/auth";
+import { contextFromRequest } from "../services/context";
+import { deleteProject } from "../services/deletions";
 
 const router = express.Router();
 
@@ -359,42 +361,8 @@ router.put(
 router.delete(
   "/:id",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
-
-    // Check if project exists and belongs to user
-    const existingProject = await prisma.project.findFirst({
-      where: {
-        id,
-        userId: req.user!.id,
-      },
-    });
-
-    if (!existingProject) {
-      throw createError("Project not found", 404);
-    }
-
-    // Delete the project (this will set projectId to null for associated time entries due to onDelete: SetNull)
-    await prisma.project.delete({
-      where: { id },
-    });
-
-    // Clean up orphaned time entries that belong to this user and have null projectId
-    // This prevents them from affecting dashboard earnings calculations
-    await prisma.timeEntry.deleteMany({
-      where: {
-        userId: req.user!.id,
-        projectId: null,
-        taskId: null, // Only delete entries that are completely orphaned
-      },
-    });
-
-    // Emit real-time update
-    const io = req.app.get("io");
-    io.to(`user-${req.user!.id}`).emit("project-deleted", { id });
-
-    res.json({
-      message: "Project deleted successfully",
-    });
+    await deleteProject(contextFromRequest(req), req.params.id);
+    res.json({ message: "Project deleted successfully" });
   })
 );
 
