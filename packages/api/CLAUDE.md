@@ -106,5 +106,29 @@ ALLOWED_ORIGINS       # CORS origins (comma-separated)
 
 ## Testing
 
-- Jest configured, minimal coverage currently
-- Test files in `src/__tests__/`
+Integration tests run the real Express app (`createApp()` from `src/app.ts`) through
+supertest against a real Postgres **test** database. The harness refuses to run
+against a database whose name doesn't contain `test`, and truncates every table
+between tests.
+
+```bash
+# One-time: create the test DB next to your dev Postgres (port 3012)
+docker exec timetrack-postgres psql -U timetrack_user -d timetrack_db -c "CREATE DATABASE timetrack_test;"
+
+# Run (migrations are applied automatically in jest globalSetup)
+TEST_DATABASE_URL=postgresql://timetrack_user:<password>@localhost:3012/timetrack_test npm test
+```
+
+- Tests live in `src/**/__tests__/*.test.ts`; helpers in `src/test/helpers.ts`
+  (`api()`, `resetDb()`, `createUser()`, `createApiKey()`, `createProject()`, `createTask()`)
+- `timeEntries.legacy.test.ts` pins the endpoints shipped native apps depend on — change
+  those expectations only deliberately
+- Set `TEST_LOGS=1` to see API logs during tests
+
+## Service layer
+
+New business logic lives in `src/services/` and takes a `ServiceContext`
+(`contextFromRequest(req)` or `systemContext(userId)`) instead of an Express request,
+so REST routes, the MCP endpoint and background jobs share one implementation.
+Mutations of billable data call `recordAudit()`; realtime pushes go through
+`emitToUser()` in `src/realtime.ts`.

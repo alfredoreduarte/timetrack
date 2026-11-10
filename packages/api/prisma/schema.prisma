@@ -29,6 +29,7 @@ model User {
   tasks        Task[]
   apiKeys      ApiKey[]
   favorites    Favorite[]
+  auditEvents  AuditEvent[]
 
   @@map("users")
   @@index([email])
@@ -150,4 +151,26 @@ model Favorite {
   @@map("favorites")
   @@index([userId])
   @@index([userId, displayOrder])
+}
+// Append-only record of changes to billable data: who (user, API key, or the
+// system), through which client, and what changed. Lets a developer show a
+// client exactly how AI agents touched their timesheet.
+model AuditEvent {
+  id         String   @id @default(cuid())
+  entityType String   @map("entity_type") // time_entry | timer | project | ...
+  entityId   String   @map("entity_id")
+  action     String // create | update | delete | start | pause | resume | stop | ...
+  actorType  String   @map("actor_type") // user | api_key | system
+  actorId    String?  @map("actor_id")
+  actorLabel String?  @map("actor_label")
+  via        String?
+  changes    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("audit_events")
+  @@index([userId, entityType, entityId])
+  @@index([userId, createdAt])
 }

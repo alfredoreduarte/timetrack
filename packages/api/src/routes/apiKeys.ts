@@ -1,6 +1,6 @@
 import express from "express";
 import { z } from "zod";
-import { prisma } from "../utils/database";
+import { prisma, TxClient } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import {
   authenticate,
@@ -98,7 +98,7 @@ router.post(
     const { name, expiresAt, aiByDefault } = createSchema.parse(req.body);
     const { token, hash, prefix } = generateApiKey();
 
-    const apiKey = await prisma.$transaction(async (tx: typeof prisma) => {
+    const apiKey = await prisma.$transaction(async (tx: TxClient) => {
       const activeCount = await tx.apiKey.count({
         where: { userId: req.user!.id, isActive: true },
       });
