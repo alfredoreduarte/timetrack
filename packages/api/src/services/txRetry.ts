@@ -24,13 +24,13 @@ export function isRetryableTxError(e: unknown): boolean {
   );
 }
 
+/** Counts transactions aborted by a deadlock or serialization failure (tests assert on it). */
+export const txRetryStats = { retryable: 0 };
+
 /**
  * Runs a transaction body, retrying it when Postgres aborts it as a deadlock
  * victim (or `retryIf` matches); 409 once the attempts run out.
  */
-/** Counts transactions aborted by a deadlock or serialization failure (tests assert on it). */
-export const txRetryStats = { retryable: 0 };
-
 export async function withTxRetry<T>(
   label: string,
   fn: () => Promise<T>,

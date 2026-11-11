@@ -641,7 +641,8 @@ describe("S1 review round 6 fixes", () => {
     // Bulk locks e1, then queues on ex — before it ever writes a row.
     const b = settle(bulkUpdateEntries(ctx, { ids: [e1.id, ex.id], set: { projectId: p.id } }));
     await sleep(200);
-    // The delete takes P, then queues on e1 (held by bulk).
+    // The delete queues on P (bulk holds KEY SHARE on it); without bulk's
+    // target locks it would take P and then queue on e1 — a cycle.
     const d = settle(deleteProject(ctx, p.id));
     await sleep(200);
     release();
