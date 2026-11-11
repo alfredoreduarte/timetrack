@@ -327,3 +327,36 @@ describe("S3 review round 3", () => {
     expect(statuses[12]).toBe(429);
   });
 });
+
+describe("S3 review round 4", () => {
+  it("tokens that can't exist don't use a link budget (or hold a key)", async () => {
+    const junk = `ts_${"x".repeat(5000)}`;
+    const statuses: number[] = [];
+    for (let i = 0; i < 13; i++) {
+      statuses.push((await api().get(`/public/timesheets/${junk}`).set("X-Forwarded-For", `198.51.100.${i}`)).status);
+    }
+    expect(statuses.every((s) => s === 404)).toBe(true);
+  });
+
+  it("a bad MCP expiresAt is reported as expiresAt", async () => {
+    const { user } = await createUser();
+    const key = await createApiKey(user.id, { name: "Claude Code" });
+    await createProject(user.id, { name: "Acme" });
+    const call = (expiresAt: string) =>
+      api()
+        .post("/mcp")
+        .set(key.auth)
+        .set("Accept", "application/json, text/event-stream")
+        .send({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: "create_share_link", arguments: { rollingDays: 7, expiresAt } },
+        });
+    for (const bad of ["2027-04-31", "2027-01-01T00:00:00"]) {
+      const text = (await call(bad)).body.result.content[0].text as string;
+      expect(text).toMatch(/expiresAt/);
+      expect(text).not.toMatch(/endDate/);
+    }
+  });
+});

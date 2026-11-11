@@ -7,6 +7,7 @@ import { contextFromRequest } from "../services/context";
 import {
   createShareLink,
   getPublicTimesheet,
+  isPlausibleShareToken,
   listShareLinks,
   revokeShareLink,
 } from "../services/shareLinks";
@@ -94,6 +95,9 @@ const perLinkLimiter = rateLimit({
   windowMs: 60_000,
   max: Number(process.env.PUBLIC_TIMESHEET_PER_LINK_PER_MINUTE || 12),
   keyGenerator: (req) => `link:${req.params.token}`,
+  // A token that can't exist is a cheap 404 (still under the per-IP limit);
+  // keeping it as a key would let junk tokens of any length fill the store.
+  skip: (req) => !isPlausibleShareToken(req.params.token),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "This timesheet is being viewed very often; try again in a minute." },

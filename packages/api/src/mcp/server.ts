@@ -629,7 +629,7 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
           startDate: args.startDate ? parseRangeDate(args.startDate, tz, "start").toISOString() : undefined,
           endDate: args.endDate ? parseRangeDate(args.endDate, tz, "end").toISOString() : undefined,
           // A bare expiry date means the end of that day in the link's zone.
-          expiresAt: args.expiresAt ? parseRangeDate(args.expiresAt, tz, "end").toISOString() : undefined,
+          expiresAt: args.expiresAt ? parseRangeDate(args.expiresAt, tz, "end", "expiresAt").toISOString() : undefined,
         });
         return { url: r.url, shareLink: r.shareLink };
       })
