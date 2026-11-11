@@ -64,7 +64,14 @@ export interface ImportSessionInput {
   usage?: Record<string, TokenUsage>;
 }
 
-export type ImportStatus = "imported" | "replaced" | "skipped_live" | "skipped_edited" | "empty" | "invalid";
+export type ImportStatus =
+  | "imported"
+  | "replaced"
+  | "skipped_live"
+  | "skipped_edited"
+  | "skipped_plan"
+  | "empty"
+  | "invalid";
 
 export interface ImportSessionResult {
   sessionKey: string;
@@ -81,7 +88,7 @@ export interface ImportSessionResult {
 const sumSeconds = (segments: Span[]) =>
   segments.reduce((s, [a, b]) => s + Math.floor((b.getTime() - a.getTime()) / 1000), 0);
 
-type Skip = { status: "skipped_live" | "skipped_edited"; reason: string };
+type Skip = { status: "skipped_live" | "skipped_edited" | "skipped_plan"; reason: string };
 
 /**
  * An earlier import may be replaced only if nothing else ever touched it:
@@ -143,12 +150,14 @@ async function importOne(
   sessionKey: string,
   segments: Span[],
   dryRun: boolean,
-  idleTimeoutSeconds: number
+  idleTimeoutSeconds: number,
+  skipIfExisting?: Skip
 ): Promise<ImportSessionResult> {
   const existing = await prisma.timer.findUnique({
     where: { userId_sessionKey: { userId: ctx.userId, sessionKey } },
     select: { id: true },
   });
+  if (existing && skipIfExisting) throw new SkipSession(skipIfExisting);
   if (existing) {
     const blocker = await replaceBlocker(prisma, ctx.userId, existing.id);
     if (blocker) throw new SkipSession(blocker);
@@ -320,6 +329,9 @@ export async function importAgentSessions(
       continue;
     }
 
+    // The plan's history window limits what an import may add — never what
+    // is already stored: a clipped session must not replace a full one.
+    const clipped = Boolean(floor && spans.some(([a]) => a < floor));
     if (floor) {
       spans = spans
         .filter(([, b]) => b > floor)
@@ -332,8 +344,14 @@ export async function importAgentSessions(
     }
 
     try {
+      const skipIfExisting: Skip | undefined = clipped
+        ? {
+            status: "skipped_plan",
+            reason: `starts more than ${entitlements.limits.historyDays} days ago; it is kept as imported (upgrade to re-import it in full)`,
+          }
+        : undefined;
       results.push(
-        await importOne(ctx, s, sessionKey, segments, Boolean(opts.dryRun), user.agentIdleTimeoutSeconds)
+        await importOne(ctx, s, sessionKey, segments, Boolean(opts.dryRun), user.agentIdleTimeoutSeconds, skipIfExisting)
       );
     } catch (e) {
       if (e instanceof SkipSession) {

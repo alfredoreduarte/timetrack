@@ -5,7 +5,7 @@ import { createError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 import { getStripe } from "../billing/stripeClient";
 import { ServiceContext } from "./context";
-import { billingEnabled, entitlementsFor, TRIAL_DAYS } from "./entitlements";
+import { billingEnabled, entitlementsFor, startPendingTrial, TRIAL_DAYS } from "./entitlements";
 
 export type BillingInterval = "month" | "year";
 
@@ -30,7 +30,12 @@ const userBillingSelect = {
 } as const;
 
 export async function getBillingStatus(ctx: ServiceContext) {
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId }, select: userBillingSelect });
+  const user = await startPendingTrial(
+    prisma,
+    ctx.userId,
+    await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId }, select: userBillingSelect }),
+    ctx.now()
+  );
   const e = entitlementsFor(user, ctx.now());
   const runningAgentTimers = await prisma.timeEntry.count({
     where: { userId: ctx.userId, isRunning: true, isAiGenerated: true },
@@ -63,10 +68,17 @@ export async function createCheckoutSession(ctx: ServiceContext, interval: Billi
   if (!billingEnabled()) throw createError("Billing is not enabled on this server", 503);
   const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId }, select: userBillingSelect });
   if (user.isSubscriptionExempt) throw createError("Your account already has Pro for free.", 400);
-  if (user.subscriptionStatus && ["active", "trialing", "past_due"].includes(user.subscriptionStatus)) {
-    throw createError("You already have a subscription. Manage it from the billing portal.", 400);
-  }
+  const alreadySubscribed = () =>
+    createError("You already have a subscription. Manage it from the billing portal.", 400);
+  if (user.subscriptionStatus && LIVE_STATUSES.has(user.subscriptionStatus)) throw alreadySubscribed();
   const stripe = getStripe();
+  // The cached status lags the webhook; ask Stripe before creating a second one.
+  if (user.stripeCustomerId) {
+    const existing = await stripe.subscriptions.list({ customer: user.stripeCustomerId, status: "all", limit: 100 });
+    if (existing.data.some((s) => LIVE_STATUSES.has(s.status) || PENDING_STATUSES.has(s.status))) {
+      throw alreadySubscribed();
+    }
+  }
 
   let customerId = user.stripeCustomerId;
   if (!customerId) {
@@ -105,6 +117,9 @@ export async function createCheckoutSession(ctx: ServiceContext, interval: Billi
     },
     success_url: `${appUrl()}/billing?checkout=success`,
     cancel_url: `${appUrl()}/billing?checkout=canceled`,
+  }, {
+    // Double clicks and parallel tabs within the same minute get the same session.
+    idempotencyKey: `checkout:${user.id}:${interval}:${Math.floor(now / 60_000)}`,
   });
   if (!session.url) throw createError("Stripe did not return a checkout URL", 502);
   return { url: session.url };
@@ -128,13 +143,45 @@ export async function createPortalSession(ctx: ServiceContext) {
 const idOf = (ref: string | { id: string } | null | undefined): string | null =>
   !ref ? null : typeof ref === "string" ? ref : ref.id;
 
+/** Subscriptions that keep Pro (Stripe keeps past_due ones active while it retries the card). */
+const LIVE_STATUSES = new Set(["active", "trialing", "past_due"]);
+/** Not live, but not over either: the customer can still fix them. */
+const PENDING_STATUSES = new Set(["incomplete", "unpaid", "paused"]);
+const rank = (s: Stripe.Subscription) => (LIVE_STATUSES.has(s.status) ? 2 : PENDING_STATUSES.has(s.status) ? 1 : 0);
+
+/** The subscription a customer's plan should follow: live first, then the newest. */
+function pickSubscription(subs: Stripe.Subscription[]): Stripe.Subscription {
+  return subs.reduce((best, s) =>
+    rank(s) > rank(best) || (rank(s) === rank(best) && s.created > best.created) ? s : best
+  );
+}
+
 /**
- * Copies a subscription's current state onto its user. Always re-fetches
- * from Stripe so out-of-order or replayed events can't apply stale state.
+ * Copies the state of the subscription the user's plan should follow onto
+ * the user. The event only says *something* changed: re-fetching from
+ * Stripe (and looking at all of the customer's subscriptions) means a late,
+ * replayed or out-of-order event — including one about an old or duplicate
+ * subscription — can't overwrite the live one.
  */
 export async function syncSubscription(subscriptionId: string): Promise<boolean> {
-  const sub = await getStripe().subscriptions.retrieve(subscriptionId);
-  const customerId = idOf(sub.customer as string | { id: string });
+  const stripe = getStripe();
+  const named = await stripe.subscriptions.retrieve(subscriptionId);
+  const customerId = idOf(named.customer as string | { id: string });
+  let sub: Stripe.Subscription = named;
+  if (customerId) {
+    const all = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 100 });
+    const subs = all.data.some((s) => s.id === named.id) ? all.data : [...all.data, named];
+    sub = pickSubscription(subs);
+    const live = subs.filter((s) => LIVE_STATUSES.has(s.status));
+    if (live.length > 1) {
+      // Two live subscriptions means the customer is paying twice; a person
+      // has to cancel one (never done automatically).
+      logger.error("Stripe customer has more than one live subscription", {
+        customer: customerId,
+        subscriptions: live.map((s) => s.id),
+      });
+    }
+  }
   const item = sub.items?.data?.[0];
   const user =
     (customerId && (await prisma.user.findUnique({ where: { stripeCustomerId: customerId }, select: { id: true } }))) ||

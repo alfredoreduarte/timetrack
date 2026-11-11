@@ -3,6 +3,7 @@ import { prisma, TxClient } from "../utils/database";
 import { createError } from "../middleware/errorHandler";
 import { emitToUser } from "../realtime";
 import { withTxRetry } from "./txRetry";
+import { assertAgentSlot } from "./limits";
 import { ServiceContext } from "./context";
 import { diffFields, recordAudit, listAuditEvents } from "./audit";
 import { getHourlyRate } from "./rates";
@@ -409,6 +410,7 @@ async function applyEntryUpdate(
   }
   if (description !== undefined) data.description = description;
   if (patch.isAiGenerated !== undefined && patch.isAiGenerated !== existing.isAiGenerated) {
+    if (patch.isAiGenerated && existing.isRunning) await assertAgentSlot(tx, ctx);
     data.isAiGenerated = patch.isAiGenerated;
   }
 

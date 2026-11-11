@@ -4,9 +4,28 @@ import { prisma } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, AuthenticatedRequest } from "../middleware/auth";
 import { buildTimesheet } from "../services/timesheets";
+import { getEntitlements, historyFloor } from "../services/entitlements";
 import { timesheetToCsv, timesheetToMarkdown } from "../billing/render";
 
 const router = express.Router();
+
+/**
+ * Free accounts see the same recent window in reports and exports as in
+ * timesheets: entries that started before it are left out, and JSON
+ * responses say so (an additive field; existing clients ignore it).
+ */
+async function applyPlanWindow(
+  userId: string,
+  where: { startTime?: { gte?: Date; lte?: Date } }
+): Promise<{ historyDays: number; since: string } | null> {
+  const now = new Date();
+  const entitlements = await getEntitlements(userId, prisma, now);
+  const floor = historyFloor(entitlements, now);
+  if (!floor) return null;
+  where.startTime = where.startTime ?? {};
+  if (!where.startTime.gte || where.startTime.gte < floor) where.startTime.gte = floor;
+  return { historyDays: entitlements.limits.historyDays!, since: floor.toISOString() };
+}
 
 // Apply authentication to all routes
 router.use(authenticate);
@@ -103,6 +122,7 @@ router.get(
         where.startTime.lte = new Date(endDate);
       }
     }
+    const limitedByPlan = await applyPlanWindow(req.user!.id, where);
 
     if (projectId) {
       where.projectId = projectId;
@@ -203,6 +223,7 @@ router.get(
     }, {} as Record<string, any>);
 
     res.json({
+      limitedByPlan,
       summary: {
         totalDuration, // in seconds
         totalEarnings,
@@ -282,6 +303,7 @@ router.get(
         where.startTime.lte = new Date(endDate);
       }
     }
+    const limitedByPlan = await applyPlanWindow(req.user!.id, where);
 
     if (projectId) {
       where.projectId = projectId;
@@ -330,6 +352,7 @@ router.get(
     }));
 
     res.json({
+      limitedByPlan,
       timeEntries: entriesWithEarnings,
       totalEntries: timeEntries.length,
     });
@@ -397,6 +420,7 @@ router.get(
         where.startTime.lte = new Date(endDate);
       }
     }
+    const limitedByPlan = await applyPlanWindow(req.user!.id, where);
 
     if (projectId) {
       where.projectId = projectId;
@@ -484,6 +508,7 @@ router.get(
     }, {} as Record<string, any>);
 
     res.json({
+      limitedByPlan,
       earnings: {
         totalEarnings,
         totalHours,
@@ -559,6 +584,7 @@ router.get(
         where.startTime.lte = new Date(endDate);
       }
     }
+    const limitedByPlan = await applyPlanWindow(req.user!.id, where);
 
     if (projectId) {
       where.projectId = projectId;
@@ -633,6 +659,7 @@ router.get(
       .map((row: any) => row.map((field: any) => `"${field}"`).join(","))
       .join("\n");
 
+    if (limitedByPlan) res.setHeader("X-Limited-By-Plan-Days", String(limitedByPlan.historyDays));
     res.setHeader("Content-Type", "text/csv");
     res.setHeader(
       "Content-Disposition",

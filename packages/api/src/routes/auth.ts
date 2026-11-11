@@ -6,7 +6,7 @@ import { z } from "zod";
 import svgCaptcha from "svg-captcha";
 import crypto from "crypto";
 import { prisma } from "../utils/database";
-import { TRIAL_DAYS } from "../services/entitlements";
+import { billingEnabled, TRIAL_DAYS } from "../services/entitlements";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, requireJwt, AuthenticatedRequest } from "../middleware/auth";
 import { emailService } from "../utils/email";
@@ -290,8 +290,9 @@ router.post(
         password: hashedPassword,
         defaultHourlyRate,
         idleTimeoutSeconds,
-        // Every new account starts with a Pro trial.
-        trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 86400 * 1000),
+        // Every new account starts with a Pro trial — from the day billing is
+        // on (see startPendingTrial), so signups before that don't lose it.
+        trialEndsAt: billingEnabled() ? new Date(Date.now() + TRIAL_DAYS * 86400 * 1000) : null,
       },
       select: {
         id: true,

@@ -71,6 +71,27 @@ export function entitlementsFor(user: PlanUser, now: Date = new Date()): Entitle
   return { plan: "free", reason: "free", trialEndsAt: user.trialEndsAt, limits: FREE_LIMITS };
 }
 
+/**
+ * Accounts created while billing was off have no trial yet (trialEndsAt
+ * null). The first time their plan is checked with billing on, their
+ * 14-day trial starts — so turning Stripe on never drops anyone straight
+ * to Free.
+ */
+export async function startPendingTrial<U extends PlanUser>(
+  db: TxClient | typeof prisma,
+  userId: string,
+  user: U,
+  now: Date
+): Promise<U> {
+  if (!billingEnabled() || user.isSubscriptionExempt || user.subscriptionStatus || user.trialEndsAt) return user;
+  await db.user.updateMany({
+    where: { id: userId, trialEndsAt: null },
+    data: { trialEndsAt: new Date(now.getTime() + TRIAL_DAYS * 86400 * 1000) },
+  });
+  const { trialEndsAt } = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { trialEndsAt: true } });
+  return { ...user, trialEndsAt };
+}
+
 export async function getEntitlements(
   userId: string,
   db: TxClient | typeof prisma = prisma,
@@ -80,7 +101,7 @@ export async function getEntitlements(
     where: { id: userId },
     select: { isSubscriptionExempt: true, subscriptionStatus: true, trialEndsAt: true },
   });
-  return entitlementsFor(user, now);
+  return entitlementsFor(await startPendingTrial(db, userId, user, now), now);
 }
 
 const upgradeUrl = () => `${(process.env.APPLICATION_URL || "http://localhost:3010").replace(/\/$/, "")}/billing`;

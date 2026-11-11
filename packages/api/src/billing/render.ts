@@ -22,6 +22,12 @@ export function timesheetToMarkdown(t: Timesheet, opts: { showAmounts?: boolean 
   out.push(`# Timesheet — ${t.user.name}`);
   out.push("");
   out.push(`${first} → ${last} · ${tz}`);
+  if (t.limitedByPlan) {
+    out.push("");
+    out.push(
+      `_Free plan: only the last ${t.limitedByPlan.historyDays} days are included — work before ${first} is not listed._`
+    );
+  }
 
   for (const p of t.projects) {
     out.push("");
@@ -108,6 +114,15 @@ export function timesheetToCsv(t: Timesheet, opts: { showAmounts?: boolean } = {
         );
       }
     }
+  }
+  if (t.limitedByPlan) {
+    const since = localDateKey(new Date(t.range.startDate), t.range.timezone);
+    const note = [
+      "",
+      "",
+      `Note: Free plan — only the last ${t.limitedByPlan.historyDays} days are included; work before ${since} is not listed`,
+    ];
+    rows.push([...note, ...Array(header.length - note.length).fill("")].map(csvCell).join(","));
   }
   return rows.join("\n") + "\n";
 }
