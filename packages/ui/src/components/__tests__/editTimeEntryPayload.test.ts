@@ -40,9 +40,20 @@ describe("buildEntryUpdate", () => {
 
   it("in hours mode moving the start keeps the exact duration, not the rounded hours", () => {
     // 2h 0m 10s shows as "2.00"; resending 2.00h would shave 10 seconds off.
-    const p = buildEntryUpdate(form({ useHours: true, startTime: "07:00" }), { ...initial, durationSeconds: 7210 });
+    const p = buildEntryUpdate(
+      form({ useHours: true, startTime: "07:00" }),
+      { ...initial, durationSeconds: 7210 },
+      Date.parse("2026-03-03T00:00:00")
+    );
     expect(p.hours).toBeUndefined();
     expect(Date.parse(p.endTime!) - Date.parse(p.startTime!)).toBe(7210 * 1000);
+  });
+
+  it("in hours mode never sends an end in the future (the server would clamp it)", () => {
+    const now = Date.parse("2026-03-02T08:30:00");
+    const p = buildEntryUpdate(form({ useHours: true, startTime: "07:00" }), { ...initial, durationSeconds: 7210 }, now);
+    expect(p.endTime).toBeUndefined();
+    expect(p.hours).toBe(7210 / 3600);
   });
 
   it("in hours mode sends new hours and nothing else when only hours change", () => {

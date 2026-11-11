@@ -73,13 +73,47 @@ async function lockTimerRow(tx: TxClient, timerId: string) {
  * holding the timer lock), so concurrent pause/stop can't interleave with
  * an edit and leave it acting on a stale snapshot.
  */
-async function lockAndLoadEntry(tx: TxClient, ctx: ServiceContext, id: string) {
+/**
+ * Takes the KEY SHARE locks a reassignment needs on its target project and
+ * task before any entry is locked. Postgres would take them anyway when the
+ * row is written, but only after the entry lock — the reverse of a project
+ * or task delete (project → task → entries), which deadlocks.
+ */
+async function lockAssignmentTargets(
+  tx: TxClient,
+  ctx: ServiceContext,
+  target: { projectId?: string | null; taskId?: string | null }
+) {
+  const projectIds = new Set<string>();
+  if (target.projectId) projectIds.add(target.projectId);
+  if (target.taskId) {
+    const task = await tx.task.findFirst({
+      where: { id: target.taskId, userId: ctx.userId },
+      select: { projectId: true },
+    });
+    if (task) projectIds.add(task.projectId);
+  }
+  for (const id of Array.from(projectIds).sort()) {
+    await tx.$queryRaw`SELECT id FROM projects WHERE id = ${id} AND "userId" = ${ctx.userId} FOR KEY SHARE`;
+  }
+  if (target.taskId) {
+    await tx.$queryRaw`SELECT id FROM tasks WHERE id = ${target.taskId} AND "userId" = ${ctx.userId} FOR KEY SHARE`;
+  }
+}
+
+async function lockAndLoadEntry(
+  tx: TxClient,
+  ctx: ServiceContext,
+  id: string,
+  target: { projectId?: string | null; taskId?: string | null } = {}
+) {
   const head = await tx.timeEntry.findFirst({
     where: { id, userId: ctx.userId },
     select: { id: true, timerId: true },
   });
   if (!head) return null;
   if (head.timerId) await lockTimerRow(tx, head.timerId);
+  await lockAssignmentTargets(tx, ctx, target);
   await tx.$queryRaw`SELECT id FROM time_entries WHERE id = ${id} FOR UPDATE`;
   return tx.timeEntry.findFirst({ where: { id, userId: ctx.userId }, select: entrySelect });
 }
@@ -431,7 +465,7 @@ export async function updateEntry(
 ): Promise<EntryView> {
   const events: PendingEvent[] = [];
   const entry = await prisma.$transaction(async (tx) => {
-    const existing = await lockAndLoadEntry(tx, ctx, id);
+    const existing = await lockAndLoadEntry(tx, ctx, id, patch);
     if (!existing) throw createError("Time entry not found", 404);
     return applyEntryUpdate(tx, ctx, existing, patch, events);
   });
@@ -467,6 +501,7 @@ export async function bulkUpdateEntries(ctx: ServiceContext, input: BulkUpdateIn
       // Lock timers in a stable order (deadlock-free), then the entries.
       const timerIds = Array.from(new Set(heads.map((h) => h.timerId).filter((t): t is string => !!t))).sort();
       for (const t of timerIds) await lockTimerRow(tx, t);
+      await lockAssignmentTargets(tx, ctx, input.set);
       await tx.$queryRaw`SELECT id FROM time_entries WHERE id = ANY(${ids}) ORDER BY id FOR UPDATE`;
       const found = await tx.timeEntry.findMany({
         where: { id: { in: ids }, userId: ctx.userId },

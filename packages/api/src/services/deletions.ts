@@ -8,11 +8,11 @@ import { recordAudit } from "./audit";
 import { loadTimerViews } from "./timers";
 
 /*
- * Lock order for deletes: timers → project → task → entries, matching every
- * other writer (timer → entry, with the FK check on the project/task taken
- * last). Attaching a timer or entry to a project or task takes a KEY SHARE
- * lock on that row, so once the delete holds the row FOR UPDATE nothing new
- * can attach. Anything that attached between the first timer query and that
+ * Lock order for deletes: timers → project → task → entries, the order every
+ * writer uses. Attaching a timer or entry to a project or task takes a KEY
+ * SHARE lock on that row (entry writers take it explicitly before locking
+ * entries, see lockAssignmentTargets), so once the delete holds the row FOR
+ * UPDATE nothing new can attach. Anything that attached between the first timer query and that
  * lock is caught by re-checking the timer set; the transaction then retries
  * with those timers locked up front instead of locking them out of order.
  */
@@ -22,14 +22,21 @@ const MAX_ATTEMPTS = 4;
 class TimerSetChanged extends Error {}
 
 const DEADLOCK_CODES = new Set(["40P01", "40001"]);
+// Deadlocks raised inside ORM calls of an interactive transaction come back
+// as PrismaClientUnknownRequestError with the SQLSTATE only in the message.
+const DEADLOCK_RE = /\b(40P01|40001)\b|deadlock detected/;
 
-function isRetryable(e: unknown): boolean {
-  if (e instanceof TimerSetChanged) return true;
-  if (!(e instanceof Prisma.PrismaClientKnownRequestError)) return false;
-  if (e.code === "P2034") return true;
-  const dbCode = (e.meta as { code?: string } | undefined)?.code;
-  return e.code === "P2010" && typeof dbCode === "string" && DEADLOCK_CODES.has(dbCode);
+export function isRetryableTxError(e: unknown): boolean {
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    if (e.code === "P2034") return true;
+    const dbCode = (e.meta as { code?: string } | undefined)?.code;
+    if (e.code === "P2010" && typeof dbCode === "string" && DEADLOCK_CODES.has(dbCode)) return true;
+    return false;
+  }
+  return e instanceof Prisma.PrismaClientUnknownRequestError && DEADLOCK_RE.test(e.message);
 }
+
+const isRetryable = (e: unknown) => e instanceof TimerSetChanged || isRetryableTxError(e);
 
 async function withRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
