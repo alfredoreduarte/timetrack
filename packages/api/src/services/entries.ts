@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma, TxClient } from "../utils/database";
 import { createError } from "../middleware/errorHandler";
 import { emitToUser } from "../realtime";
+import { withTxRetry } from "./txRetry";
 import { ServiceContext } from "./context";
 import { diffFields, recordAudit, listAuditEvents } from "./audit";
 import { getHourlyRate } from "./rates";
@@ -68,16 +69,11 @@ async function lockTimerRow(tx: TxClient, timerId: string) {
 }
 
 /**
- * Locks an entry for modification and returns a fresh copy. Lock order is
- * always timer → entry (the timer service closes/opens segments while
- * holding the timer lock), so concurrent pause/stop can't interleave with
- * an edit and leave it acting on a stale snapshot.
- */
-/**
  * Takes the KEY SHARE locks a reassignment needs on its target project and
  * task before any entry is locked. Postgres would take them anyway when the
  * row is written, but only after the entry lock — the reverse of a project
- * or task delete (project → task → entries), which deadlocks.
+ * or task delete (which lock the parent row, then its entries), which
+ * deadlocks.
  */
 async function lockAssignmentTargets(
   tx: TxClient,
@@ -101,6 +97,12 @@ async function lockAssignmentTargets(
   }
 }
 
+/**
+ * Locks an entry for modification and returns a fresh copy. Lock order is
+ * timer → target project/task → entry (the timer service closes/opens
+ * segments while holding the timer lock), so a concurrent pause/stop can't
+ * interleave with an edit and leave it acting on a stale snapshot.
+ */
 async function lockAndLoadEntry(
   tx: TxClient,
   ctx: ServiceContext,
@@ -375,7 +377,8 @@ async function applyEntryUpdate(
       if (!(patch.hours! > 0) || patch.hours! > 24) {
         throw createError("Hours must be between 0 and 24", 400);
       }
-      endTime = new Date(startTime.getTime() + patch.hours! * 3600 * 1000);
+      // Whole seconds: hours sent as seconds/3600 must round-trip exactly.
+      endTime = new Date(startTime.getTime() + Math.round(patch.hours! * 3600) * 1000);
       if (endTime.getTime() > now.getTime()) throw createError("endTime cannot be in the future", 400);
     } else if (endChanged) {
       endTime = resolveAt(ctx, patch.endTime!, "endTime");
@@ -463,11 +466,14 @@ export async function updateEntry(
   id: string,
   patch: UpdateEntryInput
 ): Promise<EntryView> {
-  const events: PendingEvent[] = [];
-  const entry = await prisma.$transaction(async (tx) => {
-    const existing = await lockAndLoadEntry(tx, ctx, id, patch);
-    if (!existing) throw createError("Time entry not found", 404);
-    return applyEntryUpdate(tx, ctx, existing, patch, events);
+  let events: PendingEvent[] = [];
+  const entry = await withTxRetry("updateEntry", () => {
+    events = [];
+    return prisma.$transaction(async (tx) => {
+      const existing = await lockAndLoadEntry(tx, ctx, id, patch);
+      if (!existing) throw createError("Time entry not found", 404);
+      return applyEntryUpdate(tx, ctx, existing, patch, events);
+    });
   });
   await flush(ctx, events);
   return entry;
@@ -488,33 +494,36 @@ export async function bulkUpdateEntries(ctx: ServiceContext, input: BulkUpdateIn
   if (Object.values(input.set).every((v) => v === undefined)) {
     throw createError("set must change at least one field", 400);
   }
-  const events: PendingEvent[] = [];
-  const entries = await prisma.$transaction(
-    async (tx) => {
-      const heads = await tx.timeEntry.findMany({
-        where: { id: { in: ids }, userId: ctx.userId },
-        select: { id: true, timerId: true },
-      });
-      if (heads.length !== ids.length) {
-        throw createError(`${ids.length - heads.length} of the entries were not found`, 404);
-      }
-      // Lock timers in a stable order (deadlock-free), then the entries.
-      const timerIds = Array.from(new Set(heads.map((h) => h.timerId).filter((t): t is string => !!t))).sort();
-      for (const t of timerIds) await lockTimerRow(tx, t);
-      await lockAssignmentTargets(tx, ctx, input.set);
-      await tx.$queryRaw`SELECT id FROM time_entries WHERE id = ANY(${ids}) ORDER BY id FOR UPDATE`;
-      const found = await tx.timeEntry.findMany({
-        where: { id: { in: ids }, userId: ctx.userId },
-        select: entrySelect,
-      });
-      const out: EntryView[] = [];
-      for (const existing of found) {
-        out.push(await applyEntryUpdate(tx, ctx, existing, input.set, events));
-      }
-      return out;
-    },
-    { timeout: 30_000 }
-  );
+  let events: PendingEvent[] = [];
+  const entries = await withTxRetry("bulkUpdateEntries", () => {
+    events = [];
+    return prisma.$transaction(
+      async (tx) => {
+        const heads = await tx.timeEntry.findMany({
+          where: { id: { in: ids }, userId: ctx.userId },
+          select: { id: true, timerId: true },
+        });
+        if (heads.length !== ids.length) {
+          throw createError(`${ids.length - heads.length} of the entries were not found`, 404);
+        }
+        // Lock timers in a stable order (deadlock-free), then the entries.
+        const timerIds = Array.from(new Set(heads.map((h) => h.timerId).filter((t): t is string => !!t))).sort();
+        for (const t of timerIds) await lockTimerRow(tx, t);
+        await lockAssignmentTargets(tx, ctx, input.set);
+        await tx.$queryRaw`SELECT id FROM time_entries WHERE id = ANY(${ids}) ORDER BY id FOR UPDATE`;
+        const found = await tx.timeEntry.findMany({
+          where: { id: { in: ids }, userId: ctx.userId },
+          select: entrySelect,
+        });
+        const out: EntryView[] = [];
+        for (const existing of found) {
+          out.push(await applyEntryUpdate(tx, ctx, existing, input.set, events));
+        }
+        return out;
+      },
+      { timeout: 30_000 }
+    );
+  });
   await flush(ctx, events);
   return { updated: entries.length, entries };
 }
