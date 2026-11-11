@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import api from "../services/api";
@@ -16,8 +16,22 @@ const errorText = (e: unknown) =>
   (e as { response?: { data?: { error?: string } } })?.response?.data?.error || "Something went wrong";
 
 const Billing: React.FC = () => {
-  const { status, error } = useBillingStatus();
+  const { status, error, refresh } = useBillingStatus();
   const [params] = useSearchParams();
+  const justPaid = params.get("checkout") === "success";
+
+  // Back from Stripe: the webhook usually lands within seconds; check a few
+  // times until the subscription shows up.
+  useEffect(() => {
+    if (!justPaid || status?.reason === "subscription") return;
+    let tries = 0;
+    const id = window.setInterval(() => {
+      tries += 1;
+      refresh();
+      if (tries >= 10) window.clearInterval(id);
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [justPaid, status?.reason, refresh]);
   const [interval, setInterval] = useState<"month" | "year">("year");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);

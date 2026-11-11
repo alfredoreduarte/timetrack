@@ -91,12 +91,23 @@ export interface Timesheet {
 const secs = (ms: number) => Math.round(ms / 1000);
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/** Decimal places a currency is printed with (JPY 0, USD 2, KWD 3). */
+export function currencyDigits(currency: string): number {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    return 2;
+  }
+}
+
 /**
- * Rounds amounts to cents so they sum to the rounded total (largest
- * remainder): rows on an invoice must add up to the printed total.
+ * Rounds amounts to the currency's minor unit (cents by default) so they
+ * sum to the rounded total (largest remainder): rows on an invoice must add
+ * up to the printed total. Returns integer minor units.
  */
-export function splitCents(amounts: number[]): number[] {
-  const raw = amounts.map((a) => a * 100);
+export function splitCents(amounts: number[], digits = 2): number[] {
+  const scale = 10 ** digits;
+  const raw = amounts.map((a) => a * scale);
   const floors = raw.map((r) => Math.floor(r + 1e-9));
   let left = Math.round(raw.reduce((s, r) => s + r, 0)) - floors.reduce((s, f) => s + f, 0);
   const order = raw.map((r, i) => [r - floors[i], i] as const).sort((a, b) => b[0] - a[0]);
@@ -402,14 +413,16 @@ export async function buildTimesheet(
       }
     }
     const shown = Array.from(lineMap.values()).filter((l) => Math.round(l.trackedSeconds) > 0);
-    const cents = splitCents(shown.map((l) => l.amount));
+    const digits = currencyDigits(user.currency);
+    const unit = 10 ** digits;
+    const cents = splitCents(shown.map((l) => l.amount), digits);
     const lines = shown
       .map((l, i) => ({
         ...l,
         trackedSeconds: Math.round(l.trackedSeconds),
         billedSeconds: Math.round(l.billedSeconds),
         rate: l.billedSeconds > 0 ? round2(l.amount / (l.billedSeconds / 3600)) : 0,
-        amount: cents[i] / 100,
+        amount: cents[i] / unit,
       }))
       .sort((a, b) => a.date.localeCompare(b.date) || b.trackedSeconds - a.trackedSeconds);
 
@@ -426,7 +439,7 @@ export async function buildTimesheet(
       : [];
 
     // Totals are the sum of the rows the client sees, so they always add up.
-    const timeAmount = cents.reduce((s, c) => s + c, 0) / 100;
+    const timeAmount = cents.reduce((s, c) => s + c, 0) / unit;
     const costsBilledUsd = round2(costs.reduce((s, c) => s + c.billedUsd, 0));
     // Costs are priced in USD; they only join the total on a USD sheet.
     const costsIncluded = user.currency === "USD";

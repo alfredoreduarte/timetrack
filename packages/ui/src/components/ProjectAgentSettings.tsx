@@ -15,23 +15,35 @@ const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) 
   const [includeCosts, setIncludeCosts] = useState(false);
   const [markup, setMarkup] = useState("0");
   const [saving, setSaving] = useState(false);
+  // The form saves every field, so it must not be saved before the real
+  // values loaded: blanks would wipe the linked repos and the policy.
+  const [status, setStatus] = useState<"loading" | "loaded" | "failed">("loading");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    let alive = true;
+    setStatus("loading");
     api.projects.getProject(project.id).then(
       (p: Project) => {
+        if (!alive) return;
         setRepos((p.repoPatterns ?? []).join("\n"));
         setOverlap(p.overlapMode ?? "");
         setMultiplier(p.aiMultiplier != null ? String(p.aiMultiplier) : "");
         setAgentRate(p.agentHourlyRate != null ? String(p.agentHourlyRate) : "");
         setIncludeCosts(Boolean(p.includeAiCosts));
         setMarkup(String(p.aiCostMarkupPercent ?? 0));
+        setStatus("loaded");
       },
-      () => undefined
+      () => alive && setStatus("failed")
     );
-  }, [project.id]);
+    return () => {
+      alive = false;
+    };
+  }, [project.id, attempt]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (status !== "loaded") return;
     setSaving(true);
     try {
       const updated = await api.projects.updateProject(project.id, {
@@ -54,7 +66,16 @@ const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) 
   return (
     <details className="card">
       <summary className="px-6 py-4 cursor-pointer font-medium text-gray-900">Repositories & AI billing</summary>
-      <form onSubmit={save} className="px-6 pb-6 space-y-5">
+      {status === "failed" && (
+        <p className="px-6 pb-3 text-sm text-red-700" role="alert">
+          Couldn't load these settings.{" "}
+          <button type="button" className="underline" onClick={() => setAttempt((n) => n + 1)}>
+            Try again
+          </button>
+        </p>
+      )}
+      {status === "loading" && <p className="px-6 pb-3 text-sm text-gray-500">Loading…</p>}
+      <form onSubmit={save} className="px-6 pb-6 space-y-5" aria-busy={status === "loading"}>
         <label className="block">
           <span className="block text-sm font-medium text-gray-700">Linked repositories</span>
           <textarea
@@ -102,7 +123,7 @@ const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) 
           </div>
         </div>
 
-        <button type="submit" className="btn-primary disabled:opacity-50" disabled={saving}>
+        <button type="submit" className="btn-primary disabled:opacity-50" disabled={saving || status !== "loaded"}>
           {saving ? "Saving…" : "Save"}
         </button>
       </form>

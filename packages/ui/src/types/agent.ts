@@ -113,6 +113,6 @@ export interface BillingStatus {
 }
 
 export interface PublicTimesheetView {
-  link: { name: string | null; expiresAt: string | null; showAmounts: boolean };
+  link: { expiresAt: string | null; showAmounts: boolean };
   timesheet: Timesheet;
 }

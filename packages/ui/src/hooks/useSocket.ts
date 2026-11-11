@@ -20,7 +20,7 @@ import {
   taskDeletedFromSocket,
 } from "../store/slices/projectsSlice";
 import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
-import { fetchActiveTimers, timerFromSocket } from "../store/slices/timersSlice";
+import { fetchActiveTimers, noteAddedFromSocket, timerFromSocket } from "../store/slices/timersSlice";
 import type { Timer } from "../types/agent";
 import {
   favoriteCreatedFromSocket,
@@ -33,6 +33,8 @@ export function useSocket() {
     (state: RootState) => state.auth
   );
   const isConnectedRef = useRef(false);
+  // True once the socket has connected at least once (later "connected" = reconnect).
+  const wasConnected = useRef(false);
 
   // Debounce earnings refresh — multiple socket events can fire in quick
   // succession (e.g. bulk operations), and each was dispatching its own
@@ -123,10 +125,26 @@ export function useSocket() {
 
       // Pausable timers (agent sessions)
       onTimerEvent: (event, data) => {
+        if (event === "timer-note-added") {
+          const timerId = (data as { timerId?: string } | null)?.timerId;
+          if (timerId) dispatch(noteAddedFromSocket(timerId));
+          return;
+        }
         const timer = data as Timer;
         if (timer && typeof timer.status === "string") dispatch(timerFromSocket(timer));
-        else if (event !== "timer-note-added") dispatch(fetchActiveTimers());
+        else dispatch(fetchActiveTimers());
         debouncedFetchEarnings();
+      },
+      // Events sent while the socket was down (e.g. the idle sweeper pausing
+      // timers during laptop sleep) are lost: resync on every reconnect.
+      onConnectionStateChange: (state) => {
+        if (state === "connected") {
+          if (wasConnected.current) {
+            dispatch(fetchActiveTimers());
+            debouncedFetchEarnings();
+          }
+          wasConnected.current = true;
+        }
       },
     });
 

@@ -85,6 +85,10 @@ const timersSlice = createSlice({
         return { payload: stamp(timer) };
       },
     },
+    noteAddedFromSocket(state, action: PayloadAction<string>) {
+      const timer = state.items.find((t) => t.id === action.payload);
+      if (timer) timer.noteCount += 1;
+    },
     clearTimersError(state) {
       state.error = null;
     },
@@ -122,5 +126,5 @@ const timersSlice = createSlice({
   },
 });
 
-export const { timerFromSocket, clearTimersError } = timersSlice.actions;
+export const { timerFromSocket, noteAddedFromSocket, clearTimersError } = timersSlice.actions;
 export default timersSlice.reducer;

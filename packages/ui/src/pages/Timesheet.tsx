@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { ClipboardDocumentIcon, ArrowDownTrayIcon, LinkIcon } from "@heroicons/react/24/outline";
@@ -18,29 +18,45 @@ const PRESETS: Array<[Preset, string]> = [
   ["last-month", "Last month"],
 ];
 
-/** Local-time ranges; the API is told the timezone for day boundaries. */
-function rangeFor(p: Preset): { startDate: string; endDate?: string } {
-  const now = new Date();
+/**
+ * Local-time ranges; the API is told the timezone for day boundaries. Every
+ * preset has a real end (the API clamps it to now): a share link for "this
+ * month" must stop at the end of the month, not keep showing later work.
+ */
+export function rangeFor(p: Preset, now = new Date()): { startDate: string; endDate: string } {
   const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
   if (p === "this-month" || p === "last-month") {
-    const start = new Date(now.getFullYear(), now.getMonth() - (p === "last-month" ? 1 : 0), 1);
-    const end = p === "last-month" ? new Date(now.getFullYear(), now.getMonth(), 1) : undefined;
-    return { startDate: start.toISOString(), endDate: end?.toISOString() };
+    const offset = p === "last-month" ? 1 : 0;
+    const start = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() - offset + 1, 1);
+    return { startDate: start.toISOString(), endDate: end.toISOString() };
   }
   const monday = midnight(now);
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
-  if (p === "this-week") return { startDate: monday.toISOString() };
-  const lastMonday = new Date(monday);
-  lastMonday.setDate(lastMonday.getDate() - 7);
-  return { startDate: lastMonday.toISOString(), endDate: monday.toISOString() };
+  const start = new Date(monday);
+  if (p === "last-week") start.setDate(start.getDate() - 7);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  return { startDate: start.toISOString(), endDate: end.toISOString() };
 }
 
-const errorText = (e: unknown) =>
-  (e as { response?: { data?: { error?: string } } })?.response?.data?.error || "Something went wrong";
+const errorBody = (e: unknown): string | undefined => {
+  const data = (e as { response?: { data?: unknown } })?.response?.data;
+  if (typeof data === "string") {
+    try {
+      return (JSON.parse(data) as { error?: string }).error;
+    } catch {
+      return undefined;
+    }
+  }
+  return (data as { error?: string } | undefined)?.error;
+};
+
+const errorText = (e: unknown) => errorBody(e) || "Something went wrong";
 
 const ShareDialog: React.FC<{
   projectId?: string;
-  range: { startDate: string; endDate?: string };
+  range: { startDate: string; endDate: string };
   onClose: () => void;
   onCreated: () => void;
 }> = ({ projectId, range, onClose, onCreated }) => {
@@ -148,16 +164,23 @@ const Timesheet: React.FC = () => {
     [range, projectId]
   );
 
+  // Only the latest request may update the page: a slow response for a
+  // previous period must not overwrite the current one.
+  const latest = useRef(0);
   const load = useCallback(async () => {
+    const id = ++latest.current;
     setLoading(true);
     setError(null);
     try {
-      setSheet(await api.timesheets.get(params));
+      const result = await api.timesheets.get(params);
+      if (id === latest.current) setSheet(result);
     } catch (e) {
-      setError(errorText(e));
-      setSheet(null);
+      if (id === latest.current) {
+        setError(errorText(e));
+        setSheet(null);
+      }
     } finally {
-      setLoading(false);
+      if (id === latest.current) setLoading(false);
     }
   }, [params]);
 
@@ -174,13 +197,25 @@ const Timesheet: React.FC = () => {
   }, [load]);
 
   const downloadCsv = async () => {
-    const csv = await api.timesheets.csv(params);
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `timesheet-${preset}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const csv = await api.timesheets.csv(params);
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `timesheet-${preset}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
+
+  const copyMarkdown = async () => {
+    try {
+      copyToClipboard(await api.timesheets.markdown(params));
+    } catch (e) {
+      setError(errorText(e));
+    }
   };
 
   const revoke = async (id: string) => {
@@ -198,10 +233,10 @@ const Timesheet: React.FC = () => {
           <p className="text-gray-600">What your client sees: billed time per project, with AI work and parallel agents handled by each project's policy.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="btn-secondary inline-flex items-center gap-1.5" onClick={async () => copyToClipboard(await api.timesheets.markdown(params))}>
+          <button className="btn-secondary inline-flex items-center gap-1.5 disabled:opacity-50" disabled={!sheet} onClick={copyMarkdown}>
             <ClipboardDocumentIcon className="h-4 w-4" /> {copied ? "Copied" : "Copy as Markdown"}
           </button>
-          <button className="btn-secondary inline-flex items-center gap-1.5" onClick={downloadCsv}>
+          <button className="btn-secondary inline-flex items-center gap-1.5 disabled:opacity-50" disabled={!sheet} onClick={downloadCsv}>
             <ArrowDownTrayIcon className="h-4 w-4" /> CSV
           </button>
           <button className="btn-primary inline-flex items-center gap-1.5" onClick={() => setSharing(true)}>
@@ -252,7 +287,8 @@ const Timesheet: React.FC = () => {
                 <span>
                   <span className="font-medium text-gray-900">{l.name || l.project?.name || "All projects"}</span>{" "}
                   <span className="text-gray-500">
-                    · {l.rollingDays ? `last ${l.rollingDays} days` : "fixed period"} · {l.viewCount} view{l.viewCount === 1 ? "" : "s"}
+                    · {l.rollingDays ? `last ${l.rollingDays} days` : l.endDate ? "fixed period" : "open-ended (live)"} · {l.viewCount}{" "}
+                    view{l.viewCount === 1 ? "" : "s"}
                     {!l.showAmounts && " · hours only"}
                   </span>
                 </span>

@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { toast } from "react-hot-toast";
 import { AppDispatch, RootState } from "../store";
-import { updateProfile } from "../store/slices/authSlice";
+import { getCurrentUser, updateProfile } from "../store/slices/authSlice";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "CAD", "AUD", "BRL", "ARS", "MXN", "PYG", "CHF", "JPY", "INR"];
 
@@ -15,12 +15,22 @@ const AgentBillingSettings: React.FC = () => {
   const [currency, setCurrency] = useState("USD");
   const [saving, setSaving] = useState(false);
 
+  // The form edits saved values, so it waits for them: a missing field must
+  // never be submitted as its default (that would overwrite the real one).
+  const loaded = Boolean(user && user.currency && user.overlapMode && user.agentIdleTimeoutSeconds);
+  const refetched = useRef(false);
   useEffect(() => {
-    if (!user) return;
-    setIdleMinutes(String(Math.round((user.agentIdleTimeoutSeconds ?? 900) / 60)));
-    setOverlap(user.overlapMode ?? "dedupe");
-    setCurrency(user.currency ?? "USD");
-  }, [user]);
+    if (user && !loaded && !refetched.current) {
+      refetched.current = true;
+      dispatch(getCurrentUser());
+    }
+  }, [dispatch, user, loaded]);
+  useEffect(() => {
+    if (!user || !loaded) return;
+    setIdleMinutes(String(Math.round(user.agentIdleTimeoutSeconds! / 60)));
+    setOverlap(user.overlapMode!);
+    setCurrency(user.currency!);
+  }, [user, loaded]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,9 +39,18 @@ const AgentBillingSettings: React.FC = () => {
       toast.error("Idle time must be between 1 and 1440 minutes");
       return;
     }
+    // Send only what changed.
+    const changes: Parameters<typeof updateProfile>[0] = {};
+    if (minutes * 60 !== user?.agentIdleTimeoutSeconds) changes.agentIdleTimeoutSeconds = minutes * 60;
+    if (overlap !== user?.overlapMode) changes.overlapMode = overlap;
+    if (currency !== user?.currency) changes.currency = currency;
+    if (Object.keys(changes).length === 0) {
+      toast.success("Nothing to save");
+      return;
+    }
     setSaving(true);
     try {
-      await dispatch(updateProfile({ agentIdleTimeoutSeconds: minutes * 60, overlapMode: overlap, currency })).unwrap();
+      await dispatch(updateProfile(changes)).unwrap();
       toast.success("Saved");
     } catch (err) {
       toast.error(typeof err === "string" ? err : "Couldn't save");
@@ -39,6 +58,14 @@ const AgentBillingSettings: React.FC = () => {
       setSaving(false);
     }
   };
+
+  if (!loaded) {
+    return (
+      <div className="card p-6 text-sm text-gray-500" aria-busy="true">
+        Loading AI work & billing settings…
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={save} className="card p-6 space-y-5">
