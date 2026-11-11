@@ -116,6 +116,23 @@ describe("billing engine — rates and attribution", () => {
     }
   });
 
+  it("stays fast when thousands of entries overlap (no per-slice scans)", () => {
+    const base = Date.UTC(2026, 2, 1);
+    const many = Array.from({ length: 20_000 }, (_, i) => ({
+      id: `e${i}`,
+      start: new Date(base + i * 60_000),
+      end: new Date(base + i * 60_000 + 20 * 3600_000),
+      rate: (i % 7) * 10,
+      isAi: i % 2 === 0,
+    }));
+    for (const overlapMode of ["dedupe", "sum"] as const) {
+      const t0 = Date.now();
+      const bill = billProject(many, policy({ overlapMode }), "Europe/Madrid");
+      expect(Date.now() - t0).toBeLessThan(2000); // quadratic took minutes
+      expect(bill.trackedMs).toBe(20_000 * 20 * 3600_000);
+    }
+  });
+
   it("ignores zero-length entries and handles no entries", () => {
     expect(billProject([], policy(), "UTC").billedMs).toBe(0);
     expect(billProject([entry("z", 5, 5, 100)], policy(), "UTC").billedMs).toBe(0);

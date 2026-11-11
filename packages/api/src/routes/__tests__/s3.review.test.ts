@@ -4,12 +4,8 @@ import { api, resetDb, createUser, createApiKey, createProject, disconnect } fro
 import { billProject } from "../../billing/engine";
 import { canonicalTimezone, localDateKey, startOfLocalDay } from "../../billing/time";
 import { resolveRange, splitCents } from "../../services/timesheets";
-import { clearPublicViewCache } from "../../services/shareLinks";
 
-beforeEach(async () => {
-  await resetDb();
-  clearPublicViewCache();
-});
+beforeEach(resetDb);
 afterAll(disconnect);
 
 const RANGE = "startDate=2026-03-01T00:00:00Z&endDate=2026-03-08T00:00:00Z";
@@ -260,5 +256,52 @@ describe("S3 review: imports keep costs", () => {
     expect(again.body.sessions[0].status).toBe("replaced");
     const after = await prisma.timer.findFirstOrThrow({ where: { sessionKey: "s-cost" } });
     expect(after.costUsd).toBe(before.costUsd);
+  });
+});
+
+describe("S3 re-review fixes", () => {
+  it("a bare end date is that local day, inclusive — not a month later", () => {
+    const { parseRangeDate } = jest.requireActual("../../services/timesheets");
+    const end = parseRangeDate("2026-02-28", "Europe/Madrid", "end");
+    expect(end.toISOString()).toBe("2026-02-28T23:00:00.000Z"); // local midnight, Mar 1
+    expect(parseRangeDate("2026-12-31", "UTC", "end").toISOString()).toBe("2027-01-01T00:00:00.000Z");
+    expect(() => parseRangeDate("2026-02-30", "UTC", "end")).toThrow(/not a calendar date/);
+    expect(() => parseRangeDate("2026-11-01T00:00:00", "UTC", "start")).toThrow(/with a zone/);
+    expect(parseRangeDate("2026-11-01T00:00:00+01:00", "UTC", "start").toISOString()).toBe("2026-10-31T23:00:00.000Z");
+  });
+
+  it("an MCP February sheet doesn't bill March work", async () => {
+    const { user } = await createUser();
+    const key = await createApiKey(user.id, { name: "Claude Code" });
+    const p = await createProject(user.id, { name: "Acme" });
+    await entry(user.id, p.id, "2026-02-27T10:00:00Z", "2026-02-27T11:00:00Z");
+    await entry(user.id, p.id, "2026-03-15T10:00:00Z", "2026-03-15T13:00:00Z");
+    const res = await api()
+      .post("/mcp")
+      .set(key.auth)
+      .set("Accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "timesheet", arguments: { startDate: "2026-02-01", endDate: "2026-02-28", timezone: "Europe/Madrid", format: "json" } },
+      });
+    const sheet = JSON.parse(res.body.result.content[0].text);
+    const t = sheet.timesheet ?? sheet;
+    expect(t.projects.flatMap((x: { lines: Array<{ date: string }> }) => x.lines.map((l) => l.date))).toEqual(["2026-02-27"]);
+    expect(t.range.endDate).toBe("2026-02-28T23:00:00.000Z");
+  });
+
+  it("public views are never served stale", async () => {
+    const { user, auth } = await createUser();
+    const p = await createProject(user.id, { name: "Acme" });
+    await entry(user.id, p.id, "2026-03-02T09:00:00Z", "2026-03-02T10:00:00Z");
+    const made = await api().post("/share-links").set(auth).send({ startDate: "2026-03-01T00:00:00Z", endDate: "2026-03-08T00:00:00Z" });
+    const token = made.body.url.split("/share/")[1];
+    const before = await api().get(`/public/timesheets/${token}`);
+    expect(before.body.timesheet.totals.billedSeconds).toBe(3600);
+    await entry(user.id, p.id, "2026-03-03T09:00:00Z", "2026-03-03T10:00:00Z");
+    const after = await api().get(`/public/timesheets/${token}`);
+    expect(after.body.timesheet.totals.billedSeconds).toBe(7200);
   });
 });
