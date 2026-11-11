@@ -5,6 +5,7 @@ import { startTimer, pauseTimer, sweepIdleTimers, touchTimer, updateTimer } from
 import { MAX_RUNNING_ENTRIES } from "../../services/limits";
 import { bulkUpdateEntries, createEntry, updateEntry } from "../../services/entries";
 import { deleteProject } from "../../services/deletions";
+import { txRetryStats } from "../../services/txRetry";
 import {
   api,
   resetDb,
@@ -395,6 +396,7 @@ describe("S1 review round 4 fixes", () => {
   }
 
   it("a project delete and a bulk reassignment onto it both succeed", async () => {
+    const deadlocksBefore = txRetryStats.retryable;
     const { user, auth } = await createUser();
     const ctx = serviceCtx(user.id);
     const p = await createProject(user.id, { name: "Doomed" });
@@ -416,9 +418,12 @@ describe("S1 review round 4 fixes", () => {
     expect(await bulk).toBe("ok");
     expect(await del).toBe(200);
     expect(await prisma.timeEntry.count({ where: { userId: user.id } })).toBe(0);
+    // Correct lock order means no deadlock at all, not one that a retry hid.
+    expect(txRetryStats.retryable).toBe(deadlocksBefore);
   });
 
   it("a task delete and a bulk reassignment onto the task both succeed", async () => {
+    const deadlocksBefore = txRetryStats.retryable;
     const { user, auth } = await createUser();
     const ctx = serviceCtx(user.id);
     const p = await createProject(user.id);
@@ -442,6 +447,8 @@ describe("S1 review round 4 fixes", () => {
     expect(await del).toBe(200);
     const left = await prisma.timeEntry.findMany({ where: { userId: user.id } });
     expect(left.every((e) => e.taskId === null)).toBe(true);
+    // Correct lock order means no deadlock at all, not one that a retry hid.
+    expect(txRetryStats.retryable).toBe(deadlocksBefore);
   });
 
   it("a delete that loses a deadlock inside an ORM statement is retried", async () => {
@@ -509,6 +516,7 @@ describe("S1 review round 5 fixes", () => {
   }
 
   it("a bulk reassignment that queues behind a project delete isn't a deadlock victim", async () => {
+    const deadlocksBefore = txRetryStats.retryable;
     const { user, auth } = await createUser();
     const ctx = serviceCtx(user.id);
     const p = await createProject(user.id, { name: "Doomed" });
@@ -529,9 +537,12 @@ describe("S1 review round 5 fixes", () => {
     await gate.release();
     expect(await del).toBe(200);
     expect(await bulk).toBe(404); // the project is gone — not a 500
+    // Correct lock order means no deadlock at all, not one that a retry hid.
+    expect(txRetryStats.retryable).toBe(deadlocksBefore);
   });
 
   it("a bulk move out of a project racing its delete succeeds (entries locked in one order)", async () => {
+    const deadlocksBefore = txRetryStats.retryable;
     const { user } = await createUser();
     const ctx = serviceCtx(user.id);
     const r = await createProject(user.id, { name: "R" });
@@ -554,9 +565,12 @@ describe("S1 review round 5 fixes", () => {
     await gate.release();
     expect(await w).toBe("ok");
     expect([await d, await b]).toEqual(["ok", "ok"]);
+    // Correct lock order means no deadlock at all, not one that a retry hid.
+    expect(txRetryStats.retryable).toBe(deadlocksBefore);
   });
 
   it("a bulk edit of a task's entries racing the task's delete succeeds", async () => {
+    const deadlocksBefore = txRetryStats.retryable;
     const { user, auth } = await createUser();
     const ctx = serviceCtx(user.id);
     const p = await createProject(user.id);
@@ -578,6 +592,8 @@ describe("S1 review round 5 fixes", () => {
     await gate.release();
     expect(await w).toBe("ok");
     expect([await d, await b]).toEqual([200, "ok"]);
+    // Correct lock order means no deadlock at all, not one that a retry hid.
+    expect(txRetryStats.retryable).toBe(deadlocksBefore);
   });
 
   it("hours sent as seconds/3600 keep the exact duration", async () => {
@@ -590,6 +606,93 @@ describe("S1 review round 5 fixes", () => {
         .set(auth)
         .send({ startTime: ago(2000), hours: seconds / 3600 });
       expect([seconds, res.status, res.body.duration ?? res.body.timeEntry?.duration]).toEqual([seconds, 200, seconds]);
+    }
+  });
+});
+
+describe("S1 review round 6 fixes", () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it("a bulk reassignment queued on an entry lock doesn't deadlock with a project delete", async () => {
+    const deadlocksBefore = txRetryStats.retryable;
+    const { user } = await createUser();
+    const ctx = serviceCtx(user.id);
+    const p = await createProject(user.id, { name: "Doomed" });
+    const q = await createProject(user.id, { name: "Other" });
+    const e1 = await createEntry(ctx, { projectId: p.id, startTime: ago(120), endTime: ago(110) });
+    const ex = await createEntry(ctx, { projectId: q.id, startTime: ago(100), endTime: ago(90) });
+
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const heldP = new Promise<void>((r) => (held = r));
+    const hold = prisma.$transaction(
+      async (t) => {
+        await t.$queryRaw`SELECT id FROM users WHERE id = ${user.id} FOR UPDATE`;
+        held();
+        await gate;
+      },
+      { timeout: 20_000 }
+    );
+    await heldP;
+    const settle = (x: Promise<unknown>) => x.then(() => "ok", (e: Error) => e.message);
+    const w = settle(updateEntry(ctx, ex.id, { description: "in flight" })); // holds ex, stalls on audit
+    await sleep(200);
+    // Bulk locks e1, then queues on ex — before it ever writes a row.
+    const b = settle(bulkUpdateEntries(ctx, { ids: [e1.id, ex.id], set: { projectId: p.id } }));
+    await sleep(200);
+    // The delete takes P, then queues on e1 (held by bulk).
+    const d = settle(deleteProject(ctx, p.id));
+    await sleep(200);
+    release();
+    await hold;
+    expect(await w).toBe("ok");
+    const [bulk, del] = [await b, await d];
+    expect(del).toBe("ok");
+    expect(["ok", "Project not found"]).toContain(bulk);
+    expect(txRetryStats.retryable).toBe(deadlocksBefore);
+  });
+
+  it("starting, moving or backfilling onto a project mid-delete answers 404, not a database error", async () => {
+    const { user, auth } = await createUser();
+    const ctx = serviceCtx(user.id);
+    const other = await createProject(user.id, { name: "Other" });
+    const moving = await api().post("/timers").set(auth).send({ projectId: other.id, startedAt: ago(5) });
+    const requests: Array<(projectId: string) => Promise<number>> = [
+      (projectId) => api().post("/timers").set(auth).send({ projectId }).then((r) => r.status),
+      (projectId) =>
+        api().patch(`/timers/${moving.body.timer.id}`).set(auth).send({ projectId }).then((r) => r.status),
+      (projectId) =>
+        api()
+          .post("/time-entries")
+          .set(auth)
+          .send({ projectId, startTime: ago(60), endTime: ago(50) })
+          .then((r) => r.status),
+    ];
+    for (const send of requests) {
+      const doomed = await createProject(user.id, { name: "Doomed" });
+      await createEntry(ctx, { projectId: doomed.id, startTime: ago(300), endTime: ago(290) });
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      let held!: () => void;
+      const heldP = new Promise<void>((r) => (held = r));
+      const hold = prisma.$transaction(
+        async (t) => {
+          await t.$queryRaw`SELECT id FROM users WHERE id = ${user.id} FOR UPDATE`;
+          held();
+          await gate;
+        },
+        { timeout: 20_000 }
+      );
+      await heldP;
+      const del = api().delete(`/projects/${doomed.id}`).set(auth).then((r) => r.status); // stalls on its audit row
+      await sleep(300);
+      const req = send(doomed.id);
+      await sleep(300);
+      release();
+      await hold;
+      expect(await del).toBe(200);
+      expect(await req).toBe(404);
     }
   });
 });

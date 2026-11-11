@@ -28,6 +28,9 @@ export function isRetryableTxError(e: unknown): boolean {
  * Runs a transaction body, retrying it when Postgres aborts it as a deadlock
  * victim (or `retryIf` matches); 409 once the attempts run out.
  */
+/** Counts transactions aborted by a deadlock or serialization failure (tests assert on it). */
+export const txRetryStats = { retryable: 0 };
+
 export async function withTxRetry<T>(
   label: string,
   fn: () => Promise<T>,
@@ -38,7 +41,8 @@ export async function withTxRetry<T>(
     try {
       return await fn();
     } catch (e) {
-      if (!isRetryableTxError(e) && !opts.retryIf?.(e)) throw e;
+      if (isRetryableTxError(e)) txRetryStats.retryable += 1;
+      else if (!opts.retryIf?.(e)) throw e;
       if (attempt >= attempts) {
         logger.warn("Transaction kept colliding with concurrent writes", {
           label,
