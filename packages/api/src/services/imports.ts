@@ -218,6 +218,14 @@ async function importOne(
         await tx.$queryRaw`SELECT id FROM timers WHERE id = ${existing.id} FOR UPDATE`;
         const blocker = await replaceBlocker(tx, ctx.userId, existing.id);
         if (blocker) throw new SkipSession(blocker);
+        // And the plan-window check: a full import may have stored older
+        // history since the first look.
+        if (skipIfExisting) {
+          const olderStored = await tx.timeEntry.count({
+            where: { timerId: existing.id, startTime: { lt: segments[0][0] } },
+          });
+          if (olderStored > 0) throw new SkipSession(skipIfExisting);
+        }
       }
       const rate = await getHourlyRate(tx, ctx.userId, projectId, null);
       const data = {
@@ -354,7 +362,11 @@ export async function importAgentSessions(
       const skipIfExisting: Skip | undefined = clipped
         ? {
             status: "skipped_plan",
-            reason: `starts more than ${entitlements.limits.historyDays} days ago; it is kept as imported (upgrade to re-import it in full)`,
+            // A clipped import can't replace a session that has stored history
+            // from before the window without deleting it, so the stored copy
+            // stays as is (new work in a resumed session is tracked live by
+            // the plugin's hooks).
+            reason: `began more than ${entitlements.limits.historyDays} days ago; left as stored so its earlier history is kept (upgrade to re-import it in full)`,
           }
         : undefined;
       results.push(
