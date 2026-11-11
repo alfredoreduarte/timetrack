@@ -140,7 +140,8 @@ async function importOne(
   s: ImportSessionInput,
   sessionKey: string,
   segments: Span[],
-  dryRun: boolean
+  dryRun: boolean,
+  idleTimeoutSeconds: number
 ): Promise<ImportSessionResult> {
   const existing = await prisma.timer.findUnique({
     where: { userId_sessionKey: { userId: ctx.userId, sessionKey } },
@@ -215,6 +216,9 @@ async function importOne(
         lastActivityAt: endedAt,
         startedAt,
         stoppedAt: endedAt,
+        // If the session is reopened (resume, or activity after the import),
+        // it goes quiet and pauses like any hook-tracked session.
+        idleTimeoutSeconds,
         usage: (s.usage ?? undefined) as Prisma.InputJsonValue | undefined,
       };
       let timerId: string;
@@ -316,7 +320,9 @@ export async function importAgentSessions(
     }
 
     try {
-      results.push(await importOne(ctx, s, sessionKey, segments, Boolean(opts.dryRun)));
+      results.push(
+        await importOne(ctx, s, sessionKey, segments, Boolean(opts.dryRun), user.agentIdleTimeoutSeconds)
+      );
     } catch (e) {
       if (e instanceof SkipSession) {
         results.push({ ...base, sessionKey, ...e.skip });

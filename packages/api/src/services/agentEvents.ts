@@ -133,7 +133,7 @@ export function sessionContext(
     return `TimeTrack timer ${t.id} for this session is ${state} by the user, so this work is not being billed. Don't resume it unless the user asks.`;
   }
   const idle = t.idleTimeoutSeconds
-    ? ` It pauses by itself after ${Math.round(t.idleTimeoutSeconds / 60)} min without activity and resumes when you continue — don't pause or stop it yourself unless the user asks.`
+    ? ` It pauses by itself after ${Math.round(t.idleTimeoutSeconds / 60)} min without activity and resumes when you continue — don't pause or stop it yourself unless the user asks (a pause the user asks for holds until they resume).`
     : "";
   const tools = `Use the TimeTrack MCP tools with timerId "${t.id}" if the user asks about tracking (add_note to log what you did, update_timer to change the project).`;
   if (t.project) {
@@ -144,7 +144,10 @@ export function sessionContext(
     return `TimeTrack is tracking this session as billable time for the project named ${quoteData(t.project.name)} (timer ${t.id}).${byFolder}${idle} ${tools}`;
   }
   const where = repo ? ` for this repository (${quoteData(repo, 120)})` : "";
-  return `TimeTrack is tracking this session (timer ${t.id}) but no project is set${where}. If the user says which client or project this work is for, call update_timer with timerId "${t.id}" and that projectId; TimeTrack will remember the repository for next time.${idle}`;
+  const remember = t.gitRemote
+    ? " TimeTrack will remember the repository for next time."
+    : "";
+  return `TimeTrack is tracking this session (timer ${t.id}) but no project is set${where}. If the user says which client or project this work is for, call update_timer with timerId "${t.id}" and that projectId.${remember}${idle}`;
 }
 
 const limitContext = (message: string, appUrl: string) =>

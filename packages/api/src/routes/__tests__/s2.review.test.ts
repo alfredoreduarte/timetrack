@@ -1,7 +1,6 @@
 // Regression tests for the S2 adversarial review findings.
 import { prisma } from "../../utils/database";
 import { sweepIdleTimers } from "../../services/timers";
-import { isLearnablePath } from "../../services/repos";
 import { api, resetDb, createUser, createApiKey, createProject, disconnect } from "../../test/helpers";
 
 beforeEach(resetDb);
@@ -146,58 +145,77 @@ describe("S2 review: SessionStart source and agent pauses", () => {
     expect(compact.body).toMatchObject({ action: "resumed", tracked: true });
   });
 
-  it("an agent's own pause resumes with its next activity; a person's doesn't", async () => {
-    const { user, auth } = await createUser();
+  it("a pause made over MCP holds through the turn's Stop hook until it is resumed", async () => {
+    const { user } = await createUser();
     const key = await createApiKey(user.id, { name: "Claude Code" });
     const start = await api().post("/agent-events").set(key.auth).send(hook("SessionStart"));
     const timerId = start.body.timer.id;
 
     const paused = await mcp(key.auth, "pause_timer", { timerId });
-    expect(paused.data.timer).toMatchObject({ status: "paused", pauseReason: "agent" });
-    const beat = await api().post("/agent-events").set(key.auth).send(hook("UserPromptSubmit"));
-    expect(beat.body).toMatchObject({ action: "resumed", tracked: true });
-
-    await api().post(`/timers/${timerId}/pause`).set(auth).send({});
-    const beat2 = await api().post("/agent-events").set(key.auth).send(hook("UserPromptSubmit"));
-    expect(beat2.body).toMatchObject({ action: "touched", tracked: false });
-  });
-
-  it("a person pausing an agent-paused timer makes it stick", async () => {
-    const { user, auth } = await createUser();
-    const key = await createApiKey(user.id, { name: "Claude Code" });
-    const start = await api().post("/agent-events").set(key.auth).send(hook("SessionStart"));
-    const timerId = start.body.timer.id;
-    await mcp(key.auth, "pause_timer", { timerId });
-    await api().post(`/timers/${timerId}/pause`).set(auth).send({});
-    expect((await prisma.timer.findUniqueOrThrow({ where: { id: timerId } })).pauseReason).toBe("manual");
+    expect(paused.data.timer).toMatchObject({ status: "paused", pauseReason: "manual" });
+    for (const event of ["Stop", "UserPromptSubmit", "PreToolUse"]) {
+      const beat = await api().post("/agent-events").set(key.auth).send(hook(event));
+      expect([event, beat.body.tracked]).toEqual([event, false]);
+    }
     const hb = await mcp(key.auth, "heartbeat_timer", { timerId });
     expect(hb.data).toMatchObject({ resumed: false, timer: { status: "paused" } });
+    const resumed = await mcp(key.auth, "resume_timer", { timerId });
+    expect(resumed.data.timer.status).toBe("running");
+  });
+
+  it("an imported session that reopens pauses by itself when it goes quiet", async () => {
+    const { auth } = await createUser({ agentIdleTimeoutSeconds: 600 });
+    await api().post("/agent-sessions/import").set(auth).send({ sessions: [importSession("cc-live")] });
+    const resumed = await api().post("/agent-events").set(auth).send(hook("SessionStart", { source: "resume" }));
+    expect(resumed.body).toMatchObject({ action: "resumed", tracked: true, timer: { idleTimeoutSeconds: 600 } });
+    const timerId = resumed.body.timer.id;
+    const past = new Date(Date.now() - 20 * 60_000);
+    await prisma.timer.update({ where: { id: timerId }, data: { lastActivityAt: past } });
+    await prisma.timeEntry.updateMany({ where: { timerId, isRunning: true }, data: { startTime: new Date(past.getTime() - 60_000) } });
+    expect(await sweepIdleTimers(new Date())).toBe(1);
+    expect((await prisma.timer.findUniqueOrThrow({ where: { id: timerId } })).status).toBe("paused");
+  });
+
+  it("an empty `at` means now", async () => {
+    const { user } = await createUser();
+    const key = await createApiKey(user.id, { name: "Claude Code" });
+    const started = await mcp(key.auth, "start_timer", { description: "Work" });
+    const stopped = await mcp(key.auth, "stop_timer", { timerId: started.data.timer.id, at: "" });
+    expect(stopped.isError).toBe(false);
+    expect(stopped.data).toMatchObject({ stopped: true, timer: { status: "stopped" } });
   });
 });
 
 describe("S2 review: repo learning", () => {
-  it("refuses home, top-level, temp and container folders", () => {
-    for (const p of ["/Users/me", "/home/me", "/root", "/Users/me/dev", "/Users/me/Documents", "/workspace", "/tmp/x", "/private/tmp/x"]) {
-      expect([p, isLearnablePath(p)]).toEqual([p, false]);
-    }
-    for (const p of ["/Users/me/acme-web", "/Users/me/dev/acme", "/home/me/code/globex/api", "/srv/acme"]) {
-      expect([p, isLearnablePath(p)]).toEqual([p, true]);
-    }
-  });
-
-  it("assigning a session started in a broad folder learns nothing", async () => {
+  it("never learns a folder, however specific", async () => {
     const { user, auth } = await createUser();
     const acme = await createProject(user.id, { name: "Acme" });
-    const start = await api().post("/agent-events").set(auth).send(hook("SessionStart", { cwd: "/Users/me" }));
-    const patch = await api().patch(`/timers/${start.body.timer.id}`).set(auth).send({ projectId: acme.id });
-    expect(patch.status).toBe(200);
-    expect(patch.body.learnedRepoPattern ?? null).toBeNull();
+    for (const [i, cwd] of ["/Users/me", "/Users/me/Developer", "/Users/me/dev/clients/acme-web"].entries()) {
+      const start = await api().post("/agent-events").set(auth).send(hook("SessionStart", { session_id: `f${i}`, cwd }));
+      const patch = await api().patch(`/timers/${start.body.timer.id}`).set(auth).send({ projectId: acme.id });
+      expect([cwd, patch.status, patch.body.learnedRepoPattern ?? null]).toEqual([cwd, 200, null]);
+    }
     expect((await prisma.project.findUniqueOrThrow({ where: { id: acme.id } })).repoPatterns).toEqual([]);
   });
 
-  it("doesn't learn a repo that already resolves to another project, but ignores archived claims", async () => {
+  it("reassigning a session a folder prefix misrouted learns its remote, which wins from then on", async () => {
     const { user, auth } = await createUser();
-    await createProject(user.id, { name: "Acme", repoPatterns: ["/Users/me/clients/acme"] });
+    await createProject(user.id, { name: "Acme", repoPatterns: ["/Users/me/Developer"] });
+    const globex = await createProject(user.id, { name: "Globex" });
+    const where = { cwd: "/Users/me/Developer/globex-api", git_remote: "git@github.com:globex/api.git" };
+
+    const first = await api().post("/agent-events").set(auth).send(hook("SessionStart", { session_id: "g1", ...where }));
+    expect(first.body.timer.project.name).toBe("Acme");
+    const fix = await api().patch(`/timers/${first.body.timer.id}`).set(auth).send({ projectId: globex.id });
+    expect(fix.body.learnedRepoPattern).toBe("github.com/globex/api");
+
+    const next = await api().post("/agent-events").set(auth).send(hook("SessionStart", { session_id: "g2", ...where }));
+    expect(next.body.timer.project.name).toBe("Globex");
+  });
+
+  it("doesn't take a remote another active project claims, but ignores archived claims", async () => {
+    const { user, auth } = await createUser();
+    await createProject(user.id, { name: "Acme", repoPatterns: ["github.com/acme/web"] });
     await createProject(user.id, { name: "Old Globex", repoPatterns: ["github.com/globex/api"], isActive: false });
     const other = await createProject(user.id, { name: "Other" });
     const globex = await createProject(user.id, { name: "Globex 2026" });
@@ -205,14 +223,14 @@ describe("S2 review: repo learning", () => {
     const inAcme = await api()
       .post("/agent-events")
       .set(auth)
-      .send(hook("SessionStart", { session_id: "a", cwd: "/Users/me/clients/acme/web", git_remote: "git@github.com:acme/web.git" }));
+      .send(hook("SessionStart", { session_id: "a", git_remote: "git@github.com:acme/web.git" }));
     const p1 = await api().patch(`/timers/${inAcme.body.timer.id}`).set(auth).send({ projectId: other.id });
     expect(p1.body.learnedRepoPattern ?? null).toBeNull();
 
     const inGlobex = await api()
       .post("/agent-events")
       .set(auth)
-      .send(hook("SessionStart", { session_id: "g", cwd: "/Users/me/code/globex-api", git_remote: "git@github.com:globex/api.git" }));
+      .send(hook("SessionStart", { session_id: "g", git_remote: "git@github.com:globex/api.git" }));
     const p2 = await api().patch(`/timers/${inGlobex.body.timer.id}`).set(auth).send({ projectId: globex.id });
     expect(p2.body.learnedRepoPattern).toBe("github.com/globex/api");
   });
