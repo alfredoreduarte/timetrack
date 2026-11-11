@@ -203,3 +203,35 @@ describe("S5 review round 3", () => {
   });
 });
 
+describe("S5 review round 4", () => {
+  beforeEach(resetDb);
+
+  it.each([
+    // At the lower timeout the lone message stands alone and is dropped.
+    ["a lone last message", [[0, 60], [72, 72]], 3600],
+    ["a lone first message", [[0, 0], [12, 60]], 2880],
+  ])("lowering the idle timeout with %s still replaces an identical import", async (_label, mins, seconds) => {
+    const { user, auth } = await createUser();
+    const session = { sessionKey: "lone", spans: (mins as number[][]).map(([a, b]) => [iso(a), iso(b)]) };
+    expect((await api().post("/agent-sessions/import").set(auth).send({ sessions: [session] })).body.sessions[0].status).toBe("imported");
+    await prisma.user.update({ where: { id: user.id }, data: { agentIdleTimeoutSeconds: 600 } });
+    const again = await api().post("/agent-sessions/import").set(auth).send({ sessions: [session] });
+    expect(again.body.sessions[0]).toMatchObject({ status: "replaced", trackedSeconds: seconds });
+  });
+
+  it.each([
+    ["an over-long first root", ["/" + "a".repeat(2100)]],
+    ["an over-long later root", ["/w/ok", "/" + "b".repeat(2100)]],
+    ["many roots", Array.from({ length: 21 }, (_, i) => `/w/${i}`)],
+    ["a malformed list", "not-a-list"],
+  ])("a Cursor event with %s is still tracked", async (_label, roots) => {
+    const { auth } = await createUser();
+    const res = await api()
+      .post("/agent-events")
+      .set(auth)
+      .send({ hook_event_name: "beforeSubmitPrompt", conversation_id: `cur-${_label}`, workspace_roots: roots });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ tracked: true });
+  });
+});
+

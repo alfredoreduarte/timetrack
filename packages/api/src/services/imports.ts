@@ -96,8 +96,8 @@ interface Incoming {
   /** Activity spans (after any plan-window clipping). */
   spans: Span[];
   segments: Span[];
-  /** Set when the plan window clipped this import. */
-  clippedSkip?: Skip;
+  /** Set when the plan window clipped this import: where, and the skip. */
+  clipped?: { floor: Date; skip: Skip };
 }
 
 /**
@@ -151,20 +151,20 @@ async function storedCopyBlocker(db: TxClient, userId: string, timerId: string, 
     return { status: "skipped_edited", reason: "session was edited after it was imported" };
   }
 
-  const { spans, segments, clippedSkip } = incoming;
-  const first = segments[0][0].getTime();
-  const last = segments[segments.length - 1][1].getTime();
-  if (clippedSkip && entries.some((e) => e.startTime.getTime() < first)) return clippedSkip;
+  // Replacing deletes every stored segment, so a clipped import must not
+  // replace one that has history from before the plan window.
+  if (incoming.clipped && entries.some((e) => e.startTime < incoming.clipped!.floor)) return incoming.clipped.skip;
 
-  // Time covered is compared at the gap the stored copy was built with: the
-  // user may have changed their idle timeout since, which alone changes the
-  // total without any history being lost.
+  // Compared at the gap the stored copy was built with: the user may have
+  // changed their idle timeout since, which alone moves segment edges and
+  // totals (a lone message can merge or drop) without any history lost.
   const gap = recorded.gapSeconds?.to;
-  const covered = typeof gap === "number" ? sumSeconds(segmentSpans(spans, gap)) : null;
+  const ref = typeof gap === "number" ? segmentSpans(incoming.spans, gap) : incoming.segments;
   if (
-    first > timer.startedAt.getTime() + 1000 ||
-    (timer.stoppedAt && last < timer.stoppedAt.getTime() - 1000) ||
-    (covered !== null && covered < seconds)
+    ref.length === 0 ||
+    ref[0][0].getTime() > timer.startedAt.getTime() + 1000 ||
+    (timer.stoppedAt && ref[ref.length - 1][1].getTime() < timer.stoppedAt.getTime() - 1000) ||
+    (typeof gap === "number" && sumSeconds(ref) < seconds)
   ) {
     return { status: "skipped_partial", reason: "already imported with more of this session than this import has" };
   }
@@ -384,7 +384,7 @@ export async function importAgentSessions(
     try {
       const clippedSkip: Skip | undefined = clipped
         ? {
-            status: "skipped_plan",
+            status: "skipped_plan" as const,
             // A clipped import can't replace a session that has stored history
             // from before the window without deleting it, so the stored copy
             // stays as is (new work in a resumed session is tracked live by
@@ -397,7 +397,7 @@ export async function importAgentSessions(
           ctx,
           s,
           sessionKey,
-          { spans, segments, clippedSkip, gapSeconds },
+          { spans, segments, clipped: clippedSkip && floor ? { floor, skip: clippedSkip } : undefined, gapSeconds },
           Boolean(opts.dryRun),
           user.agentIdleTimeoutSeconds
         )
