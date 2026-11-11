@@ -4,8 +4,7 @@ import { createError } from "../middleware/errorHandler";
 import { ServiceContext } from "./context";
 import { recordAudit } from "./audit";
 import { cleanText } from "./text";
-import { isValidTimezone } from "../billing/time";
-import { buildTimesheet, redactTimesheet, Timesheet, MAX_TIMESHEET_DAYS } from "./timesheets";
+import { buildTimesheet, redactTimesheet, resolveTimezone, Timesheet, MAX_TIMESHEET_DAYS } from "./timesheets";
 
 export const SHARE_TOKEN_PREFIX = "ts_";
 export const MAX_SHARE_LINKS = 100;
@@ -47,8 +46,7 @@ export const shareUrl = (token: string) =>
   `${(process.env.APPLICATION_URL || "http://localhost:3010").replace(/\/$/, "")}/share/${token}`;
 
 export async function createShareLink(ctx: ServiceContext, input: CreateShareLinkInput) {
-  const timezone = input.timezone || "UTC";
-  if (!isValidTimezone(timezone)) throw createError("Invalid timezone", 400);
+  const timezone = resolveTimezone(input.timezone);
   const now = ctx.now();
   const startDate = input.startDate ? new Date(input.startDate) : null;
   const endDate = input.endDate ? new Date(input.endDate) : null;
@@ -67,6 +65,11 @@ export async function createShareLink(ctx: ServiceContext, input: CreateShareLin
   }
   if (rolling === null && !startDate) throw createError("Provide startDate (and optionally endDate) or rollingDays", 400);
   if (startDate && endDate && endDate <= startDate) throw createError("endDate must be after startDate", 400);
+  // A link nobody can open is a bug report waiting to happen.
+  if (startDate && startDate >= now) throw createError("startDate must be in the past", 400);
+  if (startDate && endDate && endDate.getTime() - startDate.getTime() > MAX_TIMESHEET_DAYS * 86400 * 1000) {
+    throw createError(`A shared period can cover at most ${MAX_TIMESHEET_DAYS} days`, 400);
+  }
 
   if (input.projectId) {
     const project = await prisma.project.findFirst({
@@ -93,6 +96,7 @@ export async function createShareLink(ctx: ServiceContext, input: CreateShareLin
       showAmounts: input.showAmounts ?? true,
       showNotes: input.showNotes ?? true,
       expiresAt,
+      apiKeyId: ctx.actorType === "api_key" ? ctx.actorId : null,
     },
     select: shareLinkSelect,
   });
@@ -123,9 +127,19 @@ export interface PublicTimesheet {
   timesheet: Timesheet;
 }
 
+// Public links can be refreshed by anyone holding the URL; a short-lived
+// cache keeps repeated views from rebuilding the sheet each time.
+const VIEW_TTL_MS = 30_000;
+const MAX_CACHED_VIEWS = 200;
+const viewCache = new Map<string, { at: number; timesheet: Timesheet }>();
+
+/** Test hook: forget cached public views. */
+export const clearPublicViewCache = () => viewCache.clear();
+
 /**
  * Resolves a share token to the client view of the timesheet. Unknown,
- * revoked and expired tokens all look the same (404).
+ * revoked and expired tokens — and links whose API key was revoked — all
+ * look the same (404).
  */
 export async function getPublicTimesheet(token: string, now = new Date()): Promise<PublicTimesheet> {
   if (!token.startsWith(SHARE_TOKEN_PREFIX) || token.length > 100) throw createError("Not found", 404);
@@ -133,24 +147,33 @@ export async function getPublicTimesheet(token: string, now = new Date()): Promi
   if (!link || link.revokedAt || (link.expiresAt && link.expiresAt <= now)) {
     throw createError("Not found", 404);
   }
-  const startDate = link.rollingDays
-    ? new Date(now.getTime() - link.rollingDays * 86400 * 1000)
-    : link.startDate ?? undefined;
-  const endDate = link.rollingDays ? now : link.endDate ?? now;
+  if (link.apiKeyId) {
+    const key = await prisma.apiKey.findUnique({
+      where: { id: link.apiKeyId },
+      select: { isActive: true, expiresAt: true },
+    });
+    if (!key || !key.isActive || (key.expiresAt && key.expiresAt <= now)) throw createError("Not found", 404);
+  }
 
-  const sheet = await buildTimesheet(
-    link.userId,
-    { startDate, endDate: endDate > now ? now : endDate, projectId: link.projectId ?? undefined, timezone: link.timezone },
-    { now, showNotes: link.showNotes }
-  );
-  const redacted = redactTimesheet(sheet, { showAmounts: link.showAmounts, showNotes: link.showNotes });
-  // Strip internal identifiers from the public view.
-  redacted.projects = redacted.projects.map((p) => ({
-    ...p,
-    project: p.project ? { ...p.project, id: "" } : null,
-    lines: p.lines.map((l) => ({ ...l, timerId: null, entryIds: [] })),
-    costs: p.costs.map((c) => ({ ...c, timerId: "" })),
-  }));
+  let timesheet = viewCache.get(link.id);
+  if (!timesheet || now.getTime() - timesheet.at > VIEW_TTL_MS) {
+    const maxSpanStart = new Date(now.getTime() - MAX_TIMESHEET_DAYS * 86400 * 1000 + 60_000);
+    let startDate = link.rollingDays
+      ? new Date(now.getTime() - link.rollingDays * 86400 * 1000)
+      : link.startDate ?? maxSpanStart;
+    const endDate = link.rollingDays ? now : link.endDate && link.endDate < now ? link.endDate : now;
+    // An open-ended link keeps showing the most recent year once it is older.
+    if (!link.endDate && startDate < maxSpanStart) startDate = maxSpanStart;
+
+    const sheet = await buildTimesheet(
+      link.userId,
+      { startDate, endDate, projectId: link.projectId ?? undefined, timezone: link.timezone },
+      { now, showNotes: link.showNotes }
+    );
+    if (viewCache.size >= MAX_CACHED_VIEWS) viewCache.clear();
+    timesheet = { at: now.getTime(), timesheet: redactTimesheet(sheet, { showAmounts: link.showAmounts, showNotes: link.showNotes }) };
+    viewCache.set(link.id, timesheet);
+  }
 
   await prisma.shareLink.update({
     where: { id: link.id },
@@ -158,6 +181,6 @@ export async function getPublicTimesheet(token: string, now = new Date()): Promi
   });
   return {
     link: { name: link.name, expiresAt: link.expiresAt, showAmounts: link.showAmounts },
-    timesheet: redacted,
+    timesheet: timesheet.timesheet,
   };
 }

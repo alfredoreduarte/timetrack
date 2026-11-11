@@ -1,5 +1,6 @@
 import type { Timesheet } from "../services/timesheets";
 import { formatMoney } from "../services/timesheets";
+import { localDateKey } from "./time";
 
 /** 1:05 style duration (hours:minutes), rounded to the minute. */
 export const hm = (seconds: number): string => {
@@ -13,11 +14,14 @@ const mdCell = (s: string) => s.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim(
 export function timesheetToMarkdown(t: Timesheet, opts: { showAmounts?: boolean } = {}): string {
   const money = (n: number) => formatMoney(n, t.currency);
   const showAmounts = opts.showAmounts !== false;
-  const day = (iso: string) => iso.slice(0, 10);
+  // Local dates, end shown inclusive (the range end is exclusive).
+  const tz = t.range.timezone;
+  const first = localDateKey(new Date(t.range.startDate), tz);
+  const last = localDateKey(new Date(Date.parse(t.range.endDate) - 1), tz);
   const out: string[] = [];
   out.push(`# Timesheet — ${t.user.name}`);
   out.push("");
-  out.push(`${day(t.range.startDate)} → ${day(t.range.endDate)} · ${t.range.timezone}`);
+  out.push(`${first} → ${last} · ${tz}`);
 
   for (const p of t.projects) {
     out.push("");
@@ -44,7 +48,13 @@ export function timesheetToMarkdown(t: Timesheet, opts: { showAmounts?: boolean 
     if (showAmounts && p.costs.length > 0) {
       const raw = p.costs.reduce((s, c) => s + c.costUsd, 0);
       out.push("");
-      out.push(`AI usage (API-equivalent, ${p.costs.length} session${p.costs.length === 1 ? "" : "s"}): ${formatMoney(raw, "USD")} → billed ${money(p.totals.costsAmount)}`);
+      const usd = (n: number) => formatMoney(n, "USD");
+      const sessions = `${p.costs.length} session${p.costs.length === 1 ? "" : "s"}`;
+      out.push(
+        p.totals.costsIncluded
+          ? `AI usage (API-equivalent, ${sessions}): ${usd(raw)} → billed ${usd(p.totals.costsBilledUsd)}`
+          : `AI usage (API-equivalent, ${sessions}): ${usd(raw)} → billed ${usd(p.totals.costsBilledUsd)} (USD, not included in the total)`
+      );
       out.push("");
       out.push(`**Project total: ${money(p.totals.amount)}**`);
     }

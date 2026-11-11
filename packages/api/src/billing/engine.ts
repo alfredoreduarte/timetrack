@@ -85,8 +85,13 @@ export function billProject(
   if (valid.length === 0) return result;
 
   const rates = new Map(valid.map((e) => [e.id, effectiveRate(e, policy)]));
-  const minStart = Math.min(...valid.map((e) => e.start.getTime()));
-  const maxEnd = Math.max(...valid.map((e) => e.end.getTime()));
+  // Loops, not Math.min(...spread): spreading 100k+ values overflows the stack.
+  let minStart = Infinity;
+  let maxEnd = -Infinity;
+  for (const e of valid) {
+    if (e.start.getTime() < minStart) minStart = e.start.getTime();
+    if (e.end.getTime() > maxEnd) maxEnd = e.end.getTime();
+  }
 
   const cuts = new Set<number>();
   for (const e of valid) {
@@ -101,7 +106,9 @@ export function billProject(
   for (const e of valid) {
     const s = e.start.getTime();
     const t = e.end.getTime();
-    starts.set(s, [...(starts.get(s) ?? []), e]);
+    let list = starts.get(s);
+    if (!list) starts.set(s, (list = []));
+    list.push(e);
     if (!ends.has(t)) ends.set(t, new Set());
     ends.get(t)!.add(e.id);
   }

@@ -221,7 +221,8 @@ async function importOne(
         // it goes quiet and pauses like any hook-tracked session.
         idleTimeoutSeconds,
         usage: (s.usage ?? undefined) as Prisma.InputJsonValue | undefined,
-        costUsd: s.usage ? estimateCost(s.usage).costUsd : null,
+        // Like usage: a re-import without usage keeps the stored cost.
+        costUsd: s.usage ? estimateCost(s.usage).costUsd : undefined,
       };
       let timerId: string;
       if (existing) {
