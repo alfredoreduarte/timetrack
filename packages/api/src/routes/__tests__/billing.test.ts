@@ -124,6 +124,23 @@ describe("plan limits (billing enabled)", () => {
     expect(imp.body.sessions.map((s: { status: string }) => s.status)).toEqual(["empty", "imported"]);
   });
 
+  it("pauses a trial's share links when the trial ends and restores them on upgrade", async () => {
+    const { user, auth } = await createUser({ isSubscriptionExempt: false, trialEndsAt: new Date(Date.now() + 86400_000) });
+    await createProject(user.id, { name: "Acme" });
+    const made = await api().post("/share-links").set(auth).send({ rollingDays: 7 });
+    expect(made.status).toBe(201);
+    const token = made.body.url.split("/share/")[1];
+    expect((await api().get(`/public/timesheets/${token}`)).status).toBe(200);
+
+    await prisma.user.update({ where: { id: user.id }, data: { trialEndsAt: new Date(Date.now() - 1000) } });
+    expect((await api().get(`/public/timesheets/${token}`)).status).toBe(404);
+
+    await prisma.user.update({ where: { id: user.id }, data: { subscriptionStatus: "active" } });
+    const back = await api().get(`/public/timesheets/${token}`);
+    expect(back.status).toBe(200);
+    expect(back.body.timesheet.limitedByPlan).toBeNull();
+  });
+
   it("reports billing status", async () => {
     const { user, auth } = await freeUser();
     const key = await createApiKey(user.id);
