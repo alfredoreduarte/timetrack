@@ -105,12 +105,6 @@ export function currencyDigits(currency: string): number {
  * sum to the rounded total (largest remainder): rows on an invoice must add
  * up to the printed total. Returns integer minor units.
  */
-/** Adds amounts in whole minor units of the currency, so totals add up exactly. */
-function sumInMinorUnits(amounts: number[], currency: string): number {
-  const unit = 10 ** currencyDigits(currency);
-  return amounts.reduce((s, a) => s + Math.round(a * unit), 0) / unit;
-}
-
 export function splitCents(amounts: number[], digits = 2): number[] {
   const scale = 10 ** digits;
   const raw = amounts.map((a) => a * scale);
@@ -123,6 +117,12 @@ export function splitCents(amounts: number[], digits = 2): number[] {
     left -= 1;
   }
   return floors;
+}
+
+/** Adds amounts in whole minor units of the currency, so totals add up exactly. */
+function sumInMinorUnits(amounts: number[], currency: string): number {
+  const unit = 10 ** currencyDigits(currency);
+  return amounts.reduce((s, a) => s + Math.round(a * unit), 0) / unit;
 }
 
 /** Canonical IANA zone (default UTC); 400 for unknown names. */
@@ -427,7 +427,7 @@ export async function buildTimesheet(
         ...l,
         trackedSeconds: Math.round(l.trackedSeconds),
         billedSeconds: Math.round(l.billedSeconds),
-        rate: l.billedSeconds > 0 ? round2(l.amount / (l.billedSeconds / 3600)) : 0,
+        rate: l.billedSeconds > 0 ? Math.round((l.amount / (l.billedSeconds / 3600)) * unit) / unit : 0,
         amount: cents[i] / unit,
       }))
       .sort((a, b) => a.date.localeCompare(b.date) || b.trackedSeconds - a.trackedSeconds);

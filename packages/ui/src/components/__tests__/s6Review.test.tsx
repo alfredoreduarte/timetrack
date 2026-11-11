@@ -7,6 +7,7 @@ import { rangeFor } from "../../pages/Timesheet";
 import { noteAddedFromSocket, timerFromSocket } from "../../store/slices/timersSlice";
 import AgentBillingSettings from "../AgentBillingSettings";
 import ProjectAgentSettings from "../ProjectAgentSettings";
+import PlanBanner from "../PlanBanner";
 import Billing from "../../pages/Billing";
 import api, { authAPI } from "../../services/api";
 import { logout, setCredentials } from "../../store/slices/authSlice";
@@ -76,8 +77,8 @@ const planStatus = (over: Partial<BillingStatus>): BillingStatus => ({
   prices: { month: { amount: 15, currency: "usd" }, year: { amount: 144, currency: "usd" } },
   ...over,
 });
-const signIn = (store: ReturnType<typeof configureStore>, id: string) =>
-  store.dispatch(setCredentials({ user: { id, name: id, email: `${id}@dev.test` }, token: `tok-${id}` } as never));
+const signIn = (store: ReturnType<typeof configureStore>, id: string, token = `tok-${id}`) =>
+  store.dispatch(setCredentials({ user: { id, name: id, email: `${id}@dev.test` }, token } as never));
 
 describe("S6 review round 2", () => {
   it("the plan shown belongs to whoever is signed in now", async () => {
@@ -134,6 +135,52 @@ describe("S6 review round 2", () => {
     fireEvent.change(multiplier, { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => expect(put).toHaveBeenCalledWith("p1", { aiMultiplier: 2 }));
+  });
+});
+
+describe("S6 review round 3", () => {
+  it("signing back into the same account fetches the plan again", async () => {
+    const store = configureStore({ reducer: reducers });
+    signIn(store, "dave", "tok-1");
+    const status = vi
+      .spyOn(api.billing, "status")
+      .mockResolvedValueOnce(planStatus({ reason: "trial", plan: "pro", trialEndsAt: new Date(Date.now() + 5 * 86400_000).toISOString() }))
+      .mockResolvedValueOnce(planStatus({}));
+    const first = renderWithProviders(<PlanBanner />, { store });
+    expect(await screen.findByText(/Pro trial: 5 days left/)).toBeTruthy();
+    first.unmount();
+    act(() => {
+      store.dispatch(logout());
+    });
+    signIn(store, "dave", "tok-2");
+    renderWithProviders(<PlanBanner />, { store });
+    expect(await screen.findByText(/Free plan: 2 agents at once/)).toBeTruthy();
+    expect(status).toHaveBeenCalledTimes(2);
+  });
+
+  it("a repo edit is applied to the current list, keeping repos learned meanwhile", async () => {
+    const project = {
+      id: "p2",
+      name: "Acme",
+      repoPatterns: ["github.com/acme/web", "github.com/acme/old"],
+      overlapMode: null,
+      aiMultiplier: null,
+      agentHourlyRate: null,
+      includeAiCosts: false,
+      aiCostMarkupPercent: 0,
+    } as unknown as Project;
+    const getProject = vi.spyOn(api.projects, "getProject").mockResolvedValueOnce(project);
+    renderWithProviders(<ProjectAgentSettings project={project} />);
+    const textarea = (await screen.findByDisplayValue(/github.com\/acme\/web/)) as HTMLTextAreaElement;
+    await waitFor(() => expect(screen.getByRole("button", { name: /^save$/i }).hasAttribute("disabled")).toBe(false));
+    // Meanwhile an agent's timer was assigned here and its repo learned.
+    getProject.mockResolvedValueOnce({ ...project, repoPatterns: [...project.repoPatterns!, "github.com/acme/learned"] } as Project);
+    const put = vi.spyOn(api.projects, "updateProject").mockImplementation(async (_id, body) => ({ ...project, ...body }) as Project);
+    fireEvent.change(textarea, { target: { value: "github.com/acme/web\ngithub.com/acme/api" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(put).toHaveBeenCalledWith("p2", { repoPatterns: ["github.com/acme/web", "github.com/acme/learned", "github.com/acme/api"] })
+    );
   });
 });
 

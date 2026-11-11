@@ -6,6 +6,12 @@ import type { Project } from "../store/slices/projectsSlice";
 const errorText = (e: unknown) =>
   (e as { response?: { data?: { error?: string } } })?.response?.data?.error || "Couldn't save";
 
+const lines = (text: string) =>
+  text
+    .split("\n")
+    .map((r) => r.trim())
+    .filter(Boolean);
+
 /** The form's values for a project as the server has it. */
 const valuesFrom = (p: Project) => ({
   repos: (p.repoPatterns ?? []).join("\n"),
@@ -28,7 +34,8 @@ const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) 
   // The form must not be saved before the real values loaded (blanks would
   // wipe the linked repos and the policy), and it sends only what the user
   // changed: the server adds repos while the form is open (assigning an
-  // agent's timer here learns its repo), and a stale copy must not undo that.
+  // agent's timer here learns its repo), and a stale copy must not undo that,
+  // so a repo edit is applied to the current list (see save).
   const [status, setStatus] = useState<"loading" | "loaded" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
   const loaded = useRef<ReturnType<typeof valuesFrom> | null>(null);
@@ -64,18 +71,29 @@ const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) 
     const was = loaded.current;
     if (!was) return;
     const changes: Partial<Project> = {};
-    if (repos !== was.repos) changes.repoPatterns = repos.split("\n").map((r) => r.trim()).filter(Boolean);
     if (overlap !== was.overlap) changes.overlapMode = overlap || null;
     if (multiplier !== was.multiplier) changes.aiMultiplier = multiplier === "" ? null : parseFloat(multiplier);
     if (agentRate !== was.agentRate) changes.agentHourlyRate = agentRate === "" ? null : parseFloat(agentRate);
     if (includeCosts !== was.includeCosts) changes.includeAiCosts = includeCosts;
     if (markup !== was.markup) changes.aiCostMarkupPercent = parseFloat(markup || "0");
-    if (Object.keys(changes).length === 0) {
+    const reposEdited = repos !== was.repos;
+    if (!reposEdited && Object.keys(changes).length === 0) {
       toast.success("Nothing to save");
       return;
     }
     setSaving(true);
     try {
+      if (reposEdited) {
+        // Apply the user's edit (lines added and removed) to the list as it
+        // is now, not as it was when the form loaded: the server may have
+        // learned repos since.
+        const before = lines(was.repos);
+        const after = lines(repos);
+        const removed = new Set(before.filter((r) => !after.includes(r)));
+        const added = after.filter((r) => !before.includes(r));
+        const current = (await api.projects.getProject(project.id)).repoPatterns ?? [];
+        changes.repoPatterns = [...current.filter((r) => !removed.has(r)), ...added];
+      }
       const updated = (await api.projects.updateProject(project.id, changes)) as Project;
       // The saved project is the new baseline (incl. repos the server added).
       show(valuesFrom(updated));

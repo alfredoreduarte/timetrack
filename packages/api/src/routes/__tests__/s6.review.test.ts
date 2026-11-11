@@ -85,6 +85,11 @@ describe("S6 review: API", () => {
     const byName = Object.fromEntries(t.projects.map((p: { project: { name: string }; totals: { amount: number } }) => [p.project.name, p.totals.amount]));
     expect(byName).toEqual({ Acme: 1.001, Globex: 1.234 });
     expect(t.totals.amount).toBe(2.235);
+    const lines = t.projects.flatMap((p: { lines: Array<{ rate: number }> }) => p.lines.map((l) => l.rate)).sort();
+    expect(lines).toEqual([1.001, 1.234]);
+    const csv = await api().get("/reports/timesheet?startDate=2026-03-01T00:00:00Z&endDate=2026-03-08T00:00:00Z&format=csv").set(auth);
+    expect(csv.text).toContain('"1.001","1.001","KWD"');
+    expect(csv.text).toContain('"1.234","1.234","KWD"');
   });
 });
 

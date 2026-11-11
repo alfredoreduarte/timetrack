@@ -1,5 +1,5 @@
 import type { Timesheet } from "../services/timesheets";
-import { formatMoney } from "../services/timesheets";
+import { currencyDigits, formatMoney } from "../services/timesheets";
 import { localDateKey } from "./time";
 
 /** 1:05 style duration (hours:minutes), rounded to the minute. */
@@ -86,6 +86,7 @@ export const csvCell = (value: unknown): string => {
 
 export function timesheetToCsv(t: Timesheet, opts: { showAmounts?: boolean } = {}): string {
   const showAmounts = opts.showAmounts !== false;
+  const digits = currencyDigits(t.currency);
   const header = ["Date", "Project", "Work", "Notes", "By", "Agent", "Task", "Tracked (h)", "Billed (h)"];
   if (showAmounts) header.push("Rate", "Amount", "Currency");
   const rows = [header.map(csvCell).join(",")];
@@ -102,7 +103,8 @@ export function timesheetToCsv(t: Timesheet, opts: { showAmounts?: boolean } = {
         (l.trackedSeconds / 3600).toFixed(2),
         (l.billedSeconds / 3600).toFixed(2),
       ];
-      if (showAmounts) row.push(l.rate.toFixed(2), l.amount.toFixed(2), t.currency);
+      // In the currency's minor unit (JPY 0, KWD 3), like the totals.
+      if (showAmounts) row.push(l.rate.toFixed(digits), l.amount.toFixed(digits), t.currency);
       rows.push(row.map(csvCell).join(","));
     }
     if (showAmounts) {
