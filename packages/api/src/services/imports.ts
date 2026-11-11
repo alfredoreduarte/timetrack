@@ -157,7 +157,14 @@ async function importOne(
     where: { userId_sessionKey: { userId: ctx.userId, sessionKey } },
     select: { id: true },
   });
-  if (existing && skipIfExisting) throw new SkipSession(skipIfExisting);
+  // A clipped import may replace a stored one only if that deletes nothing
+  // from before the plan window (e.g. the stored copy was clipped too).
+  if (existing && skipIfExisting) {
+    const olderStored = await prisma.timeEntry.count({
+      where: { timerId: existing.id, startTime: { lt: segments[0][0] } },
+    });
+    if (olderStored > 0) throw new SkipSession(skipIfExisting);
+  }
   if (existing) {
     const blocker = await replaceBlocker(prisma, ctx.userId, existing.id);
     if (blocker) throw new SkipSession(blocker);
