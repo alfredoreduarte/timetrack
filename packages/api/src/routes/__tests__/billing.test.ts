@@ -29,8 +29,10 @@ const fake = {
 beforeEach(async () => {
   await resetDb();
   disableBilling();
-  jest.clearAllMocks();
+  // Every test sets up the Stripe calls it relies on; none inherits another's.
+  jest.resetAllMocks();
   fake.subscriptions.list.mockResolvedValue({ data: [] });
+  fake.customers.create.mockResolvedValue({ id: "cus_default" });
   setStripeClient(fake as unknown as Stripe);
 });
 afterAll(async () => {
