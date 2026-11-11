@@ -2,8 +2,9 @@
 # TimeTrack hook for Claude Code.
 #
 # Sends ONLY: the hook event name, the session id, the working directory,
-# and (at session start) the repo's git remote and branch. Never sends
-# prompts, tool input/output, assistant messages or transcripts.
+# the SessionStart source, and the repo's git remote (credentials stripped)
+# and branch. Never sends prompts, tool input/output, assistant messages or
+# transcripts.
 #
 # Never blocks or breaks the session: no key -> no-op; every request has a
 # short timeout; heartbeats are fire-and-forget; always exits 0.
@@ -12,29 +13,49 @@ API="${CLAUDE_PLUGIN_OPTION_API_URL:-${TIMETRACK_API_URL:-https://api.track.alfr
 API="${API%/}"
 KEY="${CLAUDE_PLUGIN_OPTION_API_KEY:-${TIMETRACK_API_KEY:-}}"
 [ -n "$KEY" ] || exit 0
+# TimeTrack keys are tt_ plus hex; anything else is a typo (and would break
+# the curl config below).
+case "$KEY" in *[!A-Za-z0-9_-]*) exit 0 ;; esac
 
 INPUT=$(cat)
 
-# Read one top-level string field from the hook's JSON input.
-field() {
+# Parse the hook JSON once, with the first real JSON parser available.
+# Prints: event, session id, cwd (raw, one per line), then a JSON object
+# with the whitelisted fields. No parser -> no tracking: a regex would pick
+# up keys nested inside tool input and report the wrong session.
+parse() {
   if command -v jq >/dev/null 2>&1; then
-    printf '%s' "$INPUT" | jq -r --arg k "$1" '.[$k] // empty | strings' 2>/dev/null
+    printf '%s' "$INPUT" | jq -r '
+      def str: if type == "string" then gsub("[\r\n]"; " ") else "" end;
+      (.hook_event_name | str), (.session_id | str), (.cwd | str),
+      ({hook_event_name, session_id, cwd, source}
+        | map_values(if type == "string" then . else null end) | tojson)' 2>/dev/null
+  elif command -v node >/dev/null 2>&1; then
+    printf '%s' "$INPUT" | node -e '
+      let d = "";
+      process.stdin.on("data", (c) => (d += c)).on("end", () => {
+        let j;
+        try { j = JSON.parse(d); } catch { return; }
+        const str = (v) => (typeof v === "string" ? v.replace(/[\r\n]/g, " ") : "");
+        const o = {};
+        for (const k of ["hook_event_name", "session_id", "cwd", "source"]) o[k] = typeof j[k] === "string" ? j[k] : null;
+        process.stdout.write([str(j.hook_event_name), str(j.session_id), str(j.cwd), JSON.stringify(o)].join("\n") + "\n");
+      });' 2>/dev/null
   elif command -v python3 >/dev/null 2>&1; then
-    printf '%s' "$INPUT" | python3 -c 'import json,sys
-v = json.load(sys.stdin).get(sys.argv[1])
-print(v if isinstance(v, str) else "")' "$1" 2>/dev/null
-  else
-    printf '%s' "$INPUT" | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1
+    printf '%s' "$INPUT" | python3 -c '
+import json, sys
+j = json.load(sys.stdin)
+s = lambda v: v.replace("\r", " ").replace("\n", " ") if isinstance(v, str) else ""
+o = {k: (j.get(k) if isinstance(j.get(k), str) else None) for k in ("hook_event_name", "session_id", "cwd", "source")}
+print(s(j.get("hook_event_name"))); print(s(j.get("session_id"))); print(s(j.get("cwd"))); print(json.dumps(o, separators=(",", ":")))' 2>/dev/null
   fi
 }
 
-EVENT=$(field hook_event_name)
-SESSION=$(field session_id)
-CWD=$(field cwd)
-# SessionStart's source (startup/resume/clear/compact): the server lets only
-# startup/resume override a pause or stop you made yourself.
-SOURCE=$(field source)
-if [ -z "$EVENT" ] || [ -z "$SESSION" ]; then exit 0; fi
+PARSED=$(parse)
+{ IFS= read -r EVENT; IFS= read -r SESSION; IFS= read -r CWD; IFS= read -r FIELDS; } <<EOF
+$PARSED
+EOF
+if [ -z "$EVENT" ] || [ -z "$SESSION" ] || [ -z "$FIELDS" ]; then exit 0; fi
 
 DATA="${CLAUDE_PLUGIN_DATA:-}"
 SID=$(printf '%s' "$SESSION" | tr -cd 'A-Za-z0-9_-' | cut -c1-80)
@@ -55,37 +76,49 @@ case "$EVENT" in
     ;;
 esac
 
+# The repo's remote and branch, looked up at session start and cached for
+# the session — so a timer created by a later event (session start missed)
+# still knows its repo.
 REMOTE=""
 BRANCH=""
-if [ "$EVENT" = "SessionStart" ] && [ -n "$CWD" ] && command -v git >/dev/null 2>&1; then
+REPO_CACHE=""
+[ -n "$DATA" ] && [ -n "$SID" ] && REPO_CACHE="$DATA/repo-$SID"
+if [ "$EVENT" != "SessionStart" ] && [ -n "$REPO_CACHE" ] && [ -f "$REPO_CACHE" ]; then
+  { IFS= read -r REMOTE; IFS= read -r BRANCH; } <"$REPO_CACHE"
+elif [ -n "$CWD" ] && command -v git >/dev/null 2>&1 && { [ "$EVENT" = "SessionStart" ] || [ -n "$REPO_CACHE" ]; }; then
   REMOTE=$(git -C "$CWD" remote get-url origin 2>/dev/null)
+  # https://user:TOKEN@host/... clones: the credentials never leave the machine.
+  REMOTE=$(printf '%s' "$REMOTE" | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@#\1#')
   BRANCH=$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null)
   # Detached HEAD or a repo without commits has no meaningful branch.
   [ "$BRANCH" = "HEAD" ] && BRANCH=""
+  if [ -n "$REPO_CACHE" ]; then
+    mkdir -p "$DATA" 2>/dev/null && printf '%s\n%s\n' "$REMOTE" "$BRANCH" >"$REPO_CACHE" 2>/dev/null
+  fi
 fi
 
-# JSON-escape: drop control characters, escape backslashes and quotes.
+# JSON-escape the two values that don't come from the parser.
 esc() { printf '%s' "$1" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+BODY="${FIELDS%\}},\"gitRemote\":\"$(esc "$REMOTE")\",\"gitBranch\":\"$(esc "$BRANCH")\"}"
 
-BODY=$(printf '{"hook_event_name":"%s","session_id":"%s","cwd":"%s","gitRemote":"%s","gitBranch":"%s","source":"%s"}' \
-  "$(esc "$EVENT")" "$(esc "$SESSION")" "$(esc "$CWD")" "$(esc "$REMOTE")" "$(esc "$BRANCH")" "$(esc "$SOURCE")")
-
+# The key goes to curl on stdin (a config line), never on its command line,
+# where other processes and exec logs could see it.
 post() {
-  curl -sS -m "$1" -X POST "$API/agent-events?format=claude-code" \
-    -H "Authorization: Bearer $KEY" \
+  printf 'header = "Authorization: Bearer %s"\n' "$KEY" | curl -fsS -K - -m "$1" -X POST \
+    "$API/agent-events?format=claude-code" \
     -H "Content-Type: application/json" \
     -H "X-Client: claude_code" \
     --data-binary "$BODY" 2>/dev/null
 }
 
 if [ "$EVENT" = "SessionStart" ]; then
+  # Heartbeat stamps and repo caches of sessions that never sent SessionEnd.
+  [ -n "$DATA" ] && find "$DATA" -maxdepth 1 \( -name 'hb-*' -o -name 'repo-*' \) -type f -mtime +2 -exec rm -f {} \; 2>/dev/null
   # First session after install: import the last 30 days of past sessions
   # in the background (opt out with the plugin's "Import past sessions").
   # The importer writes history-imported only after a complete import, so a
   # failed run is retried next session; the lock keeps parallel sessions
   # from importing twice (a lock older than an hour is from a dead run).
-  # Heartbeat stamps of sessions that never sent SessionEnd.
-  [ -n "$DATA" ] && find "$DATA" -maxdepth 1 -name 'hb-*' -type f -mtime +2 -exec rm -f {} \; 2>/dev/null
   if [ -n "$DATA" ] && [ "${CLAUDE_PLUGIN_OPTION_IMPORT_HISTORY:-true}" = "true" ] \
     && [ ! -f "$DATA/history-imported" ] && command -v node >/dev/null 2>&1; then
     mkdir -p "$DATA"
@@ -97,11 +130,18 @@ if [ "$EVENT" = "SessionStart" ]; then
         </dev/null >"$DATA/import.log" 2>&1 &
     fi
   fi
-  # The response is Claude Code hook JSON; its additionalContext tells the
-  # agent which TimeTrack timer and project this session is tracked under.
-  post 3
+  # The response is Claude Code hook JSON whose additionalContext tells the
+  # agent which timer and project this session is tracked under. Anything
+  # else (an error page while the API restarts, an error body) would land in
+  # Claude's context, so only well-formed hook output is printed.
+  OUT=$(post 3)
+  case "$OUT" in
+    '{"hookSpecificOutput"'*) printf '%s\n' "$OUT" ;;
+  esac
 else
-  [ "$EVENT" = "SessionEnd" ] && [ -n "$DATA" ] && [ -n "$SID" ] && rm -f "$DATA/hb-$SID"
+  if [ "$EVENT" = "SessionEnd" ] && [ -n "$DATA" ] && [ -n "$SID" ]; then
+    rm -f "$DATA/hb-$SID" "$DATA/repo-$SID"
+  fi
   # Heartbeat: detach so the agent never waits on the network.
   post 2 </dev/null >/dev/null 2>&1 &
 fi

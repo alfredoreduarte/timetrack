@@ -27,7 +27,8 @@ Claude Code asks for your **TimeTrack API key** — create one in TimeTrack unde
   last activity*, so nothing is billed overnight. The next prompt resumes it.
   If *you* pause or stop it (in TimeTrack or by asking Claude), it stays that
   way until you resume it or reopen the session with `--resume`; `/compact`
-  and `/clear` never restart it.
+  never restarts it. `/clear` starts a fresh conversation, which TimeTrack
+  tracks as new work.
 - **Session end** — the timer stops.
 - **First session after install** — your last 30 days of Claude Code sessions
   are imported in the background (turn off "Import past sessions" in

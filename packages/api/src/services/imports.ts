@@ -70,6 +70,7 @@ export type ImportStatus =
   | "skipped_live"
   | "skipped_edited"
   | "skipped_plan"
+  | "skipped_partial"
   | "empty"
   | "invalid";
 
@@ -88,7 +89,7 @@ export interface ImportSessionResult {
 const sumSeconds = (segments: Span[]) =>
   segments.reduce((s, [a, b]) => s + Math.floor((b.getTime() - a.getTime()) / 1000), 0);
 
-type Skip = { status: "skipped_live" | "skipped_edited" | "skipped_plan"; reason: string };
+type Skip = { status: "skipped_live" | "skipped_edited" | "skipped_plan" | "skipped_partial"; reason: string };
 
 /**
  * An earlier import may be replaced only if nothing else ever touched it:
@@ -155,7 +156,7 @@ async function importOne(
 ): Promise<ImportSessionResult> {
   const existing = await prisma.timer.findUnique({
     where: { userId_sessionKey: { userId: ctx.userId, sessionKey } },
-    select: { id: true },
+    select: { id: true, startedAt: true, stoppedAt: true },
   });
   // Live-tracked and edited sessions first, as under the lock: no import
   // replaces them, so the plan window isn't the reason they're skipped.
@@ -170,6 +171,18 @@ async function importOne(
       where: { timerId: existing.id, startTime: { lt: segments[0][0] } },
     });
     if (olderStored > 0) throw new SkipSession(skipIfExisting);
+  }
+  // A re-import may grow a session, never shrink it: transcripts get pruned
+  // and windows get narrower, and what was imported before is still true.
+  if (
+    existing &&
+    (segments[0][0].getTime() > existing.startedAt.getTime() + 1000 ||
+      (existing.stoppedAt && segments[segments.length - 1][1].getTime() < existing.stoppedAt.getTime() - 1000))
+  ) {
+    throw new SkipSession({
+      status: "skipped_partial",
+      reason: "already imported with more of this session than this import has",
+    });
   }
 
   const gitRemote = normalizeGitRemote(s.gitRemote);

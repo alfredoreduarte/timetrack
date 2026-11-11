@@ -55,6 +55,25 @@ async function getRemote(): Promise<Client> {
   return connecting;
 }
 
+/** Shown instead of the real tools when TimeTrack can't be reached at listing time. */
+const STATUS_TOOL = {
+  name: "timetrack_status",
+  description:
+    "TimeTrack could not be reached when tools were listed. Call this to retry and see why; once it connects, the full TimeTrack tool list appears.",
+  inputSchema: { type: "object" as const, properties: {} },
+};
+
+// Same guidance the hosted server sends (packages/api/src/mcp/server.ts).
+const INSTRUCTIONS = `TimeTrack records billable time for a developer whose AI agents work in parallel.
+
+A TIMER is one unit of work (usually one agent session); each running stretch is a TIME ENTRY. Many timers may run at once. Entries can be edited, backfilled or deleted at any time; every change is kept in an audit trail.
+
+- If your context says "TimeTrack is tracking this session (timer X)", hooks created that timer and keep it accurate. Don't start another, and don't pause or stop it yourself unless the user asks. Use that timerId with add_note and update_timer.
+- Otherwise call start_timer when you begin billable work, with a stable sessionKey. Call pause_timer while you wait on the human and resume_timer when work continues; stop_timer when the work is done.
+- Assign work to the right client project (list_projects); if the repository has no project, ask the user.
+- Log what you accomplished with add_note, written for the client.
+- Times are ISO 8601. Never invent times in the future.`;
+
 const errorResult = (e: unknown) => ({
   content: [{ type: "text" as const, text: `Error: ${redact(e instanceof Error ? e.message : String(e))}` }],
   isError: true,
@@ -63,22 +82,43 @@ const errorResult = (e: unknown) => ({
 async function main() {
   const server = new Server(
     { name: "timetrack", version: VERSION },
-    {
-      capabilities: { tools: {} },
-      instructions:
-        "TimeTrack records billable time for developers whose AI agents work in parallel. Call whoami or list_timers to start; tool descriptions explain the rest.",
-    }
+    { capabilities: { tools: { listChanged: true } }, instructions: INSTRUCTIONS }
   );
 
+  // A failed listing (offline, bad key) must not leave the session without
+  // tools until a manual reconnect: list a status tool instead, and tell the
+  // client to list again once a connection works.
+  let listFailed = false;
+  const connected = async () => {
+    if (listFailed) {
+      listFailed = false;
+      await server.sendToolListChanged().catch(() => undefined);
+    }
+  };
+
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const client = await getRemote();
-    return client.listTools();
+    try {
+      const result = await (await getRemote()).listTools();
+      listFailed = false;
+      return result;
+    } catch (e) {
+      remote = null;
+      listFailed = true;
+      console.error("timetrack-mcp: listing tools failed:", redact(e instanceof Error ? e.message : String(e)));
+      return { tools: [STATUS_TOOL] };
+    }
   });
 
   const callTool = async (req: { params: { name: string; arguments?: Record<string, unknown> } }) => {
     try {
       const client = await getRemote();
-      return await client.callTool({ name: req.params.name, arguments: req.params.arguments ?? {} });
+      if (req.params.name === STATUS_TOOL.name) {
+        await connected();
+        return { content: [{ type: "text" as const, text: "Connected to TimeTrack. The full tool list is available now." }] };
+      }
+      const result = await client.callTool({ name: req.params.name, arguments: req.params.arguments ?? {} });
+      await connected();
+      return result;
     } catch (e) {
       remote = null; // force a reconnect on the next call
       return errorResult(e);

@@ -1,5 +1,5 @@
 {
-  "description": "TimeTrack heartbeats: start/stop the session timer and keep it alive while the agent works. The script detaches its network call, so hooks return in milliseconds.",
+  "description": "TimeTrack heartbeats: start/stop the session timer and keep it alive while the agent works. Heartbeat hooks run async (Claude Code never waits on them); SessionStart runs inline so the agent learns its timer id and project.",
   "hooks": {
     "SessionStart": [
       {
@@ -18,7 +18,8 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/track.sh",
-            "timeout": 5
+            "timeout": 5,
+            "async": true
           }
         ]
       }
@@ -30,7 +31,8 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/track.sh",
-            "timeout": 5
+            "timeout": 5,
+            "async": true
           }
         ]
       }
@@ -42,7 +44,8 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/track.sh",
-            "timeout": 5
+            "timeout": 5,
+            "async": true
           }
         ]
       }
@@ -53,7 +56,8 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/track.sh",
-            "timeout": 5
+            "timeout": 5,
+            "async": true
           }
         ]
       }
@@ -64,18 +68,8 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/track.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/track.sh",
-            "timeout": 5
+            "timeout": 5,
+            "async": true
           }
         ]
       }
@@ -86,7 +80,8 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/track.sh",
-            "timeout": 5
+            "timeout": 5,
+            "async": true
           }
         ]
       }
