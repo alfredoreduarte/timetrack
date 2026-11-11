@@ -7,11 +7,11 @@ quiet stops billing on its own.
 ## Install
 
 ```
-/plugin install timetrack --marketplace alfredoreduarte/timetrack
+claude plugin install timetrack --marketplace alfredoreduarte/timetrack
 ```
 
-(On Claude Code before 2.1.275: `/plugin marketplace add alfredoreduarte/timetrack`,
-then `/plugin install timetrack@timetrack`.)
+Run it in your terminal. Inside a session the equivalent is
+`/plugin marketplace add alfredoreduarte/timetrack`, then `/plugin install timetrack@timetrack`.
 
 Claude Code asks for your **TimeTrack API key** — create one in TimeTrack under
 **Settings → API keys**. It is stored in your system keychain.
