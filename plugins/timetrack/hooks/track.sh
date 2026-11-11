@@ -31,6 +31,9 @@ print(v if isinstance(v, str) else "")' "$1" 2>/dev/null
 EVENT=$(field hook_event_name)
 SESSION=$(field session_id)
 CWD=$(field cwd)
+# SessionStart's source (startup/resume/clear/compact): the server lets only
+# startup/resume override a pause or stop you made yourself.
+SOURCE=$(field source)
 if [ -z "$EVENT" ] || [ -z "$SESSION" ]; then exit 0; fi
 
 REMOTE=""
@@ -45,8 +48,8 @@ fi
 # JSON-escape: drop control characters, escape backslashes and quotes.
 esc() { printf '%s' "$1" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 
-BODY=$(printf '{"hook_event_name":"%s","session_id":"%s","cwd":"%s","gitRemote":"%s","gitBranch":"%s"}' \
-  "$(esc "$EVENT")" "$(esc "$SESSION")" "$(esc "$CWD")" "$(esc "$REMOTE")" "$(esc "$BRANCH")")
+BODY=$(printf '{"hook_event_name":"%s","session_id":"%s","cwd":"%s","gitRemote":"%s","gitBranch":"%s","source":"%s"}' \
+  "$(esc "$EVENT")" "$(esc "$SESSION")" "$(esc "$CWD")" "$(esc "$REMOTE")" "$(esc "$BRANCH")" "$(esc "$SOURCE")")
 
 post() {
   curl -sS -m "$1" -X POST "$API/agent-events?format=claude-code" \
@@ -59,13 +62,20 @@ post() {
 if [ "$EVENT" = "SessionStart" ]; then
   # First session after install: import the last 30 days of past sessions
   # in the background (opt out with the plugin's "Import past sessions").
+  # The importer writes history-imported only after a complete import, so a
+  # failed run is retried next session; the lock keeps parallel sessions
+  # from importing twice (a lock older than an hour is from a dead run).
   DATA="${CLAUDE_PLUGIN_DATA:-}"
   if [ -n "$DATA" ] && [ "${CLAUDE_PLUGIN_OPTION_IMPORT_HISTORY:-true}" = "true" ] \
     && [ ! -f "$DATA/history-imported" ] && command -v node >/dev/null 2>&1; then
-    mkdir -p "$DATA" && touch "$DATA/history-imported"
-    TIMETRACK_API_URL="$API" TIMETRACK_API_KEY="$KEY" \
-      nohup node "$(dirname "$0")/../scripts/import-transcripts.mjs" --days 30 \
-      </dev/null >"$DATA/import.log" 2>&1 &
+    mkdir -p "$DATA"
+    find "$DATA" -maxdepth 1 -name import.lock -type d -mmin +60 -exec rmdir {} \; 2>/dev/null
+    if mkdir "$DATA/import.lock" 2>/dev/null; then
+      SCRIPT="$(dirname "$0")/../scripts/import-transcripts.mjs"
+      TIMETRACK_API_URL="$API" TIMETRACK_API_KEY="$KEY" nohup sh -c \
+        'node "$1" --days 30 --mark "$2/history-imported"; rmdir "$2/import.lock"' sh "$SCRIPT" "$DATA" \
+        </dev/null >"$DATA/import.log" 2>&1 &
+    fi
   fi
   # The response is Claude Code hook JSON; its additionalContext tells the
   # agent which TimeTrack timer and project this session is tracked under.
