@@ -20,6 +20,8 @@ import {
   taskDeletedFromSocket,
 } from "../store/slices/projectsSlice";
 import { fetchDashboardEarnings } from "../store/slices/dashboardSlice";
+import { fetchActiveTimers, timerFromSocket } from "../store/slices/timersSlice";
+import type { Timer } from "../types/agent";
 import {
   favoriteCreatedFromSocket,
   favoriteDeletedFromSocket,
@@ -117,6 +119,14 @@ export function useSocket() {
       },
       onFavoriteDeleted: (data) => {
         dispatch(favoriteDeletedFromSocket(data));
+      },
+
+      // Pausable timers (agent sessions)
+      onTimerEvent: (event, data) => {
+        const timer = data as Timer;
+        if (timer && typeof timer.status === "string") dispatch(timerFromSocket(timer));
+        else if (event !== "timer-note-added") dispatch(fetchActiveTimers());
+        debouncedFetchEarnings();
       },
     });
 

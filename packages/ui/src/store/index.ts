@@ -1,24 +1,8 @@
 import { configureStore } from "@reduxjs/toolkit";
-import authSlice from "./slices/authSlice";
-import timerSlice from "./slices/timerSlice";
-import projectsSlice from "./slices/projectsSlice";
-import timeEntriesSlice from "./slices/timeEntriesSlice";
-import dashboardSlice from "./slices/dashboardSlice";
-import reportsSlice from "./slices/reportsSlice";
-import favoritesSlice from "./slices/favoritesSlice";
-import apiKeysSlice from "./slices/apiKeysSlice";
+import { reducers } from "./reducers";
 
 export const store = configureStore({
-  reducer: {
-    auth: authSlice,
-    timer: timerSlice,
-    projects: projectsSlice,
-    timeEntries: timeEntriesSlice,
-    dashboard: dashboardSlice,
-    reports: reportsSlice,
-    favorites: favoritesSlice,
-    apiKeys: apiKeysSlice,
-  },
+  reducer: reducers,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {

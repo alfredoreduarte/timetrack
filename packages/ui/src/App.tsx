@@ -19,6 +19,10 @@ import Projects from "./pages/Projects";
 import TimeEntries from "./pages/TimeEntries";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import Timesheet from "./pages/Timesheet";
+import Billing from "./pages/Billing";
+import Integrations from "./pages/Integrations";
+import PublicTimesheet from "./pages/PublicTimesheet";
 import ApiTest from "./pages/ApiTest";
 import LoadingSpinner from "./components/LoadingSpinner";
 import ElectronApp from "./components/electron/ElectronApp";
@@ -244,6 +248,9 @@ function AppContent() {
           }
         />
 
+        {/* Client-facing share link: no login */}
+        <Route path="/share/:token" element={<PublicTimesheet />} />
+
         {/* Protected routes */}
         <Route
           path="/"
@@ -260,6 +267,9 @@ function AppContent() {
           <Route path="time-entries" element={<TimeEntries />} />
           <Route path="reports" element={<Reports />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="timesheet" element={<Timesheet />} />
+          <Route path="billing" element={<Billing />} />
+          <Route path="integrations" element={<Integrations />} />
           <Route path="api-test" element={<ApiTest />} />
         </Route>
 
