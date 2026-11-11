@@ -1,11 +1,13 @@
 import { prisma } from "../utils/database";
 import { createError } from "../middleware/errorHandler";
 import { billProject, BillingPolicy, OverlapMode, unionMs, BillableEntry } from "../billing/engine";
-import { isValidTimezone, localDateKey, startOfLocalDay } from "../billing/time";
+import { canonicalTimezone, localDateKey, startOfLocalDate } from "../billing/time";
 import { PRICING_AS_OF } from "../billing/pricing";
 import { agentLabel } from "./agentEvents";
 
 export const MAX_TIMESHEET_DAYS = 366;
+/** Keeps one timesheet build to well under a second of event-loop time. */
+export const MAX_TIMESHEET_ENTRIES = 50_000;
 
 export interface TimesheetQuery {
   startDate?: Date;
@@ -37,9 +39,12 @@ export interface CostLine {
   billedUsd: number;
 }
 
+/** What a client view keeps of the policy when amounts are hidden. */
+export type PublicPolicy = { overlapMode: OverlapMode };
+
 export interface ProjectTimesheet {
   project: { id: string; name: string; color: string } | null;
-  policy: BillingPolicy;
+  policy: BillingPolicy | PublicPolicy;
   hourlyRate: number | null;
   totals: {
     trackedSeconds: number;
@@ -52,7 +57,12 @@ export interface ProjectTimesheet {
     /** trackedSeconds / wallClockSeconds — how many timers ran at once on average. */
     parallelism: number;
     timeAmount: number;
+    /** AI usage billed, in the sheet's currency (0 when that isn't USD — see costsIncluded). */
     costsAmount: number;
+    /** AI usage billed in USD, whether or not it is part of `amount`. */
+    costsBilledUsd: number;
+    /** False when the sheet isn't in USD: cost lines are listed but not added to totals. */
+    costsIncluded: boolean;
     amount: number;
   };
   lines: TimesheetLine[];
@@ -78,21 +88,59 @@ export interface Timesheet {
 const secs = (ms: number) => Math.round(ms / 1000);
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * Rounds amounts to cents so they sum to the rounded total (largest
+ * remainder): rows on an invoice must add up to the printed total.
+ */
+export function splitCents(amounts: number[]): number[] {
+  const raw = amounts.map((a) => a * 100);
+  const floors = raw.map((r) => Math.floor(r + 1e-9));
+  let left = Math.round(raw.reduce((s, r) => s + r, 0)) - floors.reduce((s, f) => s + f, 0);
+  const order = raw.map((r, i) => [r - floors[i], i] as const).sort((a, b) => b[0] - a[0]);
+  for (const [, i] of order) {
+    if (left <= 0) break;
+    floors[i] += 1;
+    left -= 1;
+  }
+  return floors;
+}
+
+/** Canonical IANA zone (default UTC); 400 for unknown names. */
+export function resolveTimezone(tz: string | null | undefined): string {
+  if (!tz) return "UTC";
+  const canonical = canonicalTimezone(tz);
+  if (!canonical) throw createError("Invalid timezone", 400);
+  return canonical;
+}
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Parses a range bound. A bare date (YYYY-MM-DD, what agents usually send)
+ * means local midnight in `tz`; as an end it is inclusive (the end of that
+ * day). Anything else must be a full timestamp.
+ */
+export function parseRangeDate(value: string, tz: string, edge: "start" | "end"): Date {
+  if (DATE_ONLY.test(value)) {
+    if (edge === "start") return startOfLocalDate(value, tz);
+    const next = new Date(Date.UTC(...(value.split("-").map(Number) as [number, number, number])) + 36 * 3600 * 1000);
+    return startOfLocalDate(next.toISOString().slice(0, 10), tz);
+  }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) throw createError(`${edge}Date must be an ISO 8601 date or timestamp`, 400);
+  return d;
+}
+
 /** Validates and defaults a range: default is the current local month. */
 export function resolveRange(q: TimesheetQuery, now: Date) {
-  const timezone = q.timezone && isValidTimezone(q.timezone) ? q.timezone : "UTC";
-  if (q.timezone && !isValidTimezone(q.timezone)) throw createError("Invalid timezone", 400);
+  const timezone = resolveTimezone(q.timezone);
+  for (const [name, d] of [["startDate", q.startDate], ["endDate", q.endDate]] as const) {
+    if (d && Number.isNaN(d.getTime())) throw createError(`${name} must be a valid date`, 400);
+  }
   let start = q.startDate;
   let end = q.endDate ?? now;
   if (!start) {
-    const today = startOfLocalDay(now, timezone);
-    const [y, m] = localDateKey(today, timezone).split("-").map(Number);
-    // First of the month: step back day by day from today's local midnight.
-    let cursor = today;
-    while (localDateKey(cursor, timezone) !== `${y}-${String(m).padStart(2, "0")}-01`) {
-      cursor = startOfLocalDay(new Date(cursor.getTime() - 12 * 3600 * 1000), timezone);
-    }
-    start = cursor;
+    start = startOfLocalDate(`${localDateKey(now, timezone).slice(0, 7)}-01`, timezone);
   }
   if (end <= start) throw createError("endDate must be after startDate", 400);
   if (end.getTime() - start.getTime() > MAX_TIMESHEET_DAYS * 86400 * 1000) {
@@ -101,31 +149,34 @@ export function resolveRange(q: TimesheetQuery, now: Date) {
   return { start, end, timezone };
 }
 
-function disclosureFor(p: ProjectTimesheet, currency: string): string[] {
+function disclosureFor(p: ProjectTimesheet, policy: BillingPolicy, currency: string): string[] {
   const lines: string[] = [];
   const t = p.totals;
   if (t.agentTrackedSeconds === 0) return lines;
   const hours = (t.agentTrackedSeconds / 3600).toFixed(1);
   lines.push(`Includes ${hours} h of AI-assisted work by coding agents.`);
-  if (p.policy.overlapMode === "dedupe") {
+  if (policy.overlapMode === "dedupe") {
     if (t.trackedSeconds > t.wallClockSeconds) {
       lines.push("When several agents worked on this project at the same time, the overlapping time is billed once.");
     }
   } else {
     lines.push("Parallel agent sessions are billed per session (agent-hours).");
   }
-  if (p.policy.agentHourlyRate !== null) {
-    lines.push(`AI-assisted time is billed at a flat agent rate of ${formatMoney(p.policy.agentHourlyRate, currency)}/h.`);
-  } else if (p.policy.aiMultiplier === 0) {
+  if (policy.agentHourlyRate !== null) {
+    lines.push(`AI-assisted time is billed at a flat agent rate of ${formatMoney(policy.agentHourlyRate, currency)}/h.`);
+  } else if (policy.aiMultiplier === 0) {
     lines.push("AI-assisted time is not billed.");
-  } else if (p.policy.aiMultiplier !== 1) {
-    lines.push(`AI-assisted time is billed at ${p.policy.aiMultiplier}× the standard rate.`);
+  } else if (policy.aiMultiplier !== 1) {
+    lines.push(`AI-assisted time is billed at ${policy.aiMultiplier}× the standard rate.`);
   } else {
     lines.push("AI-assisted time is billed at the standard rate.");
   }
-  if (p.policy.includeAiCosts && p.costs.length > 0) {
-    const fee = p.policy.aiCostMarkupPercent > 0 ? ` plus a ${p.policy.aiCostMarkupPercent}% handling fee` : "";
+  if (policy.includeAiCosts && p.costs.length > 0) {
+    const fee = policy.aiCostMarkupPercent > 0 ? ` plus a ${policy.aiCostMarkupPercent}% handling fee` : "";
     lines.push(`AI usage is passed through at API-equivalent list prices${fee}.`);
+    if (!p.totals.costsIncluded) {
+      lines.push(`AI usage is priced in USD and is not included in the ${currency} total.`);
+    }
   }
   return lines;
 }
@@ -158,13 +209,20 @@ export async function buildTimesheet(
     select: { name: true, aiMultiplier: true, overlapMode: true, currency: true },
   });
 
+  const entryWhere = {
+    userId,
+    ...(q.projectId ? { projectId: q.projectId } : {}),
+    startTime: { lt: end },
+    OR: [{ isRunning: true }, { endTime: { gt: start } }],
+  };
+  if ((await prisma.timeEntry.count({ where: entryWhere })) > MAX_TIMESHEET_ENTRIES) {
+    throw createError(
+      `This period has more than ${MAX_TIMESHEET_ENTRIES} entries; pick a shorter period or one project`,
+      400
+    );
+  }
   const entries = await prisma.timeEntry.findMany({
-    where: {
-      userId,
-      ...(q.projectId ? { projectId: q.projectId } : {}),
-      startTime: { lt: end },
-      OR: [{ isRunning: true }, { endTime: { gt: start } }],
-    },
+    where: entryWhere,
     select: {
       id: true,
       description: true,
@@ -224,13 +282,17 @@ export async function buildTimesheet(
   const notesByTimerDay = new Map<string, string[]>();
   for (const n of notes) {
     const key = `${n.timerId}|${localDateKey(n.createdAt, timezone)}`;
-    notesByTimerDay.set(key, [...(notesByTimerDay.get(key) ?? []), n.body]);
+    let list = notesByTimerDay.get(key);
+    if (!list) notesByTimerDay.set(key, (list = []));
+    list.push(n.body);
   }
 
   const groups = new Map<string, typeof entries>();
   for (const e of entries) {
     const key = e.projectId ?? "none";
-    groups.set(key, [...(groups.get(key) ?? []), e]);
+    let group = groups.get(key);
+    if (!group) groups.set(key, (group = []));
+    group.push(e);
   }
   if (q.projectId && !groups.has(q.projectId)) groups.set(q.projectId, []);
 
@@ -288,15 +350,16 @@ export async function buildTimesheet(
         line.amount += a.amount;
       }
     }
-    const lines = Array.from(lineMap.values())
-      .map((l) => ({
+    const shown = Array.from(lineMap.values()).filter((l) => Math.round(l.trackedSeconds) > 0);
+    const cents = splitCents(shown.map((l) => l.amount));
+    const lines = shown
+      .map((l, i) => ({
         ...l,
         trackedSeconds: Math.round(l.trackedSeconds),
         billedSeconds: Math.round(l.billedSeconds),
         rate: l.billedSeconds > 0 ? round2(l.amount / (l.billedSeconds / 3600)) : 0,
-        amount: round2(l.amount),
+        amount: cents[i] / 100,
       }))
-      .filter((l) => l.trackedSeconds > 0)
       .sort((a, b) => a.date.localeCompare(b.date) || b.trackedSeconds - a.trackedSeconds);
 
     const costs: CostLine[] = policy.includeAiCosts
@@ -311,8 +374,12 @@ export async function buildTimesheet(
           }))
       : [];
 
-    const timeAmount = round2(bill.amount);
-    const costsAmount = round2(costs.reduce((s, c) => s + c.billedUsd, 0));
+    // Totals are the sum of the rows the client sees, so they always add up.
+    const timeAmount = cents.reduce((s, c) => s + c, 0) / 100;
+    const costsBilledUsd = round2(costs.reduce((s, c) => s + c.billedUsd, 0));
+    // Costs are priced in USD; they only join the total on a USD sheet.
+    const costsIncluded = user.currency === "USD";
+    const costsAmount = costsIncluded ? costsBilledUsd : 0;
     const sheet: ProjectTimesheet = {
       project: project ? { id: project.id, name: project.name, color: project.color } : null,
       policy,
@@ -328,13 +395,15 @@ export async function buildTimesheet(
         parallelism: bill.wallClockMs > 0 ? Math.round((bill.trackedMs / bill.wallClockMs) * 100) / 100 : 0,
         timeAmount,
         costsAmount,
+        costsBilledUsd,
+        costsIncluded,
         amount: round2(timeAmount + costsAmount),
       },
       lines,
       costs,
       disclosure: [],
     };
-    sheet.disclosure = disclosureFor(sheet, user.currency);
+    sheet.disclosure = disclosureFor(sheet, policy, user.currency);
     sheets.push(sheet);
   }
 
@@ -357,26 +426,68 @@ export async function buildTimesheet(
   };
 }
 
-/** Removes money (and optionally notes) for client views that hide them. */
+/**
+ * The client-facing copy of a timesheet, built from an allowlist so new
+ * internal fields never leak into public views. Without amounts it drops
+ * every money field and the billing policy except the overlap rule (the
+ * disclosure explains it); without notes it drops agent notes. Internal ids
+ * go in all cases.
+ */
 export function redactTimesheet(t: Timesheet, opts: { showAmounts: boolean; showNotes: boolean }): Timesheet {
+  const money = opts.showAmounts;
   return {
-    ...t,
-    totals: opts.showAmounts ? t.totals : { ...t.totals, amount: 0 },
+    generatedAt: t.generatedAt,
+    range: { ...t.range },
+    currency: t.currency,
+    user: { name: t.user.name },
+    pricingAsOf: t.pricingAsOf,
+    totals: {
+      trackedSeconds: t.totals.trackedSeconds,
+      wallClockSeconds: t.totals.wallClockSeconds,
+      billedSeconds: t.totals.billedSeconds,
+      amount: money ? t.totals.amount : 0,
+    },
     projects: t.projects.map((p) => ({
-      ...p,
-      hourlyRate: opts.showAmounts ? p.hourlyRate : null,
-      totals: opts.showAmounts ? p.totals : { ...p.totals, timeAmount: 0, costsAmount: 0, amount: 0 },
-      costs: opts.showAmounts ? p.costs : [],
+      project: p.project ? { id: "", name: p.project.name, color: p.project.color } : null,
+      policy: money
+        ? { ...p.policy }
+        : { overlapMode: p.policy.overlapMode },
+      hourlyRate: money ? p.hourlyRate : null,
+      totals: {
+        trackedSeconds: p.totals.trackedSeconds,
+        wallClockSeconds: p.totals.wallClockSeconds,
+        billedSeconds: p.totals.billedSeconds,
+        agentTrackedSeconds: p.totals.agentTrackedSeconds,
+        humanTrackedSeconds: p.totals.humanTrackedSeconds,
+        billedAgentSeconds: p.totals.billedAgentSeconds,
+        billedHumanSeconds: p.totals.billedHumanSeconds,
+        parallelism: p.totals.parallelism,
+        timeAmount: money ? p.totals.timeAmount : 0,
+        costsAmount: money ? p.totals.costsAmount : 0,
+        costsBilledUsd: money ? p.totals.costsBilledUsd : 0,
+        costsIncluded: p.totals.costsIncluded,
+        amount: money ? p.totals.amount : 0,
+      },
       lines: p.lines.map((l) => ({
-        ...l,
+        date: l.date,
+        description: l.description,
+        kind: l.kind,
+        agent: l.agent,
+        task: l.task,
+        timerId: null,
         entryIds: [],
-        rate: opts.showAmounts ? l.rate : 0,
-        amount: opts.showAmounts ? l.amount : 0,
-        notes: opts.showNotes ? l.notes : [],
+        trackedSeconds: l.trackedSeconds,
+        billedSeconds: l.billedSeconds,
+        rate: money ? l.rate : 0,
+        amount: money ? l.amount : 0,
+        notes: opts.showNotes ? [...l.notes] : [],
       })),
-      disclosure: opts.showAmounts
-        ? p.disclosure
-        : p.disclosure.filter((d) => !/rate|billed at|handling fee|passed through/.test(d)),
+      costs: money
+        ? p.costs.map((c) => ({ timerId: "", date: c.date, description: c.description, costUsd: c.costUsd, billedUsd: c.billedUsd }))
+        : [],
+      disclosure: money
+        ? [...p.disclosure]
+        : p.disclosure.filter((d) => !/rate|billed at|handling fee|passed through|priced in USD/.test(d)),
     })),
   };
 }

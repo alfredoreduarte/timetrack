@@ -23,7 +23,7 @@ import {
   listEntries,
   updateEntry,
 } from "../services/entries";
-import { buildTimesheet } from "../services/timesheets";
+import { buildTimesheet, parseRangeDate, resolveTimezone } from "../services/timesheets";
 import { timesheetToMarkdown } from "../billing/render";
 import { createShareLink, listShareLinks, revokeShareLink } from "../services/shareLinks";
 import { recordTimerUsage } from "../services/timers";
@@ -580,8 +580,8 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
       description:
         "Client-ready timesheet for a period: billed time per project (overlapping parallel agents handled per the project's policy), lines per day with agent notes, AI cost lines and a disclosure. format=markdown (default) is ready to paste into an invoice email.",
       inputSchema: {
-        startDate: iso.optional().describe("Default: start of the current month"),
-        endDate: iso.optional().describe("Default: now"),
+        startDate: iso.optional().describe("YYYY-MM-DD (local day) or timestamp. Default: start of the current month"),
+        endDate: iso.optional().describe("YYYY-MM-DD (inclusive local day) or timestamp. Default: now"),
         projectId: optId("Project"),
         timezone: z.string().optional().describe("IANA timezone for day boundaries, e.g. Europe/Madrid"),
         format: z.enum(["markdown", "json"]).optional(),
@@ -590,9 +590,11 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
     },
     ({ startDate, endDate, projectId, timezone, format }) =>
       guard(async () => {
+        // Bare dates mean local days in the requested zone (end inclusive).
+        const tz = resolveTimezone(timezone);
         const sheet = await buildTimesheet(ctx.userId, {
-          startDate: startDate ? new Date(startDate) : undefined,
-          endDate: endDate ? new Date(endDate) : undefined,
+          startDate: startDate ? parseRangeDate(startDate, tz, "start") : undefined,
+          endDate: endDate ? parseRangeDate(endDate, tz, "end") : undefined,
           projectId,
           timezone,
         });
@@ -620,7 +622,13 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
     },
     (args) =>
       run(async () => {
-        const r = await createShareLink(ctx, args);
+        const tz = resolveTimezone(args.timezone);
+        const r = await createShareLink(ctx, {
+          ...args,
+          timezone: tz,
+          startDate: args.startDate ? parseRangeDate(args.startDate, tz, "start").toISOString() : undefined,
+          endDate: args.endDate ? parseRangeDate(args.endDate, tz, "end").toISOString() : undefined,
+        });
         return { url: r.url, shareLink: r.shareLink };
       })
   );

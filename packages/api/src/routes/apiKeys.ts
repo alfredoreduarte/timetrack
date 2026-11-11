@@ -162,7 +162,14 @@ router.delete(
       throw createError("API key not found", 404);
     }
 
-    await prisma.apiKey.delete({ where: { id } });
+    // Links an agent shared with this key go with it.
+    await prisma.$transaction([
+      prisma.shareLink.updateMany({
+        where: { userId: req.user!.id, apiKeyId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+      prisma.apiKey.delete({ where: { id } }),
+    ]);
 
     res.json({ message: "API key revoked" });
   })
