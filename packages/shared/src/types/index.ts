@@ -66,8 +66,8 @@ export interface TimeEntry {
 // Timers: a pausable unit of work (typically one AI agent session) made of
 // TimeEntry segments. A running timer has exactly one running segment.
 export type TimerStatus = "running" | "paused" | "stopped";
-/** manual: a person paused it (sticks); idle: the sweeper; agent: the agent itself. The last two resume on activity. */
-export type TimerPauseReason = "manual" | "idle" | "agent";
+/** manual: paused on request (sticks until resumed); idle: the idle sweeper (resumes on activity). */
+export type TimerPauseReason = "manual" | "idle";
 
 export interface Timer {
   id: string;
