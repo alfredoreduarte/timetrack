@@ -13,7 +13,7 @@ nothing needs installing and nothing goes stale.
   automatically through hooks (see `plugins/timetrack/README.md`):
 
   ```
-  /plugin install timetrack --marketplace alfredoreduarte/timetrack
+  claude plugin install timetrack --marketplace alfredoreduarte/timetrack
   ```
 
   Or add just the MCP server:

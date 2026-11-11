@@ -3,7 +3,7 @@
 ## Track Claude Code sessions automatically
 
 ```
-/plugin install timetrack --marketplace alfredoreduarte/timetrack
+claude plugin install timetrack --marketplace alfredoreduarte/timetrack
 ```
 
 Every Claude Code session gets its own pausable timer, idle sessions stop billing

@@ -36,6 +36,25 @@ CWD=$(field cwd)
 SOURCE=$(field source)
 if [ -z "$EVENT" ] || [ -z "$SESSION" ]; then exit 0; fi
 
+DATA="${CLAUDE_PLUGIN_DATA:-}"
+SID=$(printf '%s' "$SESSION" | tr -cd 'A-Za-z0-9_-' | cut -c1-80)
+
+# Tool calls can fire several hooks a second; the server records at most one
+# heartbeat per 15 s per timer anyway, so send at most one per session per
+# 15 s. Prompts, turn ends and session start/end always go through.
+case "$EVENT" in
+  PreToolUse|PostToolUse|PostToolUseFailure|Notification|SubagentStart|SubagentStop|PreCompact)
+    if [ -n "$DATA" ] && [ -n "$SID" ]; then
+      STAMP="$DATA/hb-$SID"
+      NOW=$(date +%s)
+      LAST=$(cat "$STAMP" 2>/dev/null)
+      case "$LAST" in ''|*[!0-9]*) LAST=0 ;; esac
+      [ $((NOW - LAST)) -lt 15 ] && exit 0
+      mkdir -p "$DATA" 2>/dev/null && printf '%s' "$NOW" >"$STAMP" 2>/dev/null
+    fi
+    ;;
+esac
+
 REMOTE=""
 BRANCH=""
 if [ "$EVENT" = "SessionStart" ] && [ -n "$CWD" ] && command -v git >/dev/null 2>&1; then
@@ -65,7 +84,8 @@ if [ "$EVENT" = "SessionStart" ]; then
   # The importer writes history-imported only after a complete import, so a
   # failed run is retried next session; the lock keeps parallel sessions
   # from importing twice (a lock older than an hour is from a dead run).
-  DATA="${CLAUDE_PLUGIN_DATA:-}"
+  # Heartbeat stamps of sessions that never sent SessionEnd.
+  [ -n "$DATA" ] && find "$DATA" -maxdepth 1 -name 'hb-*' -type f -mtime +2 -exec rm -f {} \; 2>/dev/null
   if [ -n "$DATA" ] && [ "${CLAUDE_PLUGIN_OPTION_IMPORT_HISTORY:-true}" = "true" ] \
     && [ ! -f "$DATA/history-imported" ] && command -v node >/dev/null 2>&1; then
     mkdir -p "$DATA"
@@ -81,6 +101,7 @@ if [ "$EVENT" = "SessionStart" ]; then
   # agent which TimeTrack timer and project this session is tracked under.
   post 3
 else
+  [ "$EVENT" = "SessionEnd" ] && [ -n "$DATA" ] && [ -n "$SID" ] && rm -f "$DATA/hb-$SID"
   # Heartbeat: detach so the agent never waits on the network.
   post 2 </dev/null >/dev/null 2>&1 &
 fi
