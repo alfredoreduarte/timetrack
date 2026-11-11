@@ -129,7 +129,7 @@ export async function revokeShareLink(ctx: ServiceContext, id: string) {
 }
 
 export interface PublicTimesheet {
-  link: { name: string | null; expiresAt: Date | null; showAmounts: boolean };
+  link: { expiresAt: Date | null; showAmounts: boolean };
   timesheet: Timesheet;
 }
 
@@ -187,7 +187,8 @@ export async function getPublicTimesheet(token: string, now = new Date()): Promi
     data: { viewCount: { increment: 1 }, lastViewedAt: now },
   });
   return {
-    link: { name: link.name, expiresAt: link.expiresAt, showAmounts: link.showAmounts },
+    // The link's name is the owner's private label: never public.
+    link: { expiresAt: link.expiresAt, showAmounts: link.showAmounts },
     timesheet,
   };
 }

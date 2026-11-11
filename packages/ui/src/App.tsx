@@ -7,6 +7,7 @@ import { useTimer } from "./hooks/useTimer";
 import { useSocket } from "./hooks/useSocket";
 import { fetchProjects } from "./store/slices/projectsSlice";
 import { fetchRunningEntries, syncTimer } from "./store/slices/timerSlice";
+import { fetchActiveTimers } from "./store/slices/timersSlice";
 import { isElectron } from "./utils/platform";
 import { wasRecentlyIdleStopped } from "./hooks/useIdleMonitor";
 import Layout from "./components/Layout";
@@ -195,6 +196,8 @@ function AppContent() {
       lastSyncTs = now;
       dispatch(syncTimer());
       dispatch(fetchRunningEntries());
+      // The timer board too: socket events missed while asleep are gone.
+      dispatch(fetchActiveTimers());
     };
 
     const handleVisibilityChange = () => {

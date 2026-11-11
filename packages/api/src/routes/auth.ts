@@ -407,12 +407,18 @@ router.post(
 
     res.json({
       message: "Login successful",
+      // Same profile fields as /auth/me: clients render settings forms from
+      // this, and a missing field would be saved back as its default.
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
         defaultHourlyRate: user.defaultHourlyRate,
         idleTimeoutSeconds: user.idleTimeoutSeconds,
+        aiMultiplier: user.aiMultiplier,
+        agentIdleTimeoutSeconds: user.agentIdleTimeoutSeconds,
+        overlapMode: user.overlapMode,
+        currency: user.currency,
       },
       token,
     });

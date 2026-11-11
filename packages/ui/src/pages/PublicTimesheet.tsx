@@ -4,25 +4,60 @@ import api from "../services/api";
 import TimesheetView from "../components/TimesheetView";
 import type { PublicTimesheetView } from "../types/agent";
 
-const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+/** A date as the sheet's own zone sees it (the client may be elsewhere). */
+const day = (iso: string, timeZone: string, offsetMs = 0) =>
+  new Date(Date.parse(iso) + offsetMs).toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone,
+  });
 
 /** The read-only page a developer's client opens from a share link. */
 const PublicTimesheet: React.FC = () => {
   const { token = "" } = useParams();
   const [view, setView] = useState<PublicTimesheetView | null>(null);
-  const [missing, setMissing] = useState(false);
+  const [state, setState] = useState<"loading" | "missing" | "error" | "ok">("loading");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     document.title = "Timesheet";
-    api.publicTimesheets.get(token).then(setView, () => setMissing(true));
-  }, [token]);
+    let alive = true;
+    setState("loading");
+    api.publicTimesheets.get(token).then(
+      (v) => {
+        if (!alive) return;
+        setView(v);
+        setState("ok");
+      },
+      (e: { response?: { status?: number } }) => {
+        // Only a 404 means the link is gone; anything else is worth a retry.
+        if (alive) setState(e?.response?.status === 404 ? "missing" : "error");
+      }
+    );
+    return () => {
+      alive = false;
+    };
+  }, [token, attempt]);
 
-  if (missing) {
+  if (state === "missing") {
     return (
       <main className="min-h-screen flex items-center justify-center p-6">
         <div className="text-center space-y-2">
           <h1 className="text-xl font-semibold text-gray-900">This timesheet link isn't available</h1>
           <p className="text-gray-600">It may have expired or been turned off. Ask the sender for a new link.</p>
+        </div>
+      </main>
+    );
+  }
+  if (state === "error") {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-6">
+        <div className="text-center space-y-3">
+          <h1 className="text-xl font-semibold text-gray-900">Couldn't load this timesheet</h1>
+          <button className="btn-primary" onClick={() => setAttempt((n) => n + 1)}>
+            Try again
+          </button>
         </div>
       </main>
     );
@@ -37,7 +72,9 @@ const PublicTimesheet: React.FC = () => {
           <p className="text-sm text-gray-500">Timesheet from</p>
           <h1 className="text-2xl font-bold text-gray-900">{timesheet.user.name}</h1>
           <p className="text-gray-600">
-            {day(timesheet.range.startDate)} – {day(timesheet.range.endDate)} · times in {timesheet.range.timezone}
+            {/* The range end is exclusive: show the last day it includes. */}
+            {day(timesheet.range.startDate, timesheet.range.timezone)} – {day(timesheet.range.endDate, timesheet.range.timezone, -1)} · times
+            in {timesheet.range.timezone}
           </p>
         </header>
         <TimesheetView sheet={timesheet} showAmounts={link.showAmounts} />
