@@ -2,6 +2,9 @@
 // Times are sent only when the user changed them, so editing a description
 // never rewrites (and truncates the seconds of) the stored start/end.
 
+/** How far ahead of the server a browser clock may run (the API tolerates 5 min). */
+const CLOCK_SKEW_MS = 5 * 60 * 1000;
+
 export interface EditFormState {
   description: string;
   projectId: string;
@@ -56,11 +59,12 @@ export function buildEntryUpdate(
       // server keeps the old end and the duration silently changes. Send the
       // exact end, since the hours field is rounded to hundredths.
       const end = initial.durationSeconds ? Date.parse(payload.startTime) + initial.durationSeconds * 1000 : null;
-      if (end !== null && end <= now) {
+      if (end !== null && end <= now - CLOCK_SKEW_MS) {
         payload.endTime = new Date(end).toISOString();
       } else {
-        // An end in the future would be clamped to now (silently shortening
-        // the entry); unrounded hours let the server reject it instead.
+        // Near "now" the server would clamp an explicit end (silently
+        // shortening the entry), and this browser's clock may be ahead of
+        // it; unrounded hours let the server check the end itself.
         payload.hours = initial.durationSeconds ? initial.durationSeconds / 3600 : parseFloat(form.hours);
       }
     }

@@ -49,6 +49,15 @@ describe("buildEntryUpdate", () => {
     expect(Date.parse(p.endTime!) - Date.parse(p.startTime!)).toBe(7210 * 1000);
   });
 
+  it("in hours mode sends hours, not an end, within the clock-skew window", () => {
+    // The new end (09:00:10) is 3 minutes before this browser's "now", but the
+    // browser may be up to 5 minutes fast.
+    const now = Date.parse("2026-03-02T09:03:10");
+    const p = buildEntryUpdate(form({ useHours: true, startTime: "07:00" }), { ...initial, durationSeconds: 7210 }, now);
+    expect(p.endTime).toBeUndefined();
+    expect(p.hours).toBe(7210 / 3600);
+  });
+
   it("in hours mode never sends an end in the future (the server would clamp it)", () => {
     const now = Date.parse("2026-03-02T08:30:00");
     const p = buildEntryUpdate(form({ useHours: true, startTime: "07:00" }), { ...initial, durationSeconds: 7210 }, now);

@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { prisma, TxClient } from "../utils/database";
 import { createError } from "../middleware/errorHandler";
 import { emitToUser } from "../realtime";
@@ -6,51 +5,25 @@ import { logger } from "../utils/logger";
 import { ServiceContext } from "./context";
 import { recordAudit } from "./audit";
 import { loadTimerViews } from "./timers";
+import { withTxRetry } from "./txRetry";
 
 /*
- * Lock order for deletes: timers → project → task → entries, the order every
- * writer uses. Attaching a timer or entry to a project or task takes a KEY
- * SHARE lock on that row (entry writers take it explicitly before locking
- * entries, see lockAssignmentTargets), so once the delete holds the row FOR
- * UPDATE nothing new can attach. Anything that attached between the first timer query and that
+ * Lock order, shared with every writer: timers (by id) → project → task →
+ * entries (by id). A project delete takes timers → project FOR UPDATE →
+ * its entries (by id), then the cascade reaches its tasks; a task delete
+ * takes timers → project FOR SHARE → task FOR UPDATE → its entries (by id).
+ * Attaching a timer or entry to a project or task takes a KEY SHARE lock on
+ * that row (entry writers take it before any entry lock, see
+ * lockAssignmentTargets), so once the delete holds the row nothing new can
+ * attach. Anything that attached between the first timer query and that
  * lock is caught by re-checking the timer set; the transaction then retries
  * with those timers locked up front instead of locking them out of order.
  */
 
-const MAX_ATTEMPTS = 4;
-
 class TimerSetChanged extends Error {}
 
-const DEADLOCK_CODES = new Set(["40P01", "40001"]);
-// Deadlocks raised inside ORM calls of an interactive transaction come back
-// as PrismaClientUnknownRequestError with the SQLSTATE only in the message.
-const DEADLOCK_RE = /\b(40P01|40001)\b|deadlock detected/;
-
-export function isRetryableTxError(e: unknown): boolean {
-  if (e instanceof Prisma.PrismaClientKnownRequestError) {
-    if (e.code === "P2034") return true;
-    const dbCode = (e.meta as { code?: string } | undefined)?.code;
-    if (e.code === "P2010" && typeof dbCode === "string" && DEADLOCK_CODES.has(dbCode)) return true;
-    return false;
-  }
-  return e instanceof Prisma.PrismaClientUnknownRequestError && DEADLOCK_RE.test(e.message);
-}
-
-const isRetryable = (e: unknown) => e instanceof TimerSetChanged || isRetryableTxError(e);
-
-async function withRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await fn();
-    } catch (e) {
-      if (!isRetryable(e)) throw e;
-      if (attempt >= MAX_ATTEMPTS) {
-        logger.warn("Delete kept colliding with concurrent writes", { label, attempts: attempt });
-        throw createError("This is being changed right now. Try again in a moment.", 409);
-      }
-    }
-  }
-}
+const retryDelete = <T>(label: string, fn: () => Promise<T>) =>
+  withTxRetry(label, fn, { retryIf: (e) => e instanceof TimerSetChanged });
 
 type Ref = { projectId: string } | { taskId: string };
 
@@ -96,7 +69,7 @@ async function assertTimerSetStable(tx: TxClient, userId: string, ref: Ref, lock
  */
 export async function deleteProject(ctx: ServiceContext, projectId: string): Promise<{ entriesDeleted: number }> {
   const ref = { projectId };
-  const { result, pausedTimers, touchedTimers } = await withRetry("deleteProject", () =>
+  const { result, pausedTimers, touchedTimers } = await retryDelete("deleteProject", () =>
     prisma.$transaction(async (tx) => {
       const project = await tx.project.findFirst({
         where: { id: projectId, userId: ctx.userId },
@@ -110,6 +83,13 @@ export async function deleteProject(ctx: ServiceContext, projectId: string): Pro
         SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
       if (stillThere.length === 0) throw createError("Project not found", 404);
       await assertTimerSetStable(tx, ctx.userId, ref, timerIds);
+      // Entries in id order, as bulk updates take them; the cascade to the
+      // project's tasks will clear taskId on these too.
+      await tx.$queryRaw`
+        SELECT id FROM time_entries
+        WHERE "userId" = ${ctx.userId}
+          AND ("projectId" = ${projectId} OR "taskId" IN (SELECT id FROM tasks WHERE "projectId" = ${projectId}))
+        ORDER BY id FOR UPDATE`;
 
       // Every timer whose running segment is about to be deleted. All of
       // them are locked: any timer with an entry on the project is.
@@ -149,7 +129,7 @@ export async function deleteProject(ctx: ServiceContext, projectId: string): Pro
 /** Deletes a task; its entries and timers keep their time and project, without the task. */
 export async function deleteTask(ctx: ServiceContext, taskId: string): Promise<void> {
   const ref = { taskId };
-  const touchedTimers = await withRetry("deleteTask", () =>
+  const touchedTimers = await retryDelete("deleteTask", () =>
     prisma.$transaction(async (tx) => {
       const task = await tx.task.findFirst({
         where: { id: taskId, userId: ctx.userId },
@@ -167,6 +147,8 @@ export async function deleteTask(ctx: ServiceContext, taskId: string): Promise<v
         SELECT id FROM tasks WHERE id = ${taskId} FOR UPDATE`;
       if (parent.length === 0 || stillThere.length === 0) throw createError("Task not found", 404);
       await assertTimerSetStable(tx, ctx.userId, ref, timerIds);
+      // Entries in id order, as bulk updates take them (the delete clears their taskId).
+      await tx.$queryRaw`SELECT id FROM time_entries WHERE "taskId" = ${taskId} ORDER BY id FOR UPDATE`;
 
       await tx.task.delete({ where: { id: taskId } });
       return timerIds;

@@ -3,7 +3,7 @@ import { prisma } from "../../utils/database";
 import * as realtime from "../../realtime";
 import { startTimer, pauseTimer, sweepIdleTimers, touchTimer, updateTimer } from "../../services/timers";
 import { MAX_RUNNING_ENTRIES } from "../../services/limits";
-import { bulkUpdateEntries, createEntry } from "../../services/entries";
+import { bulkUpdateEntries, createEntry, updateEntry } from "../../services/entries";
 import { deleteProject } from "../../services/deletions";
 import {
   api,
@@ -481,5 +481,115 @@ describe("S1 review round 4 fixes", () => {
     expect(await del).toEqual({ entriesDeleted: 1 });
     expect(await x).toBe("ok");
     expect(await prisma.project.count({ where: { id: p.id } })).toBe(0);
+  });
+});
+
+describe("S1 review round 5 fixes", () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const settle = <T,>(p: Promise<T>) =>
+    p.then(
+      () => "ok",
+      (e: { statusCode?: number; message?: string }) => `${e?.statusCode ?? 500} ${String(e?.message).slice(0, 80)}`
+    );
+
+  function holdUserRow(userId: string) {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const heldP = new Promise<void>((r) => (held = r));
+    const tx = prisma.$transaction(
+      async (t) => {
+        await t.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+        held();
+        await gate;
+      },
+      { timeout: 30_000 }
+    );
+    return { ready: heldP, release: () => (release(), tx) };
+  }
+
+  it("a bulk reassignment that queues behind a project delete isn't a deadlock victim", async () => {
+    const { user, auth } = await createUser();
+    const ctx = serviceCtx(user.id);
+    const p = await createProject(user.id, { name: "Doomed" });
+    const q = await createProject(user.id, { name: "Other" });
+    await startTimer(ctx, { projectId: p.id, startedAt: ago(10) }); // the delete pauses it: an audit insert
+    const e1 = await createEntry(ctx, { projectId: p.id, startTime: ago(120), endTime: ago(110) });
+    const e2 = await createEntry(ctx, { projectId: q.id, startTime: ago(100), endTime: ago(90) });
+    const gate = holdUserRow(user.id);
+    await gate.ready;
+    const del = api().delete(`/projects/${p.id}`).set(auth).then((r) => r.status); // holds P, stalls on audit
+    await sleep(300);
+    const bulk = api()
+      .post("/time-entries/bulk-update")
+      .set(auth)
+      .send({ ids: [e1.id, e2.id], set: { projectId: p.id } })
+      .then((r) => r.status);
+    await sleep(300);
+    await gate.release();
+    expect(await del).toBe(200);
+    expect(await bulk).toBe(404); // the project is gone — not a 500
+  });
+
+  it("a bulk move out of a project racing its delete succeeds (entries locked in one order)", async () => {
+    const { user } = await createUser();
+    const ctx = serviceCtx(user.id);
+    const r = await createProject(user.id, { name: "R" });
+    const p = await createProject(user.id, { name: "Doomed" });
+    const q = await createProject(user.id, { name: "Keep" });
+    // X has the smallest id but is moved onto P last, so a scan finds it after Y and Z.
+    const x = await createEntry(ctx, { projectId: r.id, startTime: ago(300), endTime: ago(290) });
+    const y = await createEntry(ctx, { projectId: p.id, startTime: ago(200), endTime: ago(190) });
+    const z = await createEntry(ctx, { projectId: p.id, startTime: ago(100), endTime: ago(90) });
+    await updateEntry(ctx, x.id, { projectId: p.id });
+
+    const gate = holdUserRow(user.id);
+    await gate.ready;
+    const w = settle(updateEntry(ctx, z.id, { description: "edit in flight" })); // holds Z
+    await sleep(200);
+    const d = settle(deleteProject(ctx, p.id));
+    await sleep(200);
+    const b = settle(bulkUpdateEntries(ctx, { ids: [x.id, y.id], set: { projectId: q.id } }));
+    await sleep(200);
+    await gate.release();
+    expect(await w).toBe("ok");
+    expect([await d, await b]).toEqual(["ok", "ok"]);
+  });
+
+  it("a bulk edit of a task's entries racing the task's delete succeeds", async () => {
+    const { user, auth } = await createUser();
+    const ctx = serviceCtx(user.id);
+    const p = await createProject(user.id);
+    const t = await createTask(user.id, p.id);
+    const t0 = await createTask(user.id, p.id);
+    const x = await createEntry(ctx, { projectId: p.id, taskId: t0.id, startTime: ago(300), endTime: ago(290) });
+    const y = await createEntry(ctx, { projectId: p.id, taskId: t.id, startTime: ago(200), endTime: ago(190) });
+    const z = await createEntry(ctx, { projectId: p.id, taskId: t.id, startTime: ago(100), endTime: ago(90) });
+    await updateEntry(ctx, x.id, { taskId: t.id });
+
+    const gate = holdUserRow(user.id);
+    await gate.ready;
+    const w = settle(updateEntry(ctx, z.id, { description: "edit in flight" }));
+    await sleep(200);
+    const d = api().delete(`/tasks/${t.id}`).set(auth).then((r) => r.status);
+    await sleep(200);
+    const b = settle(bulkUpdateEntries(ctx, { ids: [x.id, y.id], set: { description: "billed" } }));
+    await sleep(200);
+    await gate.release();
+    expect(await w).toBe("ok");
+    expect([await d, await b]).toEqual([200, "ok"]);
+  });
+
+  it("hours sent as seconds/3600 keep the exact duration", async () => {
+    const { user, auth } = await createUser();
+    const ctx = serviceCtx(user.id);
+    const e = await createEntry(ctx, { startTime: ago(300), endTime: ago(240) });
+    for (const seconds of [7210, 3599, 1, 86_399]) {
+      const res = await api()
+        .put(`/time-entries/${e.id}`)
+        .set(auth)
+        .send({ startTime: ago(2000), hours: seconds / 3600 });
+      expect([seconds, res.status, res.body.duration ?? res.body.timeEntry?.duration]).toEqual([seconds, 200, seconds]);
+    }
   });
 });
