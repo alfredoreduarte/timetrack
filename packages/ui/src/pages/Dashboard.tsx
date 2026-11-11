@@ -9,7 +9,7 @@ import {
 import { fetchTimeEntries, TimeEntry } from "../store/slices/timeEntriesSlice";
 import { fetchProjects } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
-import RunningTimersStack from "../components/RunningTimersStack";
+import TimersBoard from "../components/TimersBoard";
 import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import { PlayIcon } from "@heroicons/react/24/solid";
@@ -81,7 +81,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Running timers (zero or more) */}
-      <RunningTimersStack />
+      <TimersBoard />
 
       {/* Timer and Earnings Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">

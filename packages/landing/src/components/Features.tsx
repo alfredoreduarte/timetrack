@@ -3,14 +3,21 @@ import matter from "gray-matter";
 import featuresMd from "../../content/features.md?raw";
 import {
   BoltIcon,
-  ChartPieIcon,
-  DevicePhoneMobileIcon,
+  DocumentTextIcon,
+  PauseCircleIcon,
+  ScaleIcon,
+  ShieldCheckIcon,
+  Squares2X2Icon,
+  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 
 const iconMap: Record<string, React.ElementType> = {
-  DevicePhoneMobileIcon,
-  BoltIcon,
-  ChartPieIcon,
+  Squares2X2Icon,
+  PauseCircleIcon,
+  ScaleIcon,
+  WrenchScrewdriverIcon,
+  DocumentTextIcon,
+  ShieldCheckIcon,
 };
 
 interface Feature {
@@ -31,7 +38,7 @@ const Features: React.FC = () => {
   return (
     <section id="features" className="py-24 px-6 md:px-16 bg-deep-blue">
       <h2 className="text-3xl md:text-4xl font-bold mb-12 italic underline decoration-neon-purple underline-offset-8">
-        New Features Await You
+        Built for parallel agents
       </h2>
       <div className="grid gap-12 md:grid-cols-3">
         {features.map(({ title, description, icon: Icon }) => (

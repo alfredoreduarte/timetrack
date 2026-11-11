@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import ProjectAgentSettings from "../components/ProjectAgentSettings";
 import { useDispatch, useSelector } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -364,6 +365,8 @@ const Projects: React.FC = () => {
             New Task
           </button>
         </div>
+
+        <ProjectAgentSettings project={selectedProject} />
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-md p-4">

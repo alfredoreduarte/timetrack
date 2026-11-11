@@ -3,10 +3,7 @@ import { render, RenderOptions } from "@testing-library/react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
 import { BrowserRouter } from "react-router-dom";
-import authSlice from "../store/slices/authSlice";
-import timerSlice from "../store/slices/timerSlice";
-import projectsSlice from "../store/slices/projectsSlice";
-import timeEntriesSlice from "../store/slices/timeEntriesSlice";
+import { reducers } from "../store/reducers";
 
 // Create a custom render function that includes providers
 interface ExtendedRenderOptions extends Omit<RenderOptions, "wrapper"> {
@@ -17,12 +14,7 @@ export function renderWithProviders(
   ui: ReactElement,
   {
     store = configureStore({
-      reducer: {
-        auth: authSlice,
-        timer: timerSlice,
-        projects: projectsSlice,
-        timeEntries: timeEntriesSlice,
-      },
+      reducer: reducers,
     }),
     ...renderOptions
   }: ExtendedRenderOptions = {}
@@ -41,12 +33,7 @@ export function renderWithProviders(
 // Create a mock store with authenticated state
 export function createMockStore() {
   const store = configureStore({
-    reducer: {
-      auth: authSlice,
-      timer: timerSlice,
-      projects: projectsSlice,
-      timeEntries: timeEntriesSlice,
-    },
+    reducer: reducers,
   });
 
   // Dispatch actions to set up the authenticated state

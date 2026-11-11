@@ -11,6 +11,7 @@ import { fetchProjects, fetchTasks } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
 import EditTimeEntryModal from "../components/EditTimeEntryModal";
 import AiBadge from "../components/AiBadge";
+import EntryHistoryModal from "../components/EntryHistoryModal";
 import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 import { ClockIcon, PencilIcon } from "@heroicons/react/24/outline";
 import { StopIcon } from "@heroicons/react/24/solid";
@@ -33,6 +34,7 @@ const TimeEntries: React.FC = () => {
   const [endDate, setEndDate] = useState("");
 
   // Edit modal state
+  const [historyEntryId, setHistoryEntryId] = useState<string | null>(null);
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
@@ -334,6 +336,12 @@ const TimeEntries: React.FC = () => {
                           >
                             Delete
                           </button>
+                          <button
+                            onClick={() => setHistoryEntryId(entry.id)}
+                            className="text-gray-600 hover:text-gray-800 text-sm hover:bg-gray-100 px-2 py-1 rounded transition-colors"
+                          >
+                            History
+                          </button>
                         </div>
                       )}
                     </div>
@@ -366,6 +374,10 @@ const TimeEntries: React.FC = () => {
           </div>
         )}
       </div>
+
+      {historyEntryId && (
+        <EntryHistoryModal entryId={historyEntryId} onClose={() => setHistoryEntryId(null)} />
+      )}
 
       {/* Edit Modal */}
       {editingEntry && (

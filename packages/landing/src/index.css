@@ -3,6 +3,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The tilted body below would otherwise scroll sideways on phones. */
+html {
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+
 /* Deep grid background */
 body {
   background-color: #071327;
