@@ -378,6 +378,41 @@ describe("S4 review fixes", () => {
     expect(await prisma.timeEntry.count({ where: { userId: user.id } })).toBe(2);
   });
 
+  it("a Free re-import re-checks the plan window under the row lock (a full import may land in between)", async () => {
+    enableBilling();
+    const { user, auth } = await freeUser();
+    const old = [at(15), at(14.9)];
+    const mid = [at(3), at(2.9)];
+    const recent = [at(0.1), at(0.05)];
+    await api().post("/agent-sessions/import").set(auth).send({ sessions: [{ sessionKey: "k", spans: [old, mid] }] });
+
+    // Between the Free request's first look and its row lock (the import's
+    // write transaction), the same user, now on Pro, re-imports it in full.
+    const original = prisma.$transaction.bind(prisma) as (...a: unknown[]) => Promise<unknown>;
+    let concurrent: { body: { sessions: Array<{ status: string }> } } | null = null;
+    let armed = true;
+    jest.spyOn(prisma, "$transaction").mockImplementation((async (...a: unknown[]) => {
+      if (armed && typeof a[0] === "function") {
+        armed = false;
+        await prisma.user.update({ where: { id: user.id }, data: { subscriptionStatus: "active" } });
+        concurrent = await api().post("/agent-sessions/import").set(auth).send({ sessions: [{ sessionKey: "k", spans: [old, mid, recent] }] });
+        await prisma.user.update({ where: { id: user.id }, data: { subscriptionStatus: null } });
+      }
+      return original(...a);
+    }) as never);
+
+    let free;
+    try {
+      free = await api().post("/agent-sessions/import").set(auth).send({ sessions: [{ sessionKey: "k", spans: [old, mid, recent] }] });
+    } finally {
+      jest.restoreAllMocks();
+    }
+    expect(concurrent!.body.sessions[0].status).toBe("replaced");
+    expect(free.body.sessions[0].status).toBe("skipped_plan");
+    const stored = await prisma.timeEntry.findMany({ where: { userId: user.id }, select: { startTime: true } });
+    expect(stored.some((e) => e.startTime.toISOString() === old[0])).toBe(true);
+  });
+
   it("checkout starts a pending trial first, so going straight to checkout keeps the 14 days", async () => {
     enableBilling();
     const { auth } = await createUser({ isSubscriptionExempt: false, trialEndsAt: null });
