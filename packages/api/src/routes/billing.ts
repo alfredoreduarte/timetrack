@@ -76,9 +76,17 @@ export const stripeWebhook: express.RequestHandler = async (req, res) => {
     const outcome = await handleStripeWebhook(req.body as Buffer, req.headers["stripe-signature"] as string | undefined);
     res.json({ received: true, outcome });
   } catch (e) {
-    const status = (e as { statusCode?: number }).statusCode ?? 500;
-    if (status >= 500) logger.error("Stripe webhook processing failed", { error: (e as Error).message });
-    res.status(status).json({ error: status >= 500 ? "Webhook processing failed" : (e as Error).message });
+    // Only this app's own checks (signature, configuration) answer 4xx/503;
+    // anything else — including errors Stripe's API returned while syncing —
+    // is a 500 so Stripe retries, and is always logged.
+    const err = e as { statusCode?: number; isOperational?: boolean; message?: string; type?: string };
+    const status = err.isOperational && err.statusCode ? err.statusCode : 500;
+    logger[status >= 500 ? "error" : "warn"]("Stripe webhook not processed", {
+      status,
+      error: err.message,
+      stripeErrorType: err.type,
+    });
+    res.status(status).json({ error: status >= 500 ? "Webhook processing failed" : err.message });
   }
 };
 

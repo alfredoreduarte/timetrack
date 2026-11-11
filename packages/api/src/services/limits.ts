@@ -27,17 +27,25 @@ export async function assertCanRunTimer(
       429
     );
   }
-  if (opts.isAiGenerated) {
-    const { limits } = await getEntitlements(ctx.userId, tx, ctx.now());
-    if (limits.maxRunningAgentTimers !== null) {
-      const runningAgents = await tx.timeEntry.count({
-        where: { userId: ctx.userId, isRunning: true, isAiGenerated: true },
-      });
-      if (runningAgents >= limits.maxRunningAgentTimers) {
-        throw planLimitError(
-          `Your Free plan runs ${limits.maxRunningAgentTimers} AI agent timers at once; pause or stop one, or track unlimited parallel agents with Pro.`
-        );
-      }
-    }
+  if (opts.isAiGenerated) await assertAgentSlot(tx, ctx);
+}
+
+/**
+ * The plan's cap on parallel AI-agent timers. Checked when an AI timer
+ * starts or resumes, and when a running timer or segment is relabeled as AI
+ * work — otherwise starting as human work and flipping the flag would
+ * bypass it. Takes the same per-user lock as starts.
+ */
+export async function assertAgentSlot(tx: TxClient, ctx: ServiceContext): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${ctx.userId}))`;
+  const { limits } = await getEntitlements(ctx.userId, tx, ctx.now());
+  if (limits.maxRunningAgentTimers === null) return;
+  const runningAgents = await tx.timeEntry.count({
+    where: { userId: ctx.userId, isRunning: true, isAiGenerated: true },
+  });
+  if (runningAgents >= limits.maxRunningAgentTimers) {
+    throw planLimitError(
+      `Your Free plan runs ${limits.maxRunningAgentTimers} AI agent timers at once; pause or stop one, or track unlimited parallel agents with Pro.`
+    );
   }
 }

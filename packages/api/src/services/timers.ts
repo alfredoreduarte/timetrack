@@ -9,7 +9,7 @@ import { diffFields, recordAudit, AuditChanges } from "./audit";
 import { getHourlyRate } from "./rates";
 import { resolveProjectAndTask } from "./ownership";
 import { cleanText, DESCRIPTION_MAX } from "./text";
-import { assertCanRunTimer } from "./limits";
+import { assertAgentSlot, assertCanRunTimer } from "./limits";
 import { learnRepoMapping, resolveProjectForRepo } from "./repos";
 import { estimateCost, TokenCounts } from "../billing/pricing";
 
@@ -756,6 +756,9 @@ export async function updateTimer(
       ) {
         data.lastActivityAt = now;
       }
+    }
+    if (input.isAiGenerated === true && !timer.isAiGenerated && timer.status === "running") {
+      await assertAgentSlot(tx, ctx);
     }
     if (input.isAiGenerated !== undefined) data.isAiGenerated = input.isAiGenerated;
     const assignmentChanged = projectId !== timer.projectId || taskId !== timer.taskId;

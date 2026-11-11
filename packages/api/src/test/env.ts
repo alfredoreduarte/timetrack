@@ -9,6 +9,12 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || DEFAULT_TEST_DB;
 process.env.JWT_SECRET = "test-jwt-secret";
 process.env.NODE_ENV = "test";
 process.env.DISABLE_RATE_LIMIT = "true";
+// Billing turns on from the environment alone; suites opt in explicitly
+// (see enableBilling() in billing.test.ts) so a developer's exported keys
+// can't change every other test's plan.
+for (const key of ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_MONTHLY", "STRIPE_PRICE_YEARLY"]) {
+  delete process.env[key];
+}
 
 const dbUrl = new URL(process.env.DATABASE_URL);
 if (!/test/i.test(dbUrl.pathname)) {

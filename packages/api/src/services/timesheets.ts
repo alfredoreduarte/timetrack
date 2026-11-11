@@ -232,7 +232,18 @@ export async function buildTimesheet(
 
   // Free plan: timesheets reach back a limited number of days.
   const entitlements = await getEntitlements(userId, prisma, now);
-  const floor = historyFloor(entitlements, now);
+  const exactFloor = historyFloor(entitlements, now);
+  // Whole local days only: a first row cut at the current time of day
+  // would look like a full day that's missing hours.
+  let floor = exactFloor;
+  if (exactFloor) {
+    const key = localDateKey(exactFloor, timezone);
+    floor = startOfLocalDate(key, timezone);
+    if (floor < exactFloor) {
+      const [y, m, d] = key.split("-").map(Number);
+      floor = startOfLocalDate(new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10), timezone);
+    }
+  }
   let limitedByPlan: Timesheet["limitedByPlan"] = null;
   if (floor && start < floor) {
     if (end <= floor) {

@@ -44,7 +44,7 @@
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^7.0.6",
     "socket.io": "^4.7.4",
-    "stripe": "23.0.1",
+    "stripe": "22.6.2",
     "svg-captcha": "^1.4.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.0",
