@@ -3,6 +3,8 @@ import { prisma } from "../../utils/database";
 import * as realtime from "../../realtime";
 import { startTimer, pauseTimer, sweepIdleTimers, touchTimer, updateTimer } from "../../services/timers";
 import { MAX_RUNNING_ENTRIES } from "../../services/limits";
+import { bulkUpdateEntries, createEntry } from "../../services/entries";
+import { deleteProject } from "../../services/deletions";
 import {
   api,
   resetDb,
@@ -369,5 +371,115 @@ describe("S1 review round 3 fixes", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("S1 review round 4 fixes", () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  /** Holds the user row so a writer that already has its row locks stalls on its audit insert. */
+  function holdUserRow(userId: string) {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const heldP = new Promise<void>((r) => (held = r));
+    const tx = prisma.$transaction(
+      async (t) => {
+        await t.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+        held();
+        await gate;
+      },
+      { timeout: 20_000 }
+    );
+    return { ready: heldP, release: () => (release(), tx) };
+  }
+
+  it("a project delete and a bulk reassignment onto it both succeed", async () => {
+    const { user, auth } = await createUser();
+    const ctx = serviceCtx(user.id);
+    const p = await createProject(user.id, { name: "Doomed" });
+    const q = await createProject(user.id, { name: "Other" });
+    // Timer-less entries: nothing serializes them on timer locks.
+    const e1 = await createEntry(ctx, { startTime: ago(120), endTime: ago(110), projectId: p.id });
+    const e2 = await createEntry(ctx, { startTime: ago(100), endTime: ago(90), projectId: q.id });
+
+    const gate = holdUserRow(user.id);
+    await gate.ready;
+    const bulk = bulkUpdateEntries(ctx, { ids: [e1.id, e2.id], set: { projectId: p.id, description: "x" } }).then(
+      () => "ok",
+      (e) => String(e)
+    );
+    await sleep(300); // bulk holds its locks, stalled on the audit insert
+    const del = api().delete(`/projects/${p.id}`).set(auth).then((r) => r.status);
+    await sleep(200); // delete is waiting behind bulk
+    await gate.release();
+    expect(await bulk).toBe("ok");
+    expect(await del).toBe(200);
+    expect(await prisma.timeEntry.count({ where: { userId: user.id } })).toBe(0);
+  });
+
+  it("a task delete and a bulk reassignment onto the task both succeed", async () => {
+    const { user, auth } = await createUser();
+    const ctx = serviceCtx(user.id);
+    const p = await createProject(user.id);
+    const task = await createTask(user.id, p.id);
+    const e1 = await createEntry(ctx, { startTime: ago(120), endTime: ago(110), projectId: p.id, taskId: task.id });
+    const e2 = await createEntry(ctx, { startTime: ago(100), endTime: ago(90), projectId: p.id });
+
+    const gate = holdUserRow(user.id);
+    await gate.ready;
+    // The description change makes bulk stall (audit insert) after locking
+    // both entries but before e2's task FK check.
+    const bulk = bulkUpdateEntries(ctx, { ids: [e1.id, e2.id], set: { taskId: task.id, description: "x" } }).then(
+      () => "ok",
+      (e) => String(e)
+    );
+    await sleep(300);
+    const del = api().delete(`/tasks/${task.id}`).set(auth).then((r) => r.status);
+    await sleep(200);
+    await gate.release();
+    expect(await bulk).toBe("ok");
+    expect(await del).toBe(200);
+    const left = await prisma.timeEntry.findMany({ where: { userId: user.id } });
+    expect(left.every((e) => e.taskId === null)).toBe(true);
+  });
+
+  it("a delete that loses a deadlock inside an ORM statement is retried", async () => {
+    const { user } = await createUser();
+    const ctx = serviceCtx(user.id);
+    const p = await createProject(user.id);
+    const e1 = await createEntry(ctx, { startTime: ago(120), endTime: ago(110), projectId: p.id });
+
+    // X locks the entry, the delete locks the project and waits on the entry
+    // (in deleteMany), then X asks for the project: a cycle the delete is the
+    // first to detect, so it is the victim.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const heldP = new Promise<void>((r) => (held = r));
+    const x = prisma
+      .$transaction(
+        async (t) => {
+          await t.$queryRaw`SELECT id FROM time_entries WHERE id = ${e1.id} FOR UPDATE`;
+          held();
+          await gate;
+          await t.$queryRaw`SELECT id FROM projects WHERE id = ${p.id} FOR KEY SHARE`;
+        },
+        { timeout: 20_000 }
+      )
+      .then(
+        () => "ok",
+        () => "victim"
+      );
+    await heldP;
+    const del = deleteProject(ctx, p.id).then(
+      (r) => r,
+      (e) => String(e)
+    );
+    await sleep(300);
+    release();
+    expect(await del).toEqual({ entriesDeleted: 1 });
+    expect(await x).toBe("ok");
+    expect(await prisma.project.count({ where: { id: p.id } })).toBe(0);
   });
 });

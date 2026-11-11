@@ -32,7 +32,11 @@ export interface EntryUpdatePayload {
   hours?: number;
 }
 
-export function buildEntryUpdate(form: EditFormState, initial: InitialTimes): EntryUpdatePayload {
+export function buildEntryUpdate(
+  form: EditFormState,
+  initial: InitialTimes,
+  now: number = Date.now()
+): EntryUpdatePayload {
   const payload: EntryUpdatePayload = {
     description: form.description || null,
     projectId: form.projectId || null,
@@ -51,10 +55,13 @@ export function buildEntryUpdate(form: EditFormState, initial: InitialTimes): En
       // Hours mode keeps the duration when only the start moves; otherwise the
       // server keeps the old end and the duration silently changes. Send the
       // exact end, since the hours field is rounded to hundredths.
-      if (initial.durationSeconds) {
-        payload.endTime = new Date(Date.parse(payload.startTime) + initial.durationSeconds * 1000).toISOString();
+      const end = initial.durationSeconds ? Date.parse(payload.startTime) + initial.durationSeconds * 1000 : null;
+      if (end !== null && end <= now) {
+        payload.endTime = new Date(end).toISOString();
       } else {
-        payload.hours = parseFloat(form.hours);
+        // An end in the future would be clamped to now (silently shortening
+        // the entry); unrounded hours let the server reject it instead.
+        payload.hours = initial.durationSeconds ? initial.durationSeconds / 3600 : parseFloat(form.hours);
       }
     }
   } else {
