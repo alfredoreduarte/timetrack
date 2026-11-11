@@ -6,33 +6,33 @@ import type { BillingStatus } from "../types/agent";
 
 // One status shared by every component that shows the plan (the banner and
 // the Billing page), so a refresh after checkout updates all of them. It
-// belongs to one signed-in user: signing in as someone else in the same tab
-// starts empty, and a response for the previous user is dropped.
-let shared: { userId: string | null; status: BillingStatus | null; error: string | null } = {
-  userId: null,
+// belongs to one sign-in (user and token): every sign-in, even back into the
+// same account, starts empty, and a response for an earlier one is dropped.
+let shared: { owner: string | null; status: BillingStatus | null; error: string | null } = {
+  owner: null,
   status: null,
   error: null,
 };
 const listeners = new Set<() => void>();
-let inFlight: { userId: string; promise: Promise<void> } | null = null;
+let inFlight: { owner: string; promise: Promise<void> } | null = null;
 const notify = () => listeners.forEach((l) => l());
 
-function ownedBy(userId: string | null) {
-  if (shared.userId !== userId) {
-    shared = { userId, status: null, error: null };
+function ownedBy(owner: string | null) {
+  if (shared.owner !== owner) {
+    shared = { owner, status: null, error: null };
     notify();
   }
 }
 
-function refreshShared(userId: string): Promise<void> {
-  if (inFlight?.userId === userId) return inFlight.promise;
-  const request = { userId, promise: Promise.resolve() };
+function refreshShared(owner: string): Promise<void> {
+  if (inFlight?.owner === owner) return inFlight.promise;
+  const request = { owner, promise: Promise.resolve() };
   request.promise = (async () => {
     try {
       const status = await api.billing.status();
-      if (shared.userId === userId) shared = { userId, status, error: null };
+      if (shared.owner === owner) shared = { owner, status, error: null };
     } catch (e) {
-      if (shared.userId === userId) {
+      if (shared.owner === owner) {
         shared = { ...shared, error: e instanceof Error ? e.message : "Couldn't load your plan" };
       }
     } finally {
@@ -49,7 +49,7 @@ function refreshShared(userId: string): Promise<void> {
  * (the Billing page), showing the last known status meanwhile.
  */
 export function useBillingStatus({ fresh = false }: { fresh?: boolean } = {}) {
-  const userId = useSelector((s: RootState) => s.auth.user?.id ?? null);
+  const owner = useSelector((s: RootState) => (s.auth.user ? `${s.auth.user.id}:${s.auth.token ?? ""}` : null));
   const [, rerender] = useState(0);
   useEffect(() => {
     const listener = () => rerender((n) => n + 1);
@@ -59,11 +59,12 @@ export function useBillingStatus({ fresh = false }: { fresh?: boolean } = {}) {
     };
   }, []);
   useEffect(() => {
-    ownedBy(userId); // signed out: forget the last user's plan
-    if (userId && (fresh || !shared.status)) refreshShared(userId);
-  }, [userId, fresh]);
-  const refresh = useCallback(() => (userId ? refreshShared(userId) : Promise.resolve()), [userId]);
-  const mine = userId !== null && shared.userId === userId;
+    if (!owner) return;
+    ownedBy(owner);
+    if (fresh || !shared.status) refreshShared(owner);
+  }, [owner, fresh]);
+  const refresh = useCallback(() => (owner ? refreshShared(owner) : Promise.resolve()), [owner]);
+  const mine = owner !== null && shared.owner === owner;
   return { status: mine ? shared.status : null, error: mine ? shared.error : null, refresh };
 }
 

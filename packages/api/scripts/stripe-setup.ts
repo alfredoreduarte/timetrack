@@ -17,6 +17,8 @@ if (!apiUrl.startsWith("https://")) throw new Error("Set API_PUBLIC_URL to the A
 
 const stripe = new Stripe(key);
 const PRODUCT_NAME = "TimeTrack Pro";
+const PRODUCT_DESCRIPTION =
+  "Billable hours for developers who ship with AI agents: up to 25 agents running at once, full history, client timesheets and share links.";
 const PRICES = [
   { lookupKey: "timetrack_pro_monthly", interval: "month" as const, unitAmount: 1500, env: "STRIPE_PRICE_MONTHLY" },
   { lookupKey: "timetrack_pro_yearly", interval: "year" as const, unitAmount: 14400, env: "STRIPE_PRICE_YEARLY" },
@@ -36,11 +38,11 @@ async function main() {
   const existing = await stripe.prices.list({ lookup_keys: PRICES.map((p) => p.lookupKey), expand: ["data.product"] });
   let productId = (existing.data[0]?.product as Stripe.Product | undefined)?.id;
   if (!productId) {
-    const product = await stripe.products.create({
-      name: PRODUCT_NAME,
-      description: "Billable hours for developers who ship with AI agents: unlimited parallel agent timers, full history, client timesheets and share links.",
-    });
+    const product = await stripe.products.create({ name: PRODUCT_NAME, description: PRODUCT_DESCRIPTION });
     productId = product.id;
+  } else {
+    // Checkout shows this text, so keep an existing product's copy current.
+    await stripe.products.update(productId, { description: PRODUCT_DESCRIPTION });
   }
 
   const lines: string[] = [];
