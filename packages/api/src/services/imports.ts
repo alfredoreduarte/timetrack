@@ -91,15 +91,32 @@ const sumSeconds = (segments: Span[]) =>
 
 type Skip = { status: "skipped_live" | "skipped_edited" | "skipped_plan" | "skipped_partial"; reason: string };
 
+/** What an import brings, for comparing it with a stored copy. */
+interface Incoming {
+  /** Activity spans (after any plan-window clipping). */
+  spans: Span[];
+  segments: Span[];
+  /** Set when the plan window clipped this import. */
+  clippedSkip?: Skip;
+}
+
 /**
- * An earlier import may be replaced only if nothing else ever touched it:
- * it never ran live, it is stopped, and neither it nor its segments were
- * edited, deleted or reassigned since. Anything else belongs to the user.
+ * Why a stored import must stay as it is, or null if this import may replace
+ * it. Run at the first look and again under the timer's row lock, so a
+ * resume, an edit or another import that lands in between still counts.
+ *
+ * - It never ran live, it is stopped, and neither it nor its segments were
+ *   edited, deleted or reassigned since: anything else belongs to the user.
+ * - A clipped import may replace it only if that deletes nothing from before
+ *   the plan window (e.g. the stored copy was clipped too).
+ * - A re-import may grow a session, never shrink it: transcripts get pruned,
+ *   windows get narrower, subagent files age out, and what was imported
+ *   before is still true.
  */
-async function replaceBlocker(db: TxClient, userId: string, timerId: string): Promise<Skip | null> {
+async function storedCopyBlocker(db: TxClient, userId: string, timerId: string, incoming: Incoming): Promise<Skip | null> {
   const timer = await db.timer.findUniqueOrThrow({
     where: { id: timerId },
-    select: { createdVia: true, status: true },
+    select: { createdVia: true, status: true, startedAt: true, stoppedAt: true },
   });
   if (timer.createdVia !== "import" || timer.status !== "stopped") {
     return { status: "skipped_live", reason: "session was tracked live" };
@@ -113,7 +130,7 @@ async function replaceBlocker(db: TxClient, userId: string, timerId: string): Pr
       orderBy: { createdAt: "desc" },
       select: { changes: true },
     }),
-    db.timeEntry.findMany({ where: { timerId }, select: { id: true, duration: true } }),
+    db.timeEntry.findMany({ where: { timerId }, select: { id: true, duration: true, startTime: true } }),
   ]);
   const entryEdits = entries.length
     ? await db.auditEvent.count({
@@ -123,6 +140,7 @@ async function replaceBlocker(db: TxClient, userId: string, timerId: string): Pr
   const recorded = (lastImport?.changes ?? {}) as {
     segments?: { to?: number };
     trackedSeconds?: { to?: number };
+    gapSeconds?: { to?: number };
   };
   const seconds = entries.reduce((sum, e) => sum + (e.duration ?? 0), 0);
   // Deleting a segment leaves no audit on the survivors; the totals the
@@ -131,6 +149,24 @@ async function replaceBlocker(db: TxClient, userId: string, timerId: string): Pr
     recorded.segments?.to !== entries.length || recorded.trackedSeconds?.to !== seconds;
   if (timerEdits > 0 || entryEdits > 0 || changedSinceImport) {
     return { status: "skipped_edited", reason: "session was edited after it was imported" };
+  }
+
+  const { spans, segments, clippedSkip } = incoming;
+  const first = segments[0][0].getTime();
+  const last = segments[segments.length - 1][1].getTime();
+  if (clippedSkip && entries.some((e) => e.startTime.getTime() < first)) return clippedSkip;
+
+  // Time covered is compared at the gap the stored copy was built with: the
+  // user may have changed their idle timeout since, which alone changes the
+  // total without any history being lost.
+  const gap = recorded.gapSeconds?.to;
+  const covered = typeof gap === "number" ? sumSeconds(segmentSpans(spans, gap)) : null;
+  if (
+    first > timer.startedAt.getTime() + 1000 ||
+    (timer.stoppedAt && last < timer.stoppedAt.getTime() - 1000) ||
+    (covered !== null && covered < seconds)
+  ) {
+    return { status: "skipped_partial", reason: "already imported with more of this session than this import has" };
   }
   return null;
 }
@@ -149,44 +185,18 @@ async function importOne(
   ctx: ServiceContext,
   s: ImportSessionInput,
   sessionKey: string,
-  segments: Span[],
+  incoming: Incoming & { gapSeconds: number },
   dryRun: boolean,
-  idleTimeoutSeconds: number,
-  skipIfExisting?: Skip
+  idleTimeoutSeconds: number
 ): Promise<ImportSessionResult> {
+  const { segments, gapSeconds } = incoming;
   const existing = await prisma.timer.findUnique({
     where: { userId_sessionKey: { userId: ctx.userId, sessionKey } },
-    select: { id: true, startedAt: true, stoppedAt: true },
+    select: { id: true },
   });
-  // Live-tracked and edited sessions first, as under the lock: no import
-  // replaces them, so the plan window isn't the reason they're skipped.
   if (existing) {
-    const blocker = await replaceBlocker(prisma, ctx.userId, existing.id);
-    if (blocker) throw new SkipSession(blocker);
-  }
-  // A clipped import may replace a stored one only if that deletes nothing
-  // from before the plan window (e.g. the stored copy was clipped too).
-  if (existing && skipIfExisting) {
-    const olderStored = await prisma.timeEntry.count({
-      where: { timerId: existing.id, startTime: { lt: segments[0][0] } },
-    });
-    if (olderStored > 0) throw new SkipSession(skipIfExisting);
-  }
-  // A re-import may grow a session, never shrink it: transcripts get pruned,
-  // windows get narrower, subagent files age out — and what was imported
-  // before is still true. Compare the span and the time covered.
-  if (existing) {
-    const stored = await prisma.timeEntry.aggregate({ where: { timerId: existing.id }, _sum: { duration: true } });
-    if (
-      segments[0][0].getTime() > existing.startedAt.getTime() + 1000 ||
-      (existing.stoppedAt && segments[segments.length - 1][1].getTime() < existing.stoppedAt.getTime() - 1000) ||
-      sumSeconds(segments) < (stored._sum.duration ?? 0)
-    ) {
-      throw new SkipSession({
-        status: "skipped_partial",
-        reason: "already imported with more of this session than this import has",
-      });
-    }
+    const skip = await storedCopyBlocker(prisma, ctx.userId, existing.id, incoming);
+    if (skip) throw new SkipSession(skip);
   }
 
   const gitRemote = normalizeGitRemote(s.gitRemote);
@@ -232,19 +242,11 @@ async function importOne(
   result.timerId = await prisma.$transaction(
     async (tx) => {
       if (existing) {
-        // Re-checked under the row lock: a live resume or an edit that lands
-        // after the first check wins over the import.
+        // Re-checked under the row lock: a live resume, an edit or another
+        // import that lands after the first look wins over this one.
         await tx.$queryRaw`SELECT id FROM timers WHERE id = ${existing.id} FOR UPDATE`;
-        const blocker = await replaceBlocker(tx, ctx.userId, existing.id);
-        if (blocker) throw new SkipSession(blocker);
-        // And the plan-window check: a full import may have stored older
-        // history since the first look.
-        if (skipIfExisting) {
-          const olderStored = await tx.timeEntry.count({
-            where: { timerId: existing.id, startTime: { lt: segments[0][0] } },
-          });
-          if (olderStored > 0) throw new SkipSession(skipIfExisting);
-        }
+        const skip = await storedCopyBlocker(tx, ctx.userId, existing.id, incoming);
+        if (skip) throw new SkipSession(skip);
       }
       const rate = await getHourlyRate(tx, ctx.userId, projectId, null);
       const data = {
@@ -300,6 +302,8 @@ async function importOne(
         changes: {
           segments: { from: null, to: segments.length },
           trackedSeconds: { from: null, to: trackedSeconds },
+          // The idle gap the segments were built with (see storedCopyBlocker).
+          gapSeconds: { from: null, to: gapSeconds },
         },
       });
       return timerId;
@@ -378,7 +382,7 @@ export async function importAgentSessions(
     }
 
     try {
-      const skipIfExisting: Skip | undefined = clipped
+      const clippedSkip: Skip | undefined = clipped
         ? {
             status: "skipped_plan",
             // A clipped import can't replace a session that has stored history
@@ -389,7 +393,14 @@ export async function importAgentSessions(
           }
         : undefined;
       results.push(
-        await importOne(ctx, s, sessionKey, segments, Boolean(opts.dryRun), user.agentIdleTimeoutSeconds, skipIfExisting)
+        await importOne(
+          ctx,
+          s,
+          sessionKey,
+          { spans, segments, clippedSkip, gapSeconds },
+          Boolean(opts.dryRun),
+          user.agentIdleTimeoutSeconds
+        )
       );
     } catch (e) {
       if (e instanceof SkipSession) {

@@ -150,3 +150,56 @@ describe("S5 re-review: import guards and hook metadata", () => {
     expect(res.body).toMatchObject({ tracked: true });
   });
 });
+
+describe("S5 review round 3", () => {
+  beforeEach(resetDb);
+  afterEach(() => jest.restoreAllMocks());
+
+  it("lowering the idle timeout doesn't make an identical re-import look partial", async () => {
+    const { user, auth } = await createUser();
+    const session = { sessionKey: "gap", spans: [[iso(0), iso(20)], [iso(30), iso(50)]] };
+    const first = await api().post("/agent-sessions/import").set(auth).send({ sessions: [session] });
+    expect(first.body.sessions[0]).toMatchObject({ status: "imported", trackedSeconds: 3000 });
+    await prisma.user.update({ where: { id: user.id }, data: { agentIdleTimeoutSeconds: 300 } });
+    const again = await api().post("/agent-sessions/import").set(auth).send({ sessions: [session] });
+    expect(again.body.sessions[0]).toMatchObject({ status: "replaced", trackedSeconds: 2400 });
+  });
+
+  it("the shrink check holds under the row lock (a fuller import may land in between)", async () => {
+    const { auth } = await createUser();
+    await api().post("/agent-sessions/import").set(auth).send({ sessions: [{ sessionKey: "k", spans: [[iso(0), iso(100)]] }] });
+    const original = prisma.$transaction.bind(prisma) as (...a: unknown[]) => Promise<unknown>;
+    let fuller: { body: { sessions: Array<{ status: string }> } } | null = null;
+    let armed = true;
+    jest.spyOn(prisma, "$transaction").mockImplementation((async (...a: unknown[]) => {
+      if (armed && typeof a[0] === "function") {
+        armed = false;
+        fuller = await api().post("/agent-sessions/import").set(auth).send({ sessions: [{ sessionKey: "k", spans: [[iso(0), iso(300)]] }] });
+      }
+      return original(...a);
+    }) as never);
+    // Grows the stored copy at the first look, but covers less than the
+    // fuller import that lands before its lock.
+    const res = await api()
+      .post("/agent-sessions/import")
+      .set(auth)
+      .send({ sessions: [{ sessionKey: "k", spans: [[iso(0), iso(100)], [iso(200), iso(300)]] }] });
+    jest.restoreAllMocks();
+    expect(fuller!.body.sessions[0].status).toBe("replaced");
+    expect(res.body.sessions[0].status).toBe("skipped_partial");
+    expect(await prisma.timeEntry.aggregate({ _sum: { duration: true } })).toMatchObject({ _sum: { duration: 300 * 60 } });
+  });
+
+  it("an over-long Cursor workspace root is dropped, not an error", async () => {
+    const { auth } = await createUser();
+    const res = await api()
+      .post("/agent-events")
+      .set(auth)
+      .send({ hook_event_name: "beforeSubmitPrompt", conversation_id: "cur-long", workspace_roots: ["/" + "a".repeat(1499)] });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ tracked: true });
+    const timer = await prisma.timer.findFirstOrThrow({ where: { sessionKey: { contains: "cur-long" } } });
+    expect(timer.cwd).toBeNull();
+  });
+});
+
