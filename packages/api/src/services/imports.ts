@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
-import { prisma } from "../utils/database";
-import { createError } from "../middleware/errorHandler";
+import { prisma, TxClient } from "../utils/database";
+import { createError, AppError } from "../middleware/errorHandler";
 import { normalizeGitRemote } from "../utils/git";
 import { emitToUser } from "../realtime";
 import { ServiceContext } from "./context";
@@ -9,11 +9,15 @@ import { getHourlyRate } from "./rates";
 import { resolveProjectAndTask } from "./ownership";
 import { resolveProjectForRepo, repoLabel } from "./repos";
 import { cleanText } from "./text";
-import { cleanSessionKey, FUTURE_SKEW_MS } from "./timers";
+import { cleanAgent, cleanSessionKey, cleanToken, FUTURE_SKEW_MS } from "./timers";
 import { agentLabel } from "./agentEvents";
 
 export const MAX_IMPORT_SESSIONS = 100;
 export const MAX_SPANS_PER_SESSION = 10_000;
+/** Transcripts can't predate this; older timestamps are corrupt data. */
+const EARLIEST_SPAN = Date.parse("2020-01-01T00:00:00Z");
+/** One transcript message never spans more than a day. */
+const MAX_SPAN_MS = 24 * 3600 * 1000;
 
 export type Span = [Date, Date];
 
@@ -58,7 +62,7 @@ export interface ImportSessionInput {
   usage?: Record<string, TokenUsage>;
 }
 
-export type ImportStatus = "imported" | "replaced" | "skipped_live" | "empty" | "invalid";
+export type ImportStatus = "imported" | "replaced" | "skipped_live" | "skipped_edited" | "empty" | "invalid";
 
 export interface ImportSessionResult {
   sessionKey: string;
@@ -75,10 +79,190 @@ export interface ImportSessionResult {
 const sumSeconds = (segments: Span[]) =>
   segments.reduce((s, [a, b]) => s + Math.floor((b.getTime() - a.getTime()) / 1000), 0);
 
+type Skip = { status: "skipped_live" | "skipped_edited"; reason: string };
+
+/**
+ * An earlier import may be replaced only if nothing else ever touched it:
+ * it never ran live, it is stopped, and neither it nor its segments were
+ * edited, deleted or reassigned since. Anything else belongs to the user.
+ */
+async function replaceBlocker(db: TxClient, userId: string, timerId: string): Promise<Skip | null> {
+  const timer = await db.timer.findUniqueOrThrow({
+    where: { id: timerId },
+    select: { createdVia: true, status: true },
+  });
+  if (timer.createdVia !== "import" || timer.status !== "stopped") {
+    return { status: "skipped_live", reason: "session was tracked live" };
+  }
+  const [timerEdits, lastImport, entries] = await Promise.all([
+    db.auditEvent.count({
+      where: { userId, entityType: "timer", entityId: timerId, action: { notIn: ["import", "reimport"] } },
+    }),
+    db.auditEvent.findFirst({
+      where: { userId, entityType: "timer", entityId: timerId, action: { in: ["import", "reimport"] } },
+      orderBy: { createdAt: "desc" },
+      select: { changes: true },
+    }),
+    db.timeEntry.findMany({ where: { timerId }, select: { id: true, duration: true } }),
+  ]);
+  const entryEdits = entries.length
+    ? await db.auditEvent.count({
+        where: { userId, entityType: "time_entry", entityId: { in: entries.map((e) => e.id) } },
+      })
+    : 0;
+  const recorded = (lastImport?.changes ?? {}) as {
+    segments?: { to?: number };
+    trackedSeconds?: { to?: number };
+  };
+  const seconds = entries.reduce((sum, e) => sum + (e.duration ?? 0), 0);
+  // Deleting a segment leaves no audit on the survivors; the totals the
+  // import recorded catch it.
+  const changedSinceImport =
+    recorded.segments?.to !== entries.length || recorded.trackedSeconds?.to !== seconds;
+  if (timerEdits > 0 || entryEdits > 0 || changedSinceImport) {
+    return { status: "skipped_edited", reason: "session was edited after it was imported" };
+  }
+  return null;
+}
+
+const isUniqueViolation = (e: unknown) =>
+  e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+
+class SkipSession extends Error {
+  constructor(readonly skip: Skip) {
+    super(skip.reason);
+  }
+}
+
+/** Imports one validated session; throws SkipSession when it must be left alone. */
+async function importOne(
+  ctx: ServiceContext,
+  s: ImportSessionInput,
+  sessionKey: string,
+  segments: Span[],
+  dryRun: boolean
+): Promise<ImportSessionResult> {
+  const existing = await prisma.timer.findUnique({
+    where: { userId_sessionKey: { userId: ctx.userId, sessionKey } },
+    select: { id: true },
+  });
+  if (existing) {
+    const blocker = await replaceBlocker(prisma, ctx.userId, existing.id);
+    if (blocker) throw new SkipSession(blocker);
+  }
+
+  const gitRemote = normalizeGitRemote(s.gitRemote);
+  const cwd = cleanToken(s.cwd?.slice(0, 1000), "cwd", 1000) ?? null;
+  const gitBranch = cleanToken(s.gitBranch?.slice(0, 255), "gitBranch", 255) ?? null;
+  const agent = cleanAgent(s.agent) ?? "claude_code";
+  let project: { id: string; name: string } | null = null;
+  let projectId: string | null = null;
+  if (s.projectId) {
+    const ref = await resolveProjectAndTask(prisma, ctx.userId, { projectId: s.projectId });
+    projectId = ref.projectId ?? null;
+    project = projectId
+      ? await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true } })
+      : null;
+  } else {
+    const match = await resolveProjectForRepo(prisma, ctx.userId, { gitRemote, cwd });
+    if (match) {
+      projectId = match.project.id;
+      project = { id: match.project.id, name: match.project.name };
+    }
+  }
+
+  const startedAt = segments[0][0];
+  const endedAt = segments[segments.length - 1][1];
+  const trackedSeconds = sumSeconds(segments);
+  const result: ImportSessionResult = {
+    sessionKey,
+    status: existing ? "replaced" : "imported",
+    project,
+    segments: segments.length,
+    trackedSeconds,
+    startedAt,
+    endedAt,
+  };
+  if (dryRun) return result;
+
+  const repo = repoLabel({ gitRemote, cwd });
+  const description =
+    cleanText(s.title, "title", 500, { truncate: true }) ??
+    cleanText(`${agentLabel(agent)}${repo ? ` · ${repo}` : ""}${gitBranch ? ` (${gitBranch})` : ""}`, "description", 500, {
+      truncate: true,
+    });
+  result.timerId = await prisma.$transaction(
+    async (tx) => {
+      if (existing) {
+        // Re-checked under the row lock: a live resume or an edit that lands
+        // after the first check wins over the import.
+        await tx.$queryRaw`SELECT id FROM timers WHERE id = ${existing.id} FOR UPDATE`;
+        const blocker = await replaceBlocker(tx, ctx.userId, existing.id);
+        if (blocker) throw new SkipSession(blocker);
+      }
+      const rate = await getHourlyRate(tx, ctx.userId, projectId, null);
+      const data = {
+        status: "stopped",
+        description,
+        agent,
+        createdVia: "import",
+        isAiGenerated: true,
+        cwd,
+        gitRemote,
+        gitBranch,
+        projectId,
+        taskId: null,
+        lastActivityAt: endedAt,
+        startedAt,
+        stoppedAt: endedAt,
+        usage: (s.usage ?? undefined) as Prisma.InputJsonValue | undefined,
+      };
+      let timerId: string;
+      if (existing) {
+        await tx.timeEntry.deleteMany({ where: { timerId: existing.id } });
+        await tx.timer.update({ where: { id: existing.id }, data });
+        timerId = existing.id;
+      } else {
+        const created = await tx.timer.create({ data: { ...data, userId: ctx.userId, sessionKey } });
+        timerId = created.id;
+      }
+      await tx.timeEntry.createMany({
+        data: segments.map(([a, b]) => ({
+          userId: ctx.userId,
+          timerId,
+          description,
+          startTime: a,
+          endTime: b,
+          duration: Math.floor((b.getTime() - a.getTime()) / 1000),
+          isRunning: false,
+          projectId,
+          hourlyRateSnapshot: rate,
+          createdVia: "import",
+          isAiGenerated: true,
+          stopReason: "import",
+        })),
+      });
+      await recordAudit(tx, ctx, {
+        entityType: "timer",
+        entityId: timerId,
+        action: existing ? "reimport" : "import",
+        changes: {
+          segments: { from: null, to: segments.length },
+          trackedSeconds: { from: null, to: trackedSeconds },
+        },
+      });
+      return timerId;
+    },
+    { timeout: 30_000 }
+  );
+  return result;
+}
+
 /**
  * Imports past agent sessions (e.g. parsed from Claude Code transcripts) as
  * stopped timers with closed segments. Idempotent per sessionKey: sessions
- * that were tracked live are never touched; earlier imports are replaced.
+ * that were tracked live or edited are never touched; untouched earlier
+ * imports are replaced. A bad session is reported and doesn't stop the rest.
  */
 export async function importAgentSessions(
   ctx: ServiceContext,
@@ -116,6 +300,8 @@ export async function importAgentSessions(
         const end = new Date(b);
         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new Error("invalid timestamp");
         if (end.getTime() > now.getTime() + FUTURE_SKEW_MS) throw new Error("timestamp in the future");
+        if (start.getTime() < EARLIEST_SPAN) throw new Error("timestamp before 2020");
+        if (end.getTime() - start.getTime() > MAX_SPAN_MS) throw new Error("a span is longer than 24 hours");
         return [start, end] as Span;
       });
     } catch (e) {
@@ -129,114 +315,20 @@ export async function importAgentSessions(
       continue;
     }
 
-    const existing = await prisma.timer.findUnique({
-      where: { userId_sessionKey: { userId: ctx.userId, sessionKey } },
-      select: { id: true, createdVia: true },
-    });
-    if (existing && existing.createdVia !== "import") {
-      results.push({ ...base, sessionKey, status: "skipped_live", timerId: existing.id, reason: "session was tracked live" });
-      continue;
-    }
-
-    const gitRemote = normalizeGitRemote(s.gitRemote);
-    const cwd = s.cwd?.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 1000) || null;
-    let project: { id: string; name: string } | null = null;
-    let projectId: string | null = null;
-    if (s.projectId) {
-      const ref = await resolveProjectAndTask(prisma, ctx.userId, { projectId: s.projectId });
-      projectId = ref.projectId ?? null;
-      const p = projectId
-        ? await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true } })
-        : null;
-      project = p;
-    } else {
-      const match = await resolveProjectForRepo(prisma, ctx.userId, { gitRemote, cwd });
-      if (match) {
-        projectId = match.project.id;
-        project = { id: match.project.id, name: match.project.name };
+    try {
+      results.push(await importOne(ctx, s, sessionKey, segments, Boolean(opts.dryRun)));
+    } catch (e) {
+      if (e instanceof SkipSession) {
+        results.push({ ...base, sessionKey, ...e.skip });
+      } else if (isUniqueViolation(e)) {
+        // A live SessionStart (or a parallel import) created it first.
+        results.push({ ...base, sessionKey, status: "skipped_live", reason: "session is being tracked live" });
+      } else if (typeof (e as AppError).statusCode === "number" && (e as AppError).statusCode! < 500) {
+        results.push({ ...base, sessionKey, status: "invalid", reason: (e as Error).message });
+      } else {
+        throw e;
       }
     }
-
-    const startedAt = segments[0][0];
-    const endedAt = segments[segments.length - 1][1];
-    const trackedSeconds = sumSeconds(segments);
-    const result: ImportSessionResult = {
-      sessionKey,
-      status: existing ? "replaced" : "imported",
-      project,
-      segments: segments.length,
-      trackedSeconds,
-      startedAt,
-      endedAt,
-    };
-
-    if (!opts.dryRun) {
-      const agent = s.agent?.trim().toLowerCase().slice(0, 40) || "claude_code";
-      const repo = repoLabel({ gitRemote, cwd });
-      const description =
-        cleanText(s.title, "title", 500) ??
-        `${agentLabel(agent)}${repo ? ` · ${repo}` : ""}${s.gitBranch ? ` (${s.gitBranch.slice(0, 100)})` : ""}`;
-      result.timerId = await prisma.$transaction(
-        async (tx) => {
-          const rate = await getHourlyRate(tx, ctx.userId, projectId, null);
-          const data = {
-            status: "stopped",
-            description,
-            agent,
-            createdVia: "import",
-            isAiGenerated: true,
-            cwd,
-            gitRemote,
-            gitBranch: s.gitBranch?.slice(0, 255) ?? null,
-            projectId,
-            taskId: null,
-            lastActivityAt: endedAt,
-            startedAt,
-            stoppedAt: endedAt,
-            usage: (s.usage ?? undefined) as Prisma.InputJsonValue | undefined,
-          };
-          let timerId: string;
-          if (existing) {
-            await tx.timeEntry.deleteMany({ where: { timerId: existing.id } });
-            await tx.timer.update({ where: { id: existing.id }, data });
-            timerId = existing.id;
-          } else {
-            const created = await tx.timer.create({
-              data: { ...data, userId: ctx.userId, sessionKey },
-            });
-            timerId = created.id;
-          }
-          await tx.timeEntry.createMany({
-            data: segments.map(([a, b]) => ({
-              userId: ctx.userId,
-              timerId,
-              description,
-              startTime: a,
-              endTime: b,
-              duration: Math.floor((b.getTime() - a.getTime()) / 1000),
-              isRunning: false,
-              projectId,
-              hourlyRateSnapshot: rate,
-              createdVia: "import",
-              isAiGenerated: true,
-              stopReason: "import",
-            })),
-          });
-          await recordAudit(tx, ctx, {
-            entityType: "timer",
-            entityId: timerId,
-            action: existing ? "reimport" : "import",
-            changes: {
-              segments: { from: null, to: segments.length },
-              trackedSeconds: { from: null, to: trackedSeconds },
-            },
-          });
-          return timerId;
-        },
-        { timeout: 30_000 }
-      );
-    }
-    results.push(result);
   }
 
   const counted = results.filter((r) => r.status === "imported" || r.status === "replaced");

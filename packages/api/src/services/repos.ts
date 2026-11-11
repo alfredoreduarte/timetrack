@@ -7,6 +7,7 @@ import { recordAudit } from "./audit";
 type Db = TxClient | typeof prisma;
 
 export const MAX_REPO_PATTERNS = 50;
+const REPO_LOCK_SPACE = 7;
 
 /**
  * Normalizes one repo pattern. Absolute paths (`/Users/me/code/acme`) become
@@ -84,11 +85,37 @@ export async function resolveProjectForRepo(
   return null;
 }
 
+// Folders that hold many unrelated repos; learning one would send every
+// session beneath it to the same client.
+const CONTAINER_DIRS = new Set([
+  "code", "dev", "src", "source", "projects", "work", "workspace", "workspaces", "repos", "git",
+  "github", "gitlab", "documents", "desktop", "downloads", "sites", "clients", "tmp", "temp",
+]);
+
+/**
+ * Whether a working directory is specific enough to learn as a path
+ * prefix: never a home directory, a top-level folder, a temp directory or a
+ * generic container like ~/dev.
+ */
+export function isLearnablePath(path: string): boolean {
+  const parts = path.split("/").filter(Boolean);
+  if (parts.length === 0) return false;
+  if (["tmp", "private", "var", "proc", "dev", "sys"].includes(parts[0].toLowerCase())) return false;
+  const homeDepth = parts[0] === "Users" || parts[0] === "home" ? 2 : parts[0] === "root" ? 1 : 0;
+  const below = parts.slice(homeDepth);
+  if (below.length === 0) return false;
+  if (below.length === 1 && CONTAINER_DIRS.has(below[0].toLowerCase())) return false;
+  // Outside a home directory a single segment (/workspace, /srv) is too broad.
+  if (homeDepth === 0 && below.length < 2) return false;
+  return true;
+}
+
 /**
  * Remembers that a repository belongs to a project, so future agent sessions
- * there are assigned automatically. Only claims repos no other project of
- * the user claims. Prefers the git remote (stable across worktrees and
- * machines); falls back to the working directory.
+ * there are assigned automatically. Learns the git remote (stable across
+ * worktrees and machines); a folder only when there is no remote and it is
+ * specific (see isLearnablePath). Never claims a repo that already resolves
+ * to a project — reassigning one session isn't a request to move them all.
  */
 export async function learnRepoMapping(
   db: Db,
@@ -96,15 +123,18 @@ export async function learnRepoMapping(
   projectId: string,
   repo: { gitRemote?: string | null; cwd?: string | null }
 ): Promise<string | null> {
-  const pattern =
-    normalizeGitRemote(repo.gitRemote) ?? (repo.cwd ? normalizeRepoPattern(repo.cwd) : null);
+  const remote = normalizeGitRemote(repo.gitRemote);
+  const folder = !remote && repo.cwd ? normalizeRepoPattern(repo.cwd) : null;
+  const pattern = remote ?? (folder && isPathPattern(folder) && isLearnablePath(folder) ? folder : null);
   if (!pattern) return null;
 
-  const claimed = await db.project.findFirst({
-    where: { userId: ctx.userId, repoPatterns: { has: pattern } },
-    select: { id: true },
-  });
-  if (claimed) return null;
+  // Serializes concurrent learns for this user (held until the caller's
+  // transaction ends), so two assignments can't both claim the repo. The
+  // two-key form keeps it apart from the running-timer cap's lock.
+  await db.$executeRaw`SELECT pg_advisory_xact_lock(${REPO_LOCK_SPACE}::int, hashtext(${ctx.userId}))`;
+  if (await resolveProjectForRepo(db, ctx.userId, { gitRemote: remote, cwd: repo.cwd })) {
+    return null;
+  }
 
   const project = await db.project.findFirst({
     where: { id: projectId, userId: ctx.userId },
@@ -112,10 +142,10 @@ export async function learnRepoMapping(
   });
   if (!project || project.repoPatterns.length >= MAX_REPO_PATTERNS) return null;
 
-  await db.project.update({
-    where: { id: project.id },
-    data: { repoPatterns: { push: pattern } },
-  });
+  const added = await db.$executeRaw`
+    UPDATE projects SET repo_patterns = array_append(repo_patterns, ${pattern}), "updatedAt" = now()
+    WHERE id = ${project.id} AND NOT (${pattern} = ANY(repo_patterns))`;
+  if (added === 0) return null;
   await recordAudit(db, ctx, {
     entityType: "project",
     entityId: project.id,

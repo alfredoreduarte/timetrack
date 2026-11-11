@@ -23,6 +23,9 @@ export async function resolveProjectAndTask(
   input: { projectId?: string | null; taskId?: string | null }
 ): Promise<{ projectId?: string | null; taskId?: string | null }> {
   let { projectId, taskId } = input;
+  // "" is neither an id nor "no project"; treat it as a client mistake.
+  if (projectId === "") throw createError("projectId cannot be empty; omit it or send null", 400);
+  if (taskId === "") throw createError("taskId cannot be empty; omit it or send null", 400);
 
   let taskProjectId: string | null = null;
   if (taskId) {
