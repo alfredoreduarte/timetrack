@@ -23,15 +23,15 @@ export const MAX_IDLE_TIMEOUT_SECONDS = 24 * 60 * 60;
 
 export type TimerStatus = "running" | "paused" | "stopped";
 /**
- * Why a timer is paused. `manual` is a human's decision and sticks until
- * they resume; `idle` (the sweeper) and `agent` (the agent itself, e.g.
- * waiting on the human) resume on the session's next activity.
+ * Why a timer is paused. `manual` (a person, or an agent asked to by one)
+ * sticks until someone resumes it; `idle` (the sweeper) resumes on the
+ * session's next activity.
  */
-export type PauseReason = "manual" | "idle" | "agent";
+export type PauseReason = "manual" | "idle";
 
-/** Paused by the system or the agent rather than a person: activity may resume it. */
+/** Paused by the idle sweeper rather than on request: activity may resume it. */
 export const isAutoPaused = (t: { status: string; pauseReason: string | null }) =>
-  t.status === "paused" && (t.pauseReason === "idle" || t.pauseReason === "agent");
+  t.status === "paused" && t.pauseReason === "idle";
 
 export const entrySelect = {
   id: true,
@@ -652,7 +652,7 @@ export async function stopTimer(
 
 /**
  * Records agent activity. Running timers get `lastActivityAt` bumped
- * (debounced); timers the idle sweeper or the agent paused resume. Manually paused and
+ * (debounced); timers the idle sweeper paused resume. Manually paused and
  * stopped timers are left alone — a stray heartbeat must not override a
  * human's decision to stop billing.
  */

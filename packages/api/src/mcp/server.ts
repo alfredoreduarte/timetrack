@@ -41,7 +41,7 @@ Model: a TIMER is one unit of work (usually one agent session). It can be paused
 Guidance:
 - If your context says "TimeTrack is tracking this session (timer X)", hooks created that timer and keep it accurate: they pause it when the session goes quiet and resume it when you continue. Do NOT start another, and don't pause or stop it yourself unless the user asks. Use that timerId with add_note and update_timer.
 - Otherwise call start_timer when you begin billable work and pass a stable sessionKey (any id unique to your session) so retries never create duplicates. Call pause_timer while you wait on the human and resume_timer when work continues (start_timer with the same sessionKey also resumes it); stop_timer when the work is done.
-- Assign work to the right client project (list_projects). If the repository has no project, ask the user or use update_timer once they tell you — TimeTrack remembers the repo.
+- Assign work to the right client project (list_projects). If the repository has no project, ask the user or use update_timer once they tell you — TimeTrack remembers a repo by its git remote.
 - Log what you accomplished with add_note; these notes become timesheet lines the client reads, so write them for a client.
 - Times are ISO 8601. Never invent times in the future.`;
 
@@ -78,6 +78,11 @@ const iso = z
   .refine((v) => ISO_RE.test(v) && !Number.isNaN(Date.parse(v)), "must be an ISO 8601 date or timestamp")
   .describe("ISO 8601 timestamp, e.g. 2026-03-02T15:04:05Z");
 const id = (what: string) => z.string().min(1).describe(`${what} id`);
+/** Optional timestamp; "" (agents' "none") means omitted, i.e. now. */
+const optIso = (description?: string) => {
+  const schema = z.preprocess((v) => (v === "" ? undefined : v), iso.optional());
+  return description ? schema.describe(description) : schema;
+};
 /** Optional id; agents often send "" for "none", which means omitted. */
 const optId = (what: string) =>
   z
@@ -291,7 +296,7 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
         cwd: z.string().optional(),
         gitRemote: z.string().optional(),
         gitBranch: z.string().optional(),
-        startedAt: iso.optional().describe("Only to backdate (max 24h ago)"),
+        startedAt: optIso("Only to backdate (max 24h ago)"),
         idleTimeoutSeconds: z
           .number()
           .int()
@@ -317,7 +322,7 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
         description,
         inputSchema: {
           timerId: id("Timer"),
-          at: iso.optional().describe("Backdate the action (never in the future)"),
+          at: optIso("Backdate the action (never in the future)"),
         },
       },
       ({ timerId, at }) =>
@@ -329,8 +334,8 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
 
   timerAction(
     "pause_timer",
-    "Pause a timer you started while you wait on the human; time while paused is not billed. Your next activity on the session (resume_timer, heartbeat_timer, start_timer with the same sessionKey or a hook event) resumes it. Don't pause hook-tracked timers — hooks do it.",
-    (t, at) => pauseTimer(ctx, t, { at, reason: "agent" })
+    "Pause a timer; time while paused is not billed. The pause holds until resume_timer (or start_timer with the same sessionKey, or the user) resumes it — hooks and heartbeats never undo it. On hook-tracked sessions, pause only when the user asks: hooks already pause quiet sessions.",
+    (t, at) => pauseTimer(ctx, t, { at, reason: "manual" })
   );
   timerAction("resume_timer", "Resume a paused or stopped timer as a new segment.", (t, at) =>
     resumeTimer(ctx, t, { at })
@@ -340,7 +345,7 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
     "heartbeat_timer",
     {
       description:
-        "Report that you're still working on a timer. Only needed for timers with idleTimeoutSeconds during long stretches without other TimeTrack calls; it also resumes a timer you or the idle detector paused (never one a person paused).",
+        "Report that you're still working on a timer. Only needed for timers with idleTimeoutSeconds during long stretches without other TimeTrack calls; it also resumes a timer the idle detector paused (never one paused on request).",
       inputSchema: { timerId: id("Timer") },
       annotations: { idempotentHint: true },
     },
@@ -356,7 +361,7 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
     {
       description:
         "Stop a timer when the work is done. If timerId is omitted and exactly one timer is running, that one is stopped; otherwise you get the list to choose from.",
-      inputSchema: { timerId: optId("Timer"), at: iso.optional() },
+      inputSchema: { timerId: optId("Timer"), at: optIso() },
     },
     ({ timerId, at }) =>
       run(async () => {
@@ -441,8 +446,8 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
     {
       description: "List time entries (segments), most recent first. Filter by date range, project, timer or AI flag.",
       inputSchema: {
-        startDate: iso.optional(),
-        endDate: iso.optional(),
+        startDate: optIso(),
+        endDate: optIso(),
         projectId: optId("Project"),
         timerId: optId("Timer"),
         isAiGenerated: z.boolean().optional(),
@@ -503,8 +508,8 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
       inputSchema: {
         entryId: id("Time entry"),
         description: z.string().nullable().optional(),
-        startTime: iso.optional(),
-        endTime: iso.optional(),
+        startTime: optIso(),
+        endTime: optIso(),
         projectId: clearableId("Project"),
         taskId: clearableId("Task"),
         isAiGenerated: z.boolean().optional(),
