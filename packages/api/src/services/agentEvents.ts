@@ -215,7 +215,7 @@ export async function handleAgentEvent(
     }
 
     // Activity on a known session, including SessionStart after a compact
-    // or /clear: it resumes only what was paused automatically.
+    // (same session): it resumes only what was paused automatically.
     if (existing.status === "stopped") {
       const context =
         kind === "session_start"

@@ -68,10 +68,18 @@ describe("POST /agent-sessions/import", () => {
   it("re-imports idempotently and never touches live-tracked sessions", async () => {
     const { user, auth } = await createUser();
     await api().post("/agent-sessions/import").set(auth).send({ sessions: [session("s1")] });
-    const longer = session("s1", { spans: [[iso(0), iso(60)]] });
+    const longer = session("s1", { spans: [[iso(0), iso(160)]] }); // covers everything stored, and more
     const again = await api().post("/agent-sessions/import").set(auth).send({ sessions: [longer] });
     expect(again.body.sessions[0].status).toBe("replaced");
     expect(await prisma.timer.count()).toBe(1);
+    expect(await prisma.timeEntry.count()).toBe(1);
+
+    // A re-import that covers less (pruned transcripts, narrower window) is refused.
+    const shorter = await api()
+      .post("/agent-sessions/import")
+      .set(auth)
+      .send({ sessions: [session("s1", { spans: [[iso(100), iso(160)]] })] });
+    expect(shorter.body.sessions[0].status).toBe("skipped_partial");
     expect(await prisma.timeEntry.count()).toBe(1);
 
     await api().post("/timers").set(auth).send({ sessionKey: "live-1" });
@@ -98,5 +106,11 @@ describe("POST /agent-sessions/import", () => {
     const res = await api().post("/agent-sessions/import").set(auth).send({ sessions: [session("big", { spans })] });
     expect(res.status).toBe(200);
     expect(res.body.sessions[0].status).toBe("imported");
+  });
+});
+
+describe("request paths", () => {
+  it("collapses a doubled leading slash from client base URLs", async () => {
+    expect((await api().get("//health")).status).toBe(200);
   });
 });

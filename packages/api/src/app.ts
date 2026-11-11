@@ -303,6 +303,13 @@ export function createApp() {
   app.post("/billing/webhook", express.raw({ type: "application/json", limit: "1mb" }), stripeWebhook);
 
   // Request size limiting and upload protection
+  // "https://api.example.com/" + "/mcp" from a client config: collapse the
+  // doubled slash instead of answering 404.
+  app.use((req, _res, next) => {
+    if (req.url.startsWith("//")) req.url = req.url.replace(/^\/+/, "/");
+    next();
+  });
+
   const requestSizeLimiter = (
     req: express.Request,
     res: express.Response,
