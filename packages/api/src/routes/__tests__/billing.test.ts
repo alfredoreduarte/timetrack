@@ -358,6 +358,40 @@ describe("S4 review fixes", () => {
     expect(await prisma.timeEntry.count({ where: { userId: user.id } })).toBe(2);
   });
 
+  it("a Free re-import adds new recent work when nothing older is stored", async () => {
+    enableBilling();
+    const { user, auth } = await freeUser();
+    // Transcripts replay identical timestamps; build them once.
+    const old = [at(15), at(14.9)];
+    const mid = [at(3), at(2.9)];
+    const recent = [at(0.1), at(0.05)];
+    const first = await api()
+      .post("/agent-sessions/import")
+      .set(auth)
+      .send({ sessions: [{ sessionKey: "resumed", spans: [old, mid] }] });
+    expect(first.body.sessions[0]).toMatchObject({ status: "imported", segments: 1 });
+    const again = await api()
+      .post("/agent-sessions/import")
+      .set(auth)
+      .send({ sessions: [{ sessionKey: "resumed", spans: [old, mid, recent] }] });
+    expect(again.body.sessions[0].status).toBe("replaced");
+    expect(await prisma.timeEntry.count({ where: { userId: user.id } })).toBe(2);
+  });
+
+  it("checkout starts a pending trial first, so going straight to checkout keeps the 14 days", async () => {
+    enableBilling();
+    const { auth } = await createUser({ isSubscriptionExempt: false, trialEndsAt: null });
+    fake.checkout.sessions.create.mockResolvedValue({ url: "https://checkout.stripe.test/s/3" });
+    expect((await api().post("/billing/checkout").set(auth).send({ interval: "month" })).status).toBe(200);
+    const [params, options] = fake.checkout.sessions.create.mock.calls[0] as [
+      { subscription_data: { trial_end?: number } },
+      { idempotencyKey: string },
+    ];
+    const days = (params.subscription_data.trial_end! * 1000 - Date.now()) / day;
+    expect(days).toBeGreaterThan(13.9);
+    expect(options.idempotencyKey).toContain(String(params.subscription_data.trial_end));
+  });
+
   it("legacy reports and exports honor the Free history window", async () => {
     enableBilling();
     const { user, auth } = await freeUser();

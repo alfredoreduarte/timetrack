@@ -66,7 +66,14 @@ const priceFor = (interval: BillingInterval) =>
 /** Hosted Stripe Checkout for Pro. Returns the URL to redirect to. */
 export async function createCheckoutSession(ctx: ServiceContext, interval: BillingInterval) {
   if (!billingEnabled()) throw createError("Billing is not enabled on this server", 503);
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId }, select: userBillingSelect });
+  // Start a pending trial first: going straight to checkout must not cost
+  // an account the 14 days it hasn't used yet.
+  const user = await startPendingTrial(
+    prisma,
+    ctx.userId,
+    await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId }, select: userBillingSelect }),
+    ctx.now()
+  );
   if (user.isSubscriptionExempt) throw createError("Your account already has Pro for free.", 400);
   const alreadySubscribed = () =>
     createError("You already have a subscription. Manage it from the billing portal.", 400);
@@ -119,7 +126,9 @@ export async function createCheckoutSession(ctx: ServiceContext, interval: Billi
     cancel_url: `${appUrl()}/billing?checkout=canceled`,
   }, {
     // Double clicks and parallel tabs within the same minute get the same session.
-    idempotencyKey: `checkout:${user.id}:${interval}:${Math.floor(now / 60_000)}`,
+    // The trial end is part of the key: Stripe rejects a reused key whose
+    // parameters changed.
+    idempotencyKey: `checkout:${user.id}:${interval}:${trialEnd ?? "now"}:${Math.floor(now / 60_000)}`,
   });
   if (!session.url) throw createError("Stripe did not return a checkout URL", 502);
   return { url: session.url };
