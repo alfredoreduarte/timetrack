@@ -23,6 +23,17 @@ router.use(
 );
 
 const str = z.string().max(2000).nullable().optional();
+/**
+ * Repo metadata is best effort: a value too long to store (a 300-char
+ * branch, say) is dropped rather than failing the event, so it can never
+ * stop a session from being tracked.
+ */
+const meta = (max: number) =>
+  z
+    .string()
+    .nullable()
+    .optional()
+    .transform((v) => (typeof v === "string" && v.length > max ? null : v));
 
 // Accepts the generic shape and the native Claude Code / Cursor hook field
 // names. Everything else in the body (prompts, tool input/output, messages)
@@ -35,12 +46,12 @@ const eventSchema = z.object({
   session_id: str,
   conversation_id: str,
   agent: str,
-  cwd: str,
+  cwd: meta(1000),
   workspace_roots: z.array(z.string().max(2000)).max(20).optional(),
-  gitRemote: str,
-  git_remote: str,
-  gitBranch: str,
-  git_branch: str,
+  gitRemote: meta(500),
+  git_remote: meta(500),
+  gitBranch: meta(255),
+  git_branch: meta(255),
   source: str,
   reason: str,
 });

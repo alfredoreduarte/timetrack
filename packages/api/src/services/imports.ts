@@ -172,17 +172,21 @@ async function importOne(
     });
     if (olderStored > 0) throw new SkipSession(skipIfExisting);
   }
-  // A re-import may grow a session, never shrink it: transcripts get pruned
-  // and windows get narrower, and what was imported before is still true.
-  if (
-    existing &&
-    (segments[0][0].getTime() > existing.startedAt.getTime() + 1000 ||
-      (existing.stoppedAt && segments[segments.length - 1][1].getTime() < existing.stoppedAt.getTime() - 1000))
-  ) {
-    throw new SkipSession({
-      status: "skipped_partial",
-      reason: "already imported with more of this session than this import has",
-    });
+  // A re-import may grow a session, never shrink it: transcripts get pruned,
+  // windows get narrower, subagent files age out — and what was imported
+  // before is still true. Compare the span and the time covered.
+  if (existing) {
+    const stored = await prisma.timeEntry.aggregate({ where: { timerId: existing.id }, _sum: { duration: true } });
+    if (
+      segments[0][0].getTime() > existing.startedAt.getTime() + 1000 ||
+      (existing.stoppedAt && segments[segments.length - 1][1].getTime() < existing.stoppedAt.getTime() - 1000) ||
+      sumSeconds(segments) < (stored._sum.duration ?? 0)
+    ) {
+      throw new SkipSession({
+        status: "skipped_partial",
+        reason: "already imported with more of this session than this import has",
+      });
+    }
   }
 
   const gitRemote = normalizeGitRemote(s.gitRemote);
