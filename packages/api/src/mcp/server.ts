@@ -409,14 +409,14 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
     "update_timer",
     {
       description:
-        "Change a timer's project, task, description or AI flag. Applies to all of its segments (rates are recomputed). Assigning a project to a timer from an unlinked repository links that repository to the project for future sessions (set rememberRepo=false to skip).",
+        "Change a timer's project, task, description or AI flag. Applies to all of its segments (rates are recomputed). Assigning a project also remembers the timer's git remote for future sessions (they go to this project from then on, even where a folder mapping picked another), unless another active project already claims that exact remote. Folders are never remembered. Pass rememberRepo=false for a one-off reassignment.",
       inputSchema: {
         timerId: id("Timer"),
         description: z.string().nullable().optional(),
         projectId: clearableId("Project"),
         taskId: clearableId("Task"),
         isAiGenerated: z.boolean().optional(),
-        rememberRepo: z.boolean().optional(),
+        rememberRepo: z.boolean().optional().describe("false for a one-off reassignment that shouldn't change future sessions"),
       },
     },
     ({ timerId, ...rest }) =>
