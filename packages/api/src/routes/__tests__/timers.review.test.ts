@@ -1,5 +1,6 @@
 // Regression tests for the S1 adversarial review findings (PR #163).
 import { prisma } from "../../utils/database";
+import * as realtime from "../../realtime";
 import { startTimer, pauseTimer, sweepIdleTimers, touchTimer, updateTimer } from "../../services/timers";
 import { MAX_RUNNING_ENTRIES } from "../../services/limits";
 import {
@@ -269,5 +270,104 @@ describe("S1 review round 2 fixes", () => {
     const res = await api().post("/time-entries/start").set(auth).send({ description: "a".repeat(1999) + "\u{1F600}tail" });
     expect(res.status).toBe(201);
     expect(res.body.timeEntry.description).toBe("a".repeat(1999));
+  });
+});
+
+describe("S1 review round 3 fixes", () => {
+  it("a timer moved onto a project while it's being deleted pauses with it", async () => {
+    const { user, auth } = await createUser();
+    const doomed = await createProject(user.id, { name: "Doomed" });
+    const other = await createProject(user.id, { name: "Other" });
+    const t = await api().post("/timers").set(auth).send({ projectId: other.id, startedAt: ago(30) });
+    const timerId: string = t.body.timer.id;
+
+    // Hold a reassignment open (timer lock taken, rows moved, not committed)
+    // while the delete starts, then let it commit mid-delete.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let moved!: () => void;
+    const movedP = new Promise<void>((r) => (moved = r));
+    const mover = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM timers WHERE id = ${timerId} FOR UPDATE`;
+        await tx.timer.update({ where: { id: timerId }, data: { projectId: doomed.id } });
+        await tx.timeEntry.updateMany({ where: { timerId }, data: { projectId: doomed.id } });
+        moved();
+        await gate;
+      },
+      { timeout: 15_000 }
+    );
+    await movedP;
+    const del = api().delete(`/projects/${doomed.id}`).set(auth).then((r) => r);
+    await new Promise((r) => setTimeout(r, 300));
+    release();
+    await mover;
+    expect((await del).status).toBe(200);
+
+    const timer = await prisma.timer.findUniqueOrThrow({ where: { id: timerId }, include: { entries: true } });
+    expect(timer).toMatchObject({ status: "paused", projectId: null });
+    expect(timer.entries).toHaveLength(0);
+    await invariants(user.id);
+  });
+
+  it("deleting a project and one of its tasks at once never deadlocks", async () => {
+    const { user, auth } = await createUser();
+    for (let i = 0; i < 15; i++) {
+      const p = await createProject(user.id);
+      const task = await createTask(user.id, p.id);
+      for (let j = 0; j < 3; j++) {
+        const r = await api()
+          .post("/time-entries")
+          .set(auth)
+          .send({ startTime: ago(300 - j * 20), endTime: ago(290 - j * 20), projectId: p.id, taskId: task.id });
+        expect(r.status).toBe(201);
+      }
+      const [delProject, delTask] = await Promise.all([
+        api().delete(`/projects/${p.id}`).set(auth),
+        api().delete(`/tasks/${task.id}`).set(auth),
+      ]);
+      expect(delProject.status).toBe(200);
+      expect([200, 404]).toContain(delTask.status);
+      expect(await prisma.timeEntry.count({ where: { userId: user.id } })).toBe(0);
+    }
+  });
+
+  it("two deletes of the same project: one succeeds, the other is a 404", async () => {
+    const { user, auth } = await createUser();
+    const p = await createProject(user.id);
+    await api().post("/timers").set(auth).send({ projectId: p.id, startedAt: ago(5) });
+    const statuses = (
+      await Promise.all([api().delete(`/projects/${p.id}`).set(auth), api().delete(`/projects/${p.id}`).set(auth)])
+    )
+      .map((r) => r.status)
+      .sort();
+    expect(statuses).toEqual([200, 404]);
+    await invariants(user.id);
+  });
+
+  it("deletes push the full timer to clients", async () => {
+    const { user, auth } = await createUser();
+    const p = await createProject(user.id);
+    const task = await createTask(user.id, p.id);
+    const onTask = await api().post("/timers").set(auth).send({ projectId: p.id, taskId: task.id, startedAt: ago(5) });
+    const spy = jest.spyOn(realtime, "emitToUser");
+    try {
+      expect((await api().delete(`/tasks/${task.id}`).set(auth)).status).toBe(200);
+      const updated = spy.mock.calls.find(([, event]) => event === "timer-updated");
+      expect(updated?.[2]).toMatchObject({ id: onTask.body.timer.id, taskId: null, status: "running" });
+
+      spy.mockClear();
+      expect((await api().delete(`/projects/${p.id}`).set(auth)).status).toBe(200);
+      const paused = spy.mock.calls.find(([, event]) => event === "timer-paused");
+      expect(paused?.[2]).toMatchObject({
+        id: onTask.body.timer.id,
+        status: "paused",
+        projectId: null,
+        currentEntry: null,
+        trackedSeconds: expect.any(Number),
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

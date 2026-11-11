@@ -86,6 +86,7 @@ const EditTimeEntryModal: React.FC<EditTimeEntryModalProps> = ({
           start: initialStart,
           end: initialEnd,
           hours: entry.duration ? (entry.duration / 3600).toFixed(2) : "",
+          durationSeconds: entry.duration,
         }
       );
 

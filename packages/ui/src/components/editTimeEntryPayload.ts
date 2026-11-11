@@ -19,6 +19,8 @@ export interface InitialTimes {
   end: { date: string; time: string };
   /** The entry's duration as shown in the hours field when the modal opened. */
   hours: string;
+  /** The entry's exact duration, so moving the start keeps it to the second. */
+  durationSeconds?: number | null;
 }
 
 export interface EntryUpdatePayload {
@@ -43,10 +45,17 @@ export function buildEntryUpdate(form: EditFormState, initial: InitialTimes): En
   }
 
   if (form.useHours) {
-    // Hours mode keeps the duration: resend it whenever the start moves too,
-    // otherwise the server keeps the old end and the duration silently changes.
-    if (form.hours && (form.hours !== initial.hours || startEdited)) {
+    if (form.hours && form.hours !== initial.hours) {
       payload.hours = parseFloat(form.hours);
+    } else if (form.hours && startEdited && payload.startTime) {
+      // Hours mode keeps the duration when only the start moves; otherwise the
+      // server keeps the old end and the duration silently changes. Send the
+      // exact end, since the hours field is rounded to hundredths.
+      if (initial.durationSeconds) {
+        payload.endTime = new Date(Date.parse(payload.startTime) + initial.durationSeconds * 1000).toISOString();
+      } else {
+        payload.hours = parseFloat(form.hours);
+      }
     }
   } else {
     const endEdited = form.endDate !== initial.end.date || form.endTime !== initial.end.time;
