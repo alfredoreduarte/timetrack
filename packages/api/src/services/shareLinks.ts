@@ -7,6 +7,9 @@ import { cleanText } from "./text";
 import { buildTimesheet, redactTimesheet, resolveTimezone, Timesheet, MAX_TIMESHEET_DAYS } from "./timesheets";
 
 export const SHARE_TOKEN_PREFIX = "ts_";
+
+/** Shape check only: a token failing it can't belong to any link. */
+export const isPlausibleShareToken = (token: string) => token.startsWith(SHARE_TOKEN_PREFIX) && token.length <= 100;
 export const MAX_SHARE_LINKS = 100;
 
 const hashToken = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
@@ -138,7 +141,7 @@ const inFlight = new Map<string, Promise<Timesheet>>();
  * look the same (404).
  */
 export async function getPublicTimesheet(token: string, now = new Date()): Promise<PublicTimesheet> {
-  if (!token.startsWith(SHARE_TOKEN_PREFIX) || token.length > 100) throw createError("Not found", 404);
+  if (!isPlausibleShareToken(token)) throw createError("Not found", 404);
   const link = await prisma.shareLink.findUnique({ where: { tokenHash: hashToken(token) } });
   if (!link || link.revokedAt || (link.expiresAt && link.expiresAt <= now)) {
     throw createError("Not found", 404);
