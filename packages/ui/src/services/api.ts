@@ -89,8 +89,13 @@ class APIClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
-        // Handle rate limiting (429)
-        if (error.response?.status === 429) {
+        // Handle rate limiting (429). Only the rate limiter's 429 (it sends
+        // Retry-After and a retryAfter field) means "back off"; other 429s,
+        // like the running-timer cap, are ordinary errors with a message.
+        const isRateLimit =
+          error.response?.status === 429 &&
+          (error.response.headers?.["retry-after"] != null || error.response.data?.retryAfter != null);
+        if (isRateLimit) {
           const retryAfter = error.response.headers?.["retry-after"];
           // Use Retry-After header if present, otherwise default to 60s
           const parsed = retryAfter ? Number(retryAfter) : NaN;
@@ -373,7 +378,9 @@ class APIClient {
       projectId?: string;
       taskId?: string;
     }) => {
-      return this.request<TimeEntry>("POST", "/time-entries", entryData);
+      // The API answers { message, timeEntry }.
+      const response = await this.request<{ timeEntry: TimeEntry }>("POST", "/time-entries", entryData);
+      return response.timeEntry;
     },
 
     updateTimeEntry: async (
@@ -387,7 +394,8 @@ class APIClient {
         taskId?: string | null;
       }
     ) => {
-      return this.request<TimeEntry>("PUT", `/time-entries/${id}`, entryData);
+      const response = await this.request<{ timeEntry: TimeEntry }>("PUT", `/time-entries/${id}`, entryData);
+      return response.timeEntry;
     },
 
     deleteTimeEntry: async (id: string) => {

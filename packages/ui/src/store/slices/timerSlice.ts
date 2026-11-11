@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { timeEntriesAPI } from "../../services/api";
 import { TimeEntry } from "./timeEntriesSlice";
+import { fetchActiveTimers } from "./timersSlice";
 
 interface TimerState {
   // Source of truth: all currently running timers, most recently started first.
@@ -62,10 +63,12 @@ export const startTimer = createAsyncThunk(
       taskId?: string;
       description?: string;
     },
-    { rejectWithValue }
+    { rejectWithValue, dispatch }
   ) => {
     try {
       const response = await timeEntriesAPI.startTimer(data);
+      // Show it on the timer board right away, socket or not.
+      dispatch(fetchActiveTimers());
       return response as TimeEntry;
     } catch (error: any) {
       return rejectWithValue(
