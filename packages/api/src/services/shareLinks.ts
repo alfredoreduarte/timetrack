@@ -149,6 +149,10 @@ export async function getPublicTimesheet(token: string, now = new Date()): Promi
   if (!link || link.revokedAt || (link.expiresAt && link.expiresAt <= now)) {
     throw createError("Not found", 404);
   }
+  // Links pause while the owner's plan doesn't include them (e.g. after a
+  // trial ends) and work again after an upgrade.
+  const { limits } = await getEntitlements(link.userId, prisma, now);
+  if (!limits.shareLinks) throw createError("Not found", 404);
   if (link.apiKeyId) {
     const key = await prisma.apiKey.findUnique({
       where: { id: link.apiKeyId },

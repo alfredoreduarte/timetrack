@@ -479,6 +479,9 @@ export function redactTimesheet(t: Timesheet, opts: { showAmounts: boolean; show
   return {
     generatedAt: t.generatedAt,
     range: { ...t.range },
+    // Public links stop working when the owner's plan lacks them, so a
+    // client never sees a sheet cut short by the owner's plan.
+    limitedByPlan: null,
     currency: t.currency,
     user: { name: t.user.name },
     pricingAsOf: t.pricingAsOf,
