@@ -617,7 +617,7 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
         timezone: z.string().optional(),
         showAmounts: z.boolean().optional().describe("Default true; false shows hours only"),
         showNotes: z.boolean().optional(),
-        expiresAt: iso.optional(),
+        expiresAt: iso.optional().describe("YYYY-MM-DD (end of that local day) or timestamp with a zone"),
       },
     },
     (args) =>
@@ -628,6 +628,8 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
           timezone: tz,
           startDate: args.startDate ? parseRangeDate(args.startDate, tz, "start").toISOString() : undefined,
           endDate: args.endDate ? parseRangeDate(args.endDate, tz, "end").toISOString() : undefined,
+          // A bare expiry date means the end of that day in the link's zone.
+          expiresAt: args.expiresAt ? parseRangeDate(args.expiresAt, tz, "end").toISOString() : undefined,
         });
         return { url: r.url, shareLink: r.shareLink };
       })

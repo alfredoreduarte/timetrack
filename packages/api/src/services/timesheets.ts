@@ -138,6 +138,15 @@ export function parseRangeDate(value: string, tz: string, edge: "start" | "end")
   if (!HAS_ZONE.test(value)) {
     throw createError(`${edge}Date must be YYYY-MM-DD or a timestamp with a zone (e.g. 2026-03-02T09:00:00Z)`, 400);
   }
+  const datePart = /^(\d{4})-(\d{2})-(\d{2})T/.exec(value);
+  if (datePart) {
+    const [y, m, d] = datePart.slice(1).map(Number);
+    const day = new Date(Date.UTC(y, m - 1, d));
+    // V8 rolls 2026-04-31T… into May; an impossible date is an error here too.
+    if (day.getUTCFullYear() !== y || day.getUTCMonth() !== m - 1 || day.getUTCDate() !== d) {
+      throw createError(`${edge}Date ${value} is not a calendar date`, 400);
+    }
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) throw createError(`${edge}Date must be an ISO 8601 date or timestamp`, 400);
   return date;
