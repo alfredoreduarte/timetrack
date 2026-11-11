@@ -38,6 +38,13 @@ describe("buildEntryUpdate", () => {
     expect(p.endTime).toBeUndefined();
   });
 
+  it("in hours mode moving the start keeps the exact duration, not the rounded hours", () => {
+    // 2h 0m 10s shows as "2.00"; resending 2.00h would shave 10 seconds off.
+    const p = buildEntryUpdate(form({ useHours: true, startTime: "07:00" }), { ...initial, durationSeconds: 7210 });
+    expect(p.hours).toBeUndefined();
+    expect(Date.parse(p.endTime!) - Date.parse(p.startTime!)).toBe(7210 * 1000);
+  });
+
   it("in hours mode sends new hours and nothing else when only hours change", () => {
     const p = buildEntryUpdate(form({ useHours: true, hours: "3.5" }), initial);
     expect(p).toMatchObject({ hours: 3.5 });

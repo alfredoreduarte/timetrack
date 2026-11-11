@@ -1,35 +1,84 @@
+import { Prisma } from "@prisma/client";
 import { prisma, TxClient } from "../utils/database";
 import { createError } from "../middleware/errorHandler";
 import { emitToUser } from "../realtime";
+import { logger } from "../utils/logger";
 import { ServiceContext } from "./context";
 import { recordAudit } from "./audit";
+import { loadTimerViews } from "./timers";
 
-/**
- * Locks, in id order, every timer that points at the project/task or has
- * segments on it. Deletions cascade into time_entries and timers through
- * foreign keys; taking the timer locks first keeps the timer → entry lock
- * order every other writer uses, so deletes can't deadlock with pauses.
+/*
+ * Lock order for deletes: timers → project → task → entries, matching every
+ * other writer (timer → entry, with the FK check on the project/task taken
+ * last). Attaching a timer or entry to a project or task takes a KEY SHARE
+ * lock on that row, so once the delete holds the row FOR UPDATE nothing new
+ * can attach. Anything that attached between the first timer query and that
+ * lock is caught by re-checking the timer set; the transaction then retries
+ * with those timers locked up front instead of locking them out of order.
  */
-async function lockTimersFor(
-  tx: TxClient,
-  userId: string,
-  ref: { projectId?: string; taskId?: string }
-): Promise<string[]> {
-  const rows = ref.projectId
-    ? await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT DISTINCT t.id FROM timers t
-        LEFT JOIN time_entries e ON e.timer_id = t.id
-        WHERE t.user_id = ${userId} AND (t.project_id = ${ref.projectId} OR e."projectId" = ${ref.projectId})
-        ORDER BY t.id`
-    : await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT DISTINCT t.id FROM timers t
-        LEFT JOIN time_entries e ON e.timer_id = t.id
-        WHERE t.user_id = ${userId} AND (t.task_id = ${ref.taskId} OR e."taskId" = ${ref.taskId})
-        ORDER BY t.id`;
-  for (const { id } of rows) {
+
+const MAX_ATTEMPTS = 4;
+
+class TimerSetChanged extends Error {}
+
+const DEADLOCK_CODES = new Set(["40P01", "40001"]);
+
+function isRetryable(e: unknown): boolean {
+  if (e instanceof TimerSetChanged) return true;
+  if (!(e instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (e.code === "P2034") return true;
+  const dbCode = (e.meta as { code?: string } | undefined)?.code;
+  return e.code === "P2010" && typeof dbCode === "string" && DEADLOCK_CODES.has(dbCode);
+}
+
+async function withRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!isRetryable(e)) throw e;
+      if (attempt >= MAX_ATTEMPTS) {
+        logger.warn("Delete kept colliding with concurrent writes", { label, attempts: attempt });
+        throw createError("This is being changed right now. Try again in a moment.", 409);
+      }
+    }
+  }
+}
+
+type Ref = { projectId: string } | { taskId: string };
+
+/** Timers that point at the project/task, have segments on it, or (for a project) use one of its tasks. */
+async function timerIdsFor(tx: TxClient, userId: string, ref: Ref): Promise<string[]> {
+  const rows =
+    "projectId" in ref
+      ? await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT DISTINCT t.id FROM timers t
+          LEFT JOIN time_entries e ON e.timer_id = t.id
+          WHERE t.user_id = ${userId}
+            AND (t.project_id = ${ref.projectId}
+              OR e."projectId" = ${ref.projectId}
+              OR t.task_id IN (SELECT id FROM tasks WHERE "projectId" = ${ref.projectId})
+              OR e."taskId" IN (SELECT id FROM tasks WHERE "projectId" = ${ref.projectId}))
+          ORDER BY t.id`
+      : await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT DISTINCT t.id FROM timers t
+          LEFT JOIN time_entries e ON e.timer_id = t.id
+          WHERE t.user_id = ${userId} AND (t.task_id = ${ref.taskId} OR e."taskId" = ${ref.taskId})
+          ORDER BY t.id`;
+  return rows.map((r) => r.id);
+}
+
+async function lockTimers(tx: TxClient, ids: string[]): Promise<void> {
+  for (const id of ids) {
     await tx.$queryRaw`SELECT id FROM timers WHERE id = ${id} FOR UPDATE`;
   }
-  return rows.map((r) => r.id);
+}
+
+/** After the parent row is locked, nothing new can attach; anything that did since the first query forces a retry. */
+async function assertTimerSetStable(tx: TxClient, userId: string, ref: Ref, locked: string[]): Promise<void> {
+  const held = new Set(locked);
+  const now = await timerIdsFor(tx, userId, ref);
+  if (now.some((id) => !held.has(id))) throw new TimerSetChanged();
 }
 
 /**
@@ -39,57 +88,98 @@ async function lockTimersFor(
  * never touched.
  */
 export async function deleteProject(ctx: ServiceContext, projectId: string): Promise<{ entriesDeleted: number }> {
-  const pausedTimers: string[] = [];
-  const result = await prisma.$transaction(async (tx) => {
-    const project = await tx.project.findFirst({
-      where: { id: projectId, userId: ctx.userId },
-      select: { id: true, name: true },
-    });
-    if (!project) throw createError("Project not found", 404);
-
-    await lockTimersFor(tx, ctx.userId, { projectId });
-
-    const running = await tx.timeEntry.findMany({
-      where: { userId: ctx.userId, projectId, isRunning: true, timerId: { not: null } },
-      select: { timerId: true },
-    });
-    for (const { timerId } of running) {
-      await tx.timer.update({ where: { id: timerId! }, data: { status: "paused", pauseReason: "manual" } });
-      await recordAudit(tx, ctx, {
-        entityType: "timer",
-        entityId: timerId!,
-        action: "pause",
-        changes: { status: { from: "running", to: "paused" }, reason: { from: null, to: "project_deleted" } },
+  const ref = { projectId };
+  const { result, pausedTimers, touchedTimers } = await withRetry("deleteProject", () =>
+    prisma.$transaction(async (tx) => {
+      const project = await tx.project.findFirst({
+        where: { id: projectId, userId: ctx.userId },
+        select: { id: true, name: true },
       });
-      pausedTimers.push(timerId!);
-    }
+      if (!project) throw createError("Project not found", 404);
 
-    const removed = await tx.timeEntry.deleteMany({ where: { userId: ctx.userId, projectId } });
-    await tx.project.delete({ where: { id: projectId } });
-    await recordAudit(tx, ctx, {
-      entityType: "project",
-      entityId: projectId,
-      action: "delete",
-      changes: { name: { from: project.name, to: null }, entriesDeleted: { from: removed.count, to: null } },
-    });
-    return { entriesDeleted: removed.count };
-  });
+      const timerIds = await timerIdsFor(tx, ctx.userId, ref);
+      await lockTimers(tx, timerIds);
+      const stillThere = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
+      if (stillThere.length === 0) throw createError("Project not found", 404);
+      await assertTimerSetStable(tx, ctx.userId, ref, timerIds);
+
+      // Every timer whose running segment is about to be deleted. All of
+      // them are locked: any timer with an entry on the project is.
+      const running = await tx.timeEntry.findMany({
+        where: { userId: ctx.userId, projectId, isRunning: true, timerId: { not: null } },
+        select: { timerId: true },
+      });
+      const paused: string[] = [];
+      for (const timerId of new Set(running.map((r) => r.timerId!))) {
+        await tx.timer.update({ where: { id: timerId }, data: { status: "paused", pauseReason: "manual" } });
+        await recordAudit(tx, ctx, {
+          entityType: "timer",
+          entityId: timerId,
+          action: "pause",
+          changes: { status: { from: "running", to: "paused" }, reason: { from: null, to: "project_deleted" } },
+        });
+        paused.push(timerId);
+      }
+
+      const removed = await tx.timeEntry.deleteMany({ where: { userId: ctx.userId, projectId } });
+      await tx.project.delete({ where: { id: projectId } });
+      await recordAudit(tx, ctx, {
+        entityType: "project",
+        entityId: projectId,
+        action: "delete",
+        changes: { name: { from: project.name, to: null }, entriesDeleted: { from: removed.count, to: null } },
+      });
+      return { result: { entriesDeleted: removed.count }, pausedTimers: paused, touchedTimers: timerIds };
+    })
+  );
 
   emitToUser(ctx.userId, "project-deleted", { id: projectId });
-  for (const id of pausedTimers) emitToUser(ctx.userId, "timer-paused", { id });
+  await emitTimerViews(ctx, pausedTimers, touchedTimers);
   return result;
 }
 
 /** Deletes a task; its entries and timers keep their time and project, without the task. */
 export async function deleteTask(ctx: ServiceContext, taskId: string): Promise<void> {
-  await prisma.$transaction(async (tx) => {
-    const task = await tx.task.findFirst({
-      where: { id: taskId, userId: ctx.userId },
-      select: { id: true, name: true },
-    });
-    if (!task) throw createError("Task not found", 404);
-    await lockTimersFor(tx, ctx.userId, { taskId });
-    await tx.task.delete({ where: { id: taskId } });
-  });
+  const ref = { taskId };
+  const touchedTimers = await withRetry("deleteTask", () =>
+    prisma.$transaction(async (tx) => {
+      const task = await tx.task.findFirst({
+        where: { id: taskId, userId: ctx.userId },
+        select: { id: true, projectId: true },
+      });
+      if (!task) throw createError("Task not found", 404);
+
+      const timerIds = await timerIdsFor(tx, ctx.userId, ref);
+      await lockTimers(tx, timerIds);
+      // Serializes with a delete of the parent project, which would
+      // otherwise take the task and entry locks in the opposite order.
+      const parent = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM projects WHERE id = ${task.projectId} FOR SHARE`;
+      const stillThere = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM tasks WHERE id = ${taskId} FOR UPDATE`;
+      if (parent.length === 0 || stillThere.length === 0) throw createError("Task not found", 404);
+      await assertTimerSetStable(tx, ctx.userId, ref, timerIds);
+
+      await tx.task.delete({ where: { id: taskId } });
+      return timerIds;
+    })
+  );
   emitToUser(ctx.userId, "task-deleted", { id: taskId });
+  await emitTimerViews(ctx, [], touchedTimers);
+}
+
+/** Paused timers get `timer-paused`; the rest lost their project or task and get `timer-updated`. */
+async function emitTimerViews(ctx: ServiceContext, paused: string[], touched: string[]): Promise<void> {
+  const ids = Array.from(new Set([...paused, ...touched]));
+  if (ids.length === 0) return;
+  try {
+    const pausedSet = new Set(paused);
+    for (const view of await loadTimerViews(ctx, ids)) {
+      emitToUser(ctx.userId, pausedSet.has(view.id) ? "timer-paused" : "timer-updated", view);
+    }
+  } catch (e) {
+    // The delete committed; a failed notification must not turn it into an error.
+    logger.warn("Failed to emit timer updates after delete", { error: (e as Error).message });
+  }
 }
