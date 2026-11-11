@@ -94,7 +94,9 @@ router.post(
         event,
         sessionKey: b.sessionKey ?? b.session_id ?? b.conversation_id ?? "",
         agent,
-        cwd: b.cwd ?? b.workspace_roots?.[0] ?? null,
+        // The first root, under the same rule as cwd: dropped if over-long
+        // (never a later root, which may be another client's repo).
+        cwd: b.cwd ?? ((b.workspace_roots?.[0]?.length ?? Infinity) <= 1000 ? b.workspace_roots![0] : null),
         gitRemote: b.gitRemote ?? b.git_remote ?? null,
         gitBranch: b.gitBranch ?? b.git_branch ?? null,
         source: b.source,

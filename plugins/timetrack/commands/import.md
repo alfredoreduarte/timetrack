@@ -10,4 +10,4 @@ TimeTrack imports the last 30 days automatically on the first session after inst
 3. Preview: `node "${CLAUDE_PLUGIN_ROOT}/scripts/import-transcripts.mjs" --days <days> --dry-run`
 4. Show the preview and ask whether to import. If yes, run the same command without `--dry-run`.
 
-Only timestamps, repository names and token counts are sent — never prompts, messages or code. Sessions are sent whole, so a shorter window never removes time imported earlier.
+It sends session ids, the working directory, the git remote (credentials stripped) and branch, activity timestamps and token counts per model — never prompts, messages or code. Sessions are sent whole, so a shorter window never removes time imported earlier.

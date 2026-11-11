@@ -53,7 +53,8 @@ timesheets.
 The hook sends only the hook event name, the session id, the working
 directory, how the session started (startup, resume, …), and the repo's git
 remote (any credentials in it stripped) and branch. The importer sends session
-ids, activity timestamps, repository names and token counts. Your API key is
+ids, the working directory, the git remote (credentials stripped) and branch,
+activity timestamps and token counts per model. Your API key is
 never put on a command line. **Prompts,
 messages, tool input/output and code never leave your machine.** Every hook
 request has a short timeout and the hook always exits successfully, so

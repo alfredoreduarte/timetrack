@@ -24,7 +24,7 @@ INPUT=$(cat)
 # with the whitelisted fields. No parser -> no tracking: a regex would pick
 # up keys nested inside tool input and report the wrong session.
 parse_jq() {
-  command -v jq >/dev/null 2>&1 || return 0
+  command -v jq >/dev/null 2>&1 || return 1
   printf '%s' "$INPUT" | jq -r '
       def str: if type == "string" then gsub("[\r\n]"; " ") else "" end;
       (.hook_event_name | str), (.session_id | str), (.cwd | str),
@@ -32,7 +32,7 @@ parse_jq() {
         | map_values(if type == "string" then . else null end) | tojson)' 2>/dev/null
 }
 parse_node() {
-  command -v node >/dev/null 2>&1 || return 0
+  command -v node >/dev/null 2>&1 || return 1
   printf '%s' "$INPUT" | node -e '
       let d = "";
       process.stdin.on("data", (c) => (d += c)).on("end", () => {
@@ -45,7 +45,7 @@ parse_node() {
       });' 2>/dev/null
 }
 parse_python() {
-  command -v python3 >/dev/null 2>&1 || return 0
+  command -v python3 >/dev/null 2>&1 || return 1
   printf '%s' "$INPUT" | python3 -c '
 import json, sys
 j = json.load(sys.stdin)
@@ -54,11 +54,18 @@ o = {k: (j.get(k) if isinstance(j.get(k), str) else None) for k in ("hook_event_
 print(s(j.get("hook_event_name"))); print(s(j.get("session_id"))); print(s(j.get("cwd"))); print(json.dumps(o, separators=(",", ":")))' 2>/dev/null
 }
 
-# The first parser that works wins (a version-manager shim can be on PATH
-# and still fail).
-PARSED=$(parse_jq)
-[ -n "$PARSED" ] || PARSED=$(parse_node)
-[ -n "$PARSED" ] || PARSED=$(parse_python)
+# The first parser that works wins. A version-manager shim can be on PATH
+# and still fail, even printing to stdout, so a parser counts only if it
+# exits 0 and its fourth line is the whitelisted-fields object.
+parsed_ok() {
+  case "$(printf '%s\n' "$1" | sed -n 4p)" in '{"hook_event_name":'*'}') return 0 ;; esac
+  return 1
+}
+PARSED=""
+for parser in parse_jq parse_node parse_python; do
+  PARSED=$($parser) && parsed_ok "$PARSED" && break
+  PARSED=""
+done
 { IFS= read -r EVENT; IFS= read -r SESSION; IFS= read -r CWD; IFS= read -r FIELDS; } <<EOF
 $PARSED
 EOF

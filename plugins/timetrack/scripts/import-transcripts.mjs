@@ -120,8 +120,10 @@ async function readTranscript(file, only) {
         sessions.set(o.sessionId, s);
       }
       s.times.push(t);
-      if (!s.cwd && o.cwd) s.cwd = o.cwd;
-      if (o.gitBranch) s.gitBranch = o.gitBranch;
+      // By time, not read order (older files are read last): the session's
+      // starting folder and its most recent branch.
+      if (o.cwd && t < (s.cwdAt ?? Infinity)) [s.cwd, s.cwdAt] = [o.cwd, t];
+      if (o.gitBranch && t >= (s.branchAt ?? -Infinity)) [s.gitBranch, s.branchAt] = [o.gitBranch, t];
       const m = o.message;
       if (o.type === "assistant" && m && m.model && m.usage) {
         // A streamed message is written once per content block; count it once.
