@@ -305,3 +305,25 @@ describe("S3 re-review fixes", () => {
     expect(after.body.timesheet.totals.billedSeconds).toBe(7200);
   });
 });
+
+describe("S3 review round 3", () => {
+  it("impossible dates are rejected in timestamp form too", () => {
+    const { parseRangeDate } = jest.requireActual("../../services/timesheets");
+    expect(() => parseRangeDate("2026-04-31T23:59:59Z", "UTC", "end")).toThrow(/not a calendar date/);
+    expect(() => parseRangeDate("2026-02-29T00:00:00Z", "UTC", "start")).toThrow(/not a calendar date/);
+    expect(parseRangeDate("2028-02-29T00:00:00Z", "UTC", "start").toISOString()).toBe("2028-02-29T00:00:00.000Z");
+  });
+
+  it("one share link has its own view budget, whatever the client IP", async () => {
+    const { user, auth } = await createUser();
+    await createProject(user.id, { name: "Acme" });
+    const made = await api().post("/share-links").set(auth).send({ rollingDays: 7 });
+    const token = made.body.url.split("/share/")[1];
+    const statuses: number[] = [];
+    for (let i = 0; i < 13; i++) {
+      statuses.push((await api().get(`/public/timesheets/${token}`).set("X-Forwarded-For", `203.0.113.${i}`)).status);
+    }
+    expect(statuses.slice(0, 12).every((s) => s === 200)).toBe(true);
+    expect(statuses[12]).toBe(429);
+  });
+});

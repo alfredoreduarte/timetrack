@@ -88,8 +88,20 @@ publicRouter.use(
  *     parameters:
  *       - { in: query, name: format, schema: { type: string, enum: [json, markdown, csv] } }
  */
+// Each view rebuilds the sheet (no retained cache), so one link gets its own
+// budget too: its rebuild rate can't grow with the number of client IPs.
+const perLinkLimiter = rateLimit({
+  windowMs: 60_000,
+  max: Number(process.env.PUBLIC_TIMESHEET_PER_LINK_PER_MINUTE || 12),
+  keyGenerator: (req) => `link:${req.params.token}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "This timesheet is being viewed very often; try again in a minute." },
+});
+
 publicRouter.get(
   "/timesheets/:token",
+  perLinkLimiter,
   asyncHandler(async (req, res) => {
     const view = await getPublicTimesheet(req.params.token);
     res.set("Cache-Control", "no-store");
