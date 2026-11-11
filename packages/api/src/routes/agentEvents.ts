@@ -47,7 +47,15 @@ const eventSchema = z.object({
   conversation_id: str,
   agent: str,
   cwd: meta(1000),
-  workspace_roots: z.array(z.string().max(2000)).max(20).optional(),
+  // Only the first root is used (as cwd), under cwd's rule; anything else
+  // about the list, however odd, never fails the event.
+  workspace_roots: z
+    .unknown()
+    .optional()
+    .transform((roots) => {
+      const first = Array.isArray(roots) ? roots[0] : undefined;
+      return typeof first === "string" && first.length <= 1000 ? first : null;
+    }),
   gitRemote: meta(500),
   git_remote: meta(500),
   gitBranch: meta(255),
@@ -94,9 +102,8 @@ router.post(
         event,
         sessionKey: b.sessionKey ?? b.session_id ?? b.conversation_id ?? "",
         agent,
-        // The first root, under the same rule as cwd: dropped if over-long
-        // (never a later root, which may be another client's repo).
-        cwd: b.cwd ?? ((b.workspace_roots?.[0]?.length ?? Infinity) <= 1000 ? b.workspace_roots![0] : null),
+        // Never a later root, which may be another client's repo.
+        cwd: b.cwd ?? b.workspace_roots,
         gitRemote: b.gitRemote ?? b.git_remote ?? null,
         gitBranch: b.gitBranch ?? b.git_branch ?? null,
         source: b.source,

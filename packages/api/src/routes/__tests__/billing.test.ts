@@ -513,3 +513,27 @@ describe("S4 review fixes", () => {
     expect(csv.text).toContain("Note: Free plan");
   });
 });
+
+describe("S5 review round 4: clipped imports", () => {
+  const day = 86400_000;
+  const at = (d: number) => new Date(Date.now() - d * day).toISOString();
+
+  it("on Free, lowering the idle timeout doesn't turn an identical clipped re-import into a plan skip", async () => {
+    enableBilling();
+    const { user, auth } = await freeUser();
+    const t3 = Date.now() - 3 * day;
+    const iso = (ms: number) => new Date(ms).toISOString();
+    // One message 20 days ago (outside the window), a lone message 3 days
+    // ago, then an hour of work starting 12 minutes later.
+    const session = {
+      sessionKey: "clip",
+      spans: [[at(20), at(20)], [iso(t3), iso(t3)], [iso(t3 + 12 * 60_000), iso(t3 + 72 * 60_000)]],
+    };
+    const first = await api().post("/agent-sessions/import").set(auth).send({ sessions: [session] });
+    expect(first.body.sessions[0].status).toBe("imported");
+    await prisma.user.update({ where: { id: user.id }, data: { agentIdleTimeoutSeconds: 600 } });
+    const again = await api().post("/agent-sessions/import").set(auth).send({ sessions: [session] });
+    expect(again.body.sessions[0]).toMatchObject({ status: "replaced", trackedSeconds: 3600 });
+  });
+});
+
