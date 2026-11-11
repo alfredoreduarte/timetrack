@@ -25,10 +25,14 @@ Claude Code asks for your **TimeTrack API key** — create one in TimeTrack unde
 - **While the agent works** — prompts and tool calls are heartbeats. After 15
   minutes without one (configurable in TimeTrack), the timer pauses *at the
   last activity*, so nothing is billed overnight. The next prompt resumes it.
+  If *you* pause or stop it (in TimeTrack or by asking Claude), it stays that
+  way until you resume it or reopen the session with `--resume`; `/compact`
+  and `/clear` never restart it.
 - **Session end** — the timer stops.
 - **First session after install** — your last 30 days of Claude Code sessions
   are imported in the background (turn off "Import past sessions" in
-  `/config` to skip).
+  `/config` to skip). If that fails (offline, say), it retries next session.
+  Re-imports never touch sessions that were tracked live or that you edited.
 
 The `timetrack` MCP server lets Claude manage time for you: pause or resume
 timers, fix or backfill past entries, log notes for the client, and build
