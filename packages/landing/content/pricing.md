@@ -13,7 +13,7 @@ plans:
     note: "per month, or $144 a year"
     highlight: true
     items:
-      - "Unlimited parallel agent timers"
+      - "Up to 25 agents running at once"
       - "Full history and imports"
       - "Client share links"
       - "AI usage cost lines"

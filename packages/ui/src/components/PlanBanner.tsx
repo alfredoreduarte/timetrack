@@ -16,7 +16,7 @@ const PlanBanner: React.FC = () => {
     tone = "bg-red-50 text-red-800 border-red-100";
   } else if (status.reason === "trial") {
     const days = trialDaysLeft(status);
-    text = `Pro trial: ${days} day${days === 1 ? "" : "s"} left. Pick a plan to keep unlimited parallel agents and full timesheets.`;
+    text = `Pro trial: ${days} day${days === 1 ? "" : "s"} left. Pick a plan to keep up to 25 parallel agents and full timesheets.`;
   } else if (status.reason === "free") {
     text = `Free plan: ${status.limits.maxRunningAgentTimers} agents at once and ${status.limits.historyDays} days of timesheets.`;
   }

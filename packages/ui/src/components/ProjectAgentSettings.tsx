@@ -1,10 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import api from "../services/api";
 import type { Project } from "../store/slices/projectsSlice";
 
 const errorText = (e: unknown) =>
   (e as { response?: { data?: { error?: string } } })?.response?.data?.error || "Couldn't save";
+
+/** The form's values for a project as the server has it. */
+const valuesFrom = (p: Project) => ({
+  repos: (p.repoPatterns ?? []).join("\n"),
+  overlap: (p.overlapMode ?? "") as "" | "dedupe" | "sum",
+  multiplier: p.aiMultiplier != null ? String(p.aiMultiplier) : "",
+  agentRate: p.agentHourlyRate != null ? String(p.agentHourlyRate) : "",
+  includeCosts: Boolean(p.includeAiCosts),
+  markup: String(p.aiCostMarkupPercent ?? 0),
+});
 
 /** Linked repositories and this client's billing policy for AI work. */
 const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) => void }> = ({ project, onSaved }) => {
@@ -15,10 +25,22 @@ const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) 
   const [includeCosts, setIncludeCosts] = useState(false);
   const [markup, setMarkup] = useState("0");
   const [saving, setSaving] = useState(false);
-  // The form saves every field, so it must not be saved before the real
-  // values loaded: blanks would wipe the linked repos and the policy.
+  // The form must not be saved before the real values loaded (blanks would
+  // wipe the linked repos and the policy), and it sends only what the user
+  // changed: the server adds repos while the form is open (assigning an
+  // agent's timer here learns its repo), and a stale copy must not undo that.
   const [status, setStatus] = useState<"loading" | "loaded" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
+  const loaded = useRef<ReturnType<typeof valuesFrom> | null>(null);
+  const show = (v: ReturnType<typeof valuesFrom>) => {
+    loaded.current = v;
+    setRepos(v.repos);
+    setOverlap(v.overlap);
+    setMultiplier(v.multiplier);
+    setAgentRate(v.agentRate);
+    setIncludeCosts(v.includeCosts);
+    setMarkup(v.markup);
+  };
 
   useEffect(() => {
     let alive = true;
@@ -26,12 +48,7 @@ const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) 
     api.projects.getProject(project.id).then(
       (p: Project) => {
         if (!alive) return;
-        setRepos((p.repoPatterns ?? []).join("\n"));
-        setOverlap(p.overlapMode ?? "");
-        setMultiplier(p.aiMultiplier != null ? String(p.aiMultiplier) : "");
-        setAgentRate(p.agentHourlyRate != null ? String(p.agentHourlyRate) : "");
-        setIncludeCosts(Boolean(p.includeAiCosts));
-        setMarkup(String(p.aiCostMarkupPercent ?? 0));
+        show(valuesFrom(p));
         setStatus("loaded");
       },
       () => alive && setStatus("failed")
@@ -44,18 +61,26 @@ const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (status !== "loaded") return;
+    const was = loaded.current;
+    if (!was) return;
+    const changes: Partial<Project> = {};
+    if (repos !== was.repos) changes.repoPatterns = repos.split("\n").map((r) => r.trim()).filter(Boolean);
+    if (overlap !== was.overlap) changes.overlapMode = overlap || null;
+    if (multiplier !== was.multiplier) changes.aiMultiplier = multiplier === "" ? null : parseFloat(multiplier);
+    if (agentRate !== was.agentRate) changes.agentHourlyRate = agentRate === "" ? null : parseFloat(agentRate);
+    if (includeCosts !== was.includeCosts) changes.includeAiCosts = includeCosts;
+    if (markup !== was.markup) changes.aiCostMarkupPercent = parseFloat(markup || "0");
+    if (Object.keys(changes).length === 0) {
+      toast.success("Nothing to save");
+      return;
+    }
     setSaving(true);
     try {
-      const updated = await api.projects.updateProject(project.id, {
-        repoPatterns: repos.split("\n").map((r) => r.trim()).filter(Boolean),
-        overlapMode: overlap || null,
-        aiMultiplier: multiplier === "" ? null : parseFloat(multiplier),
-        agentHourlyRate: agentRate === "" ? null : parseFloat(agentRate),
-        includeAiCosts: includeCosts,
-        aiCostMarkupPercent: parseFloat(markup || "0"),
-      } as Partial<Project>);
+      const updated = (await api.projects.updateProject(project.id, changes)) as Project;
+      // The saved project is the new baseline (incl. repos the server added).
+      show(valuesFrom(updated));
       toast.success("Saved");
-      onSaved?.(updated as Project);
+      onSaved?.(updated);
     } catch (err) {
       toast.error(errorText(err));
     } finally {

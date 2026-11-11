@@ -61,4 +61,30 @@ describe("S6 review: API", () => {
     expect(amounts.reduce((s: number, a: number) => s + a, 0)).toBe(sheet.totals.timeAmount);
     expect(sheet.totals.timeAmount).toBe(1750);
   });
+
+  it("three-decimal currencies: project and sheet totals keep the third decimal", async () => {
+    const { user, auth } = await createUser();
+    await prisma.user.update({ where: { id: user.id }, data: { currency: "KWD" } });
+    // One whole hour each, so each row is exactly the rate.
+    for (const [name, rate, h] of [["Acme", 1.001, 9], ["Globex", 1.234, 11]] as const) {
+      const p = await createProject(user.id, { name, hourlyRate: rate });
+      await prisma.timeEntry.create({
+        data: {
+          userId: user.id,
+          projectId: p.id,
+          startTime: new Date(Date.UTC(2026, 2, 2, h)),
+          endTime: new Date(Date.UTC(2026, 2, 2, h + 1)),
+          duration: 3600,
+          isRunning: false,
+          hourlyRateSnapshot: rate,
+        },
+      });
+    }
+    const res = await api().get("/reports/timesheet?startDate=2026-03-01T00:00:00Z&endDate=2026-03-08T00:00:00Z").set(auth);
+    const t = res.body.timesheet;
+    const byName = Object.fromEntries(t.projects.map((p: { project: { name: string }; totals: { amount: number } }) => [p.project.name, p.totals.amount]));
+    expect(byName).toEqual({ Acme: 1.001, Globex: 1.234 });
+    expect(t.totals.amount).toBe(2.235);
+  });
 });
+
