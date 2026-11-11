@@ -61,6 +61,9 @@ export async function listProjects(ctx: ServiceContext, opts: { isActive?: boole
   });
 }
 
+const sameRate = (next: number | null, stored: { toString(): string } | number | null) =>
+  next === null ? stored === null : stored !== null && Number(stored.toString()) === next;
+
 export interface ProjectInput {
   name?: string;
   description?: string | null;
@@ -89,17 +92,21 @@ export async function createProject(ctx: ServiceContext, input: ProjectInput) {
 export async function updateProject(ctx: ServiceContext, id: string, input: ProjectInput) {
   const existing = await prisma.project.findFirst({
     where: { id, userId: ctx.userId },
-    select: { id: true },
+    select: { id: true, name: true, description: true, hourlyRate: true },
   });
   if (!existing) throw createError("Project not found", 404);
 
+  // Clients resend every field on save; values that predate the length and
+  // rate caps stay editable as long as they aren't changed.
   const data: Prisma.ProjectUpdateInput = {};
-  if (input.name !== undefined) data.name = requireName(input.name, "Project");
-  if (input.description !== undefined) {
+  if (input.name !== undefined && input.name !== existing.name) data.name = requireName(input.name, "Project");
+  if (input.description !== undefined && input.description !== existing.description) {
     data.description = cleanText(input.description, "description", 2000) ?? null;
   }
   if (input.color !== undefined) data.color = checkColor(input.color);
-  if (input.hourlyRate !== undefined) data.hourlyRate = checkRate(input.hourlyRate);
+  if (input.hourlyRate !== undefined && !sameRate(input.hourlyRate, existing.hourlyRate)) {
+    data.hourlyRate = checkRate(input.hourlyRate);
+  }
   if (input.isActive !== undefined) data.isActive = input.isActive;
   if (input.repoPatterns !== undefined) data.repoPatterns = normalizeRepoPatterns(input.repoPatterns);
 
@@ -156,16 +163,18 @@ export async function createTask(ctx: ServiceContext, input: TaskInput) {
 export async function updateTask(ctx: ServiceContext, id: string, input: TaskInput) {
   const existing = await prisma.task.findFirst({
     where: { id, userId: ctx.userId },
-    select: { id: true },
+    select: { id: true, name: true, description: true, hourlyRate: true },
   });
   if (!existing) throw createError("Task not found", 404);
 
   const data: Prisma.TaskUpdateInput = {};
-  if (input.name !== undefined) data.name = requireName(input.name, "Task");
-  if (input.description !== undefined) {
+  if (input.name !== undefined && input.name !== existing.name) data.name = requireName(input.name, "Task");
+  if (input.description !== undefined && input.description !== existing.description) {
     data.description = cleanText(input.description, "description", 2000) ?? null;
   }
-  if (input.hourlyRate !== undefined) data.hourlyRate = checkRate(input.hourlyRate);
+  if (input.hourlyRate !== undefined && !sameRate(input.hourlyRate, existing.hourlyRate)) {
+    data.hourlyRate = checkRate(input.hourlyRate);
+  }
   if (input.isCompleted !== undefined) data.isCompleted = input.isCompleted;
 
   const task = await prisma.task.update({ where: { id }, data, select: taskSelect });

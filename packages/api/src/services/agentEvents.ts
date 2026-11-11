@@ -73,7 +73,11 @@ export interface AgentEventInput {
   cwd?: string | null;
   gitRemote?: string | null;
   gitBranch?: string | null;
-  /** SessionStart source (startup/resume/clear/compact/fork) — informational. */
+  /**
+   * SessionStart source. `startup`/`resume` (or none, for generic clients)
+   * mean a person opened the session and may resume a timer they paused or
+   * stopped; anything else (`compact`, `clear`, …) is just activity.
+   */
   source?: string | null;
   /** SessionEnd reason — informational. */
   reason?: string | null;
@@ -104,15 +108,42 @@ const summarize = (t: TimerView): AgentEventResult["timer"] => ({
   idleTimeoutSeconds: t.idleTimeoutSeconds,
 });
 
-export function sessionContext(t: TimerView, repo: string | null): string {
+/**
+ * User-controlled text (project names, folder names) quoted as inert data:
+ * no quotes, backticks or line breaks to break out of the sentence, capped.
+ */
+export const quoteData = (value: string, max = 80): string =>
+  JSON.stringify(
+    value
+      .replace(/[\u0000-\u001f\u007f`"\\]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, max)
+  );
+
+const isPathPattern = (pattern: string) => pattern.startsWith("/") || /^[a-z]:\//i.test(pattern);
+
+export function sessionContext(
+  t: TimerView,
+  repo: string | null,
+  opts: { matchedRepoPattern?: string | null } = {}
+): string {
+  if (t.status !== "running") {
+    const state = t.status === "stopped" ? "stopped" : "paused";
+    return `TimeTrack timer ${t.id} for this session is ${state} by the user, so this work is not being billed. Don't resume it unless the user asks.`;
+  }
   const idle = t.idleTimeoutSeconds
-    ? ` It pauses by itself after ${Math.round(t.idleTimeoutSeconds / 60)} min without activity.`
+    ? ` It pauses by itself after ${Math.round(t.idleTimeoutSeconds / 60)} min without activity and resumes when you continue — don't pause or stop it yourself unless the user asks.`
     : "";
   const tools = `Use the TimeTrack MCP tools with timerId "${t.id}" if the user asks about tracking (add_note to log what you did, update_timer to change the project).`;
   if (t.project) {
-    return `TimeTrack is tracking this session as billable time for project "${t.project.name}" (timer ${t.id}).${idle} ${tools}`;
+    const byFolder =
+      opts.matchedRepoPattern && isPathPattern(opts.matchedRepoPattern)
+        ? ` The project was picked because this folder is under ${quoteData(opts.matchedRepoPattern, 120)}; if the user's request is clearly for a different client, ask them.`
+        : "";
+    return `TimeTrack is tracking this session as billable time for the project named ${quoteData(t.project.name)} (timer ${t.id}).${byFolder}${idle} ${tools}`;
   }
-  const where = repo ? ` for this repository (${repo})` : "";
+  const where = repo ? ` for this repository (${quoteData(repo, 120)})` : "";
   return `TimeTrack is tracking this session (timer ${t.id}) but no project is set${where}. If the user says which client or project this work is for, call update_timer with timerId "${t.id}" and that projectId; TimeTrack will remember the repository for next time.${idle}`;
 }
 
@@ -156,9 +187,16 @@ export async function handleAgentEvent(
       action,
       tracked: true,
       timer: summarize(res.timer),
-      context: kind === "session_start" || res.created ? sessionContext(res.timer, repo) : null,
+      context:
+        kind === "session_start" || res.created
+          ? sessionContext(res.timer, repo, { matchedRepoPattern: res.matchedRepoPattern })
+          : null,
     };
   };
+
+  const source = input.source?.trim().toLowerCase() || null;
+  // Only a person opening the session may override their own pause or stop.
+  const openedByPerson = kind === "session_start" && (source === null || source === "startup" || source === "resume");
 
   try {
     if (kind === "session_end") {
@@ -167,18 +205,27 @@ export async function handleAgentEvent(
       return { action: res.changed ? "stopped" : "ignored", tracked: false, timer: summarize(res.timer), context: null };
     }
 
-    if (kind === "session_start" || !existing) return await ensureRunning();
+    // An imported session that is still going (the import ran mid-session)
+    // was stopped by the importer, not by a person.
+    if (!existing || openedByPerson || (existing.status === "stopped" && existing.createdVia === "import")) {
+      return await ensureRunning();
+    }
 
-    // Activity on a known session.
+    // Activity on a known session, including SessionStart after a compact
+    // or /clear: it resumes only what was paused automatically.
     if (existing.status === "stopped") {
-      return { action: "ignored", tracked: false, timer: null, context: null, reason: "session already ended" };
+      const context =
+        kind === "session_start"
+          ? `TimeTrack timer ${existing.id} for this session was stopped, so this work is not being billed. Don't restart it unless the user asks.`
+          : null;
+      return { action: "ignored", tracked: false, timer: null, context, reason: "session already ended" };
     }
     const res = await touchTimer(ctx, existing.id, {});
     return {
       action: res.resumed ? "resumed" : "touched",
       tracked: res.timer.status === "running",
       timer: summarize(res.timer),
-      context: null,
+      context: kind === "session_start" ? sessionContext(res.timer, repo) : null,
     };
   } catch (e) {
     const err = e as AppError;

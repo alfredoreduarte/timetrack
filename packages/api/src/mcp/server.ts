@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { prisma } from "../utils/database";
 import { AppError } from "../middleware/errorHandler";
+import { logger } from "../utils/logger";
 import { ServiceContext } from "../services/context";
 import {
   addTimerNote,
@@ -11,6 +12,7 @@ import {
   resumeTimer,
   startTimer,
   stopTimer,
+  touchTimer,
   updateTimer,
 } from "../services/timers";
 import {
@@ -37,8 +39,8 @@ export const MCP_INSTRUCTIONS = `TimeTrack records billable time for a developer
 Model: a TIMER is one unit of work (usually one agent session). It can be paused and resumed; each running stretch is a TIME ENTRY (segment). Many timers may run at once — one per parallel session. Entries can be edited, backfilled or deleted at any time, including past ones; every change is recorded in an audit trail.
 
 Guidance:
-- If your context says "TimeTrack is tracking this session (timer X)", a timer already exists for you (created by hooks). Do NOT start another; use that timerId with add_note, update_timer, pause_timer.
-- Otherwise call start_timer when you begin billable work and pass a stable sessionKey (any id unique to your session) so retries never create duplicates. Stop or pause it when the work ends or you wait on the human for a long time.
+- If your context says "TimeTrack is tracking this session (timer X)", hooks created that timer and keep it accurate: they pause it when the session goes quiet and resume it when you continue. Do NOT start another, and don't pause or stop it yourself unless the user asks. Use that timerId with add_note and update_timer.
+- Otherwise call start_timer when you begin billable work and pass a stable sessionKey (any id unique to your session) so retries never create duplicates. Call pause_timer while you wait on the human and resume_timer when work continues (start_timer with the same sessionKey also resumes it); stop_timer when the work is done.
 - Assign work to the right client project (list_projects). If the repository has no project, ask the user or use update_timer once they tell you — TimeTrack remembers the repo.
 - Log what you accomplished with add_note; these notes become timesheet lines the client reads, so write them for a client.
 - Times are ISO 8601. Never invent times in the future.`;
@@ -54,7 +56,10 @@ const fail = (message: string): ToolResult => ({
   isError: true,
 });
 
-/** Runs a tool body, turning service errors into MCP tool errors. */
+/**
+ * Runs a tool body, turning service errors into MCP tool errors. Anything
+ * unexpected is logged and reported generically — never with internals.
+ */
 const run = async (fn: () => Promise<unknown>): Promise<ToolResult> => {
   try {
     return ok(await fn());
@@ -62,12 +67,32 @@ const run = async (fn: () => Promise<unknown>): Promise<ToolResult> => {
     const err = e as AppError;
     if (err && typeof err.statusCode === "number" && err.statusCode < 500) return fail(err.message);
     if (e instanceof z.ZodError) return fail(e.errors.map((x) => x.message).join("; "));
-    throw e;
+    logger.error("MCP tool failed", { error: (e as Error)?.message, stack: (e as Error)?.stack });
+    return fail("Internal error; the change was not made. Try again, or report it if it keeps happening.");
   }
 };
 
-const iso = z.string().describe("ISO 8601 timestamp, e.g. 2026-03-02T15:04:05Z");
+const ISO_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+const iso = z
+  .string()
+  .refine((v) => ISO_RE.test(v) && !Number.isNaN(Date.parse(v)), "must be an ISO 8601 date or timestamp")
+  .describe("ISO 8601 timestamp, e.g. 2026-03-02T15:04:05Z");
 const id = (what: string) => z.string().min(1).describe(`${what} id`);
+/** Optional id; agents often send "" for "none", which means omitted. */
+const optId = (what: string) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v === "" ? undefined : v))
+    .describe(`${what} id`);
+/** Optional, clearable id: null clears, "" or omitted leaves it unchanged. */
+const clearableId = (what: string) =>
+  z
+    .string()
+    .nullable()
+    .optional()
+    .transform((v) => (v === "" ? undefined : v))
+    .describe(`${what} id, or null to clear`);
 
 /** Trims a timer view to what an LLM needs. */
 const compactTimer = (t: Awaited<ReturnType<typeof listTimers>>[number]) => ({
@@ -205,7 +230,7 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
     "list_tasks",
     {
       description: "List tasks, optionally for one project.",
-      inputSchema: { projectId: z.string().optional(), includeCompleted: z.boolean().optional() },
+      inputSchema: { projectId: optId("Project"), includeCompleted: z.boolean().optional() },
       annotations: { readOnlyHint: true },
     },
     ({ projectId, includeCompleted }) =>
@@ -259,15 +284,19 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
         "Start a timer for billable work. Many timers may run in parallel. Pass a sessionKey unique to your session: repeating the call with the same key returns (or resumes) the same timer instead of creating a duplicate. If no project is given, TimeTrack picks the one linked to gitRemote/cwd.",
       inputSchema: {
         description: z.string().optional().describe("What you're working on, written for the client"),
-        projectId: z.string().optional(),
-        taskId: z.string().optional(),
+        projectId: optId("Project"),
+        taskId: optId("Task"),
         sessionKey: z.string().max(200).optional(),
         agent: z.string().optional().describe("Your agent name, e.g. claude_code, cursor, codex"),
         cwd: z.string().optional(),
         gitRemote: z.string().optional(),
         gitBranch: z.string().optional(),
         startedAt: iso.optional().describe("Only to backdate (max 24h ago)"),
-        idleTimeoutSeconds: z.number().int().optional().describe("Auto-pause after this many seconds without heartbeats; omit if you won't send heartbeats"),
+        idleTimeoutSeconds: z
+          .number()
+          .int()
+          .optional()
+          .describe("Auto-pause after this many seconds without activity (heartbeat_timer, add_note, or start_timer with the same sessionKey); omit unless you'll call heartbeat_timer during long silent work"),
       },
     },
     (args) =>
@@ -298,11 +327,28 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
         })
     );
 
-  timerAction("pause_timer", "Pause a timer (e.g. while waiting on the human). Time while paused is not billed.", (t, at) =>
-    pauseTimer(ctx, t, { at, reason: "manual" })
+  timerAction(
+    "pause_timer",
+    "Pause a timer you started while you wait on the human; time while paused is not billed. Your next activity on the session (resume_timer, heartbeat_timer, start_timer with the same sessionKey or a hook event) resumes it. Don't pause hook-tracked timers — hooks do it.",
+    (t, at) => pauseTimer(ctx, t, { at, reason: "agent" })
   );
   timerAction("resume_timer", "Resume a paused or stopped timer as a new segment.", (t, at) =>
     resumeTimer(ctx, t, { at })
+  );
+
+  register(
+    "heartbeat_timer",
+    {
+      description:
+        "Report that you're still working on a timer. Only needed for timers with idleTimeoutSeconds during long stretches without other TimeTrack calls; it also resumes a timer you or the idle detector paused (never one a person paused).",
+      inputSchema: { timerId: id("Timer") },
+      annotations: { idempotentHint: true },
+    },
+    ({ timerId }) =>
+      run(async () => {
+        const r = await touchTimer(ctx, timerId, {});
+        return { timer: compactTimer(r.timer), resumed: r.resumed };
+      })
   );
 
   register(
@@ -310,7 +356,7 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
     {
       description:
         "Stop a timer when the work is done. If timerId is omitted and exactly one timer is running, that one is stopped; otherwise you get the list to choose from.",
-      inputSchema: { timerId: z.string().optional(), at: iso.optional() },
+      inputSchema: { timerId: optId("Timer"), at: iso.optional() },
     },
     ({ timerId, at }) =>
       run(async () => {
@@ -362,8 +408,8 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
       inputSchema: {
         timerId: id("Timer"),
         description: z.string().nullable().optional(),
-        projectId: z.string().nullable().optional(),
-        taskId: z.string().nullable().optional(),
+        projectId: clearableId("Project"),
+        taskId: clearableId("Task"),
         isAiGenerated: z.boolean().optional(),
         rememberRepo: z.boolean().optional(),
       },
@@ -397,8 +443,8 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
       inputSchema: {
         startDate: iso.optional(),
         endDate: iso.optional(),
-        projectId: z.string().optional(),
-        timerId: z.string().optional(),
+        projectId: optId("Project"),
+        timerId: optId("Timer"),
         isAiGenerated: z.boolean().optional(),
         isRunning: z.boolean().optional(),
         limit: z.number().int().min(1).max(100).optional(),
@@ -440,9 +486,9 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
         startTime: iso,
         endTime: iso,
         description: z.string().optional(),
-        projectId: z.string().optional(),
-        taskId: z.string().optional(),
-        timerId: z.string().optional(),
+        projectId: optId("Project"),
+        taskId: optId("Task"),
+        timerId: optId("Timer"),
         isAiGenerated: z.boolean().optional(),
       },
     },
@@ -459,8 +505,8 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
         description: z.string().nullable().optional(),
         startTime: iso.optional(),
         endTime: iso.optional(),
-        projectId: z.string().nullable().optional(),
-        taskId: z.string().nullable().optional(),
+        projectId: clearableId("Project"),
+        taskId: clearableId("Task"),
         isAiGenerated: z.boolean().optional(),
       },
     },
@@ -488,8 +534,8 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
       inputSchema: {
         entryIds: z.array(z.string()).min(1).max(500),
         description: z.string().nullable().optional(),
-        projectId: z.string().nullable().optional(),
-        taskId: z.string().nullable().optional(),
+        projectId: clearableId("Project"),
+        taskId: clearableId("Task"),
         isAiGenerated: z.boolean().optional(),
       },
     },

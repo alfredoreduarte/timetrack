@@ -48,6 +48,7 @@ describe("remote MCP endpoint", () => {
         "delete_entry",
         "entry_history",
         "get_timer",
+        "heartbeat_timer",
         "list_entries",
         "list_projects",
         "list_tasks",

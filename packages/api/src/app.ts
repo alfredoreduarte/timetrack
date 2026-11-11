@@ -306,16 +306,21 @@ export function createApp() {
     let sizeLimit = process.env.REQUEST_SIZE_DEFAULT || "1mb"; // Default limit
     // Max count of objects/arrays in a body (cheap JSON-bomb guard).
     let maxStructures = 20;
+    // The bracket/long-string heuristics count characters inside strings
+    // too, so they reject legitimate payloads on routes whose zod schemas
+    // already whitelist and bound every field; those rely on the size cap.
+    let heuristics = true;
 
     // Transcript import legitimately carries many sessions with many spans.
     if (req.path.startsWith("/agent-sessions/import")) {
       sizeLimit = process.env.REQUEST_SIZE_IMPORT || "5mb";
-      maxStructures = 20_000;
+      heuristics = false;
     }
-    // Hook events are tiny; anything big is a misconfigured raw payload.
+    // Hook events: raw Claude Code/Cursor payloads may carry tool input;
+    // only whitelisted fields are read.
     else if (req.path.startsWith("/agent-events")) {
       sizeLimit = "64kb";
-      maxStructures = 200;
+      heuristics = false;
     }
     // MCP JSON-RPC: a handful of nested objects per call.
     else if (req.path.startsWith("/mcp")) {
@@ -351,7 +356,7 @@ export function createApp() {
       limit: sizeLimit,
       verify: (req: any, res, buf) => {
         // Additional validation - check for suspicious content
-        if (buf.length > 0) {
+        if (heuristics && buf.length > 0) {
           const content = buf.toString();
 
           // Detect potential JSON bombs or deeply nested objects

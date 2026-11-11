@@ -179,7 +179,7 @@ describe("POST /agent-events (hooks)", () => {
     const { user, auth } = await createUser();
     await createProject(user.id, { name: "Acme Web", repoPatterns: ["/Users/dev/acme-web"] });
     const start = await api().post("/agent-events?format=claude-code").set(auth).send(ccPayload("SessionStart"));
-    expect(start.body.hookSpecificOutput.additionalContext).toContain('project "Acme Web"');
+    expect(start.body.hookSpecificOutput.additionalContext).toContain('project named "Acme Web"');
   });
 
   it("creates the timer on first activity when hooks were installed mid-session", async () => {

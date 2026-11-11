@@ -22,7 +22,16 @@ export const MIN_IDLE_TIMEOUT_SECONDS = 60;
 export const MAX_IDLE_TIMEOUT_SECONDS = 24 * 60 * 60;
 
 export type TimerStatus = "running" | "paused" | "stopped";
-export type PauseReason = "manual" | "idle";
+/**
+ * Why a timer is paused. `manual` is a human's decision and sticks until
+ * they resume; `idle` (the sweeper) and `agent` (the agent itself, e.g.
+ * waiting on the human) resume on the session's next activity.
+ */
+export type PauseReason = "manual" | "idle" | "agent";
+
+/** Paused by the system or the agent rather than a person: activity may resume it. */
+export const isAutoPaused = (t: { status: string; pauseReason: string | null }) =>
+  t.status === "paused" && (t.pauseReason === "idle" || t.pauseReason === "agent");
 
 export const entrySelect = {
   id: true,
@@ -130,7 +139,7 @@ export function resolveAt(
   return date.getTime() > now.getTime() ? now : date;
 }
 
-const cleanToken = (
+export const cleanToken = (
   value: string | null | undefined,
   field: string,
   max: number
@@ -146,7 +155,7 @@ const cleanToken = (
 
 const AGENT_RE = /^[a-z0-9][a-z0-9_.-]{0,39}$/;
 
-const cleanAgent = (value: string | null | undefined): string | null | undefined => {
+export const cleanAgent = (value: string | null | undefined): string | null | undefined => {
   if (value === undefined || value === null) return value;
   const v = value.trim().toLowerCase();
   if (!v) return null;
@@ -197,6 +206,10 @@ async function openSegment(
   events: PendingEvent[]
 ): Promise<EntryView> {
   const rate = await getHourlyRate(tx, ctx.userId, timer.projectId, timer.taskId);
+  if (timer.createdVia === "import") {
+    // A re-import must never replace a session that has been tracked live.
+    await tx.timer.update({ where: { id: timer.id }, data: { createdVia: ctx.via } });
+  }
   const entry = await tx.timeEntry.create({
     data: {
       description: timer.description,
@@ -207,8 +220,9 @@ async function openSegment(
       userId: ctx.userId,
       hourlyRateSnapshot: rate,
       // Segments inherit the timer's classification: resuming an agent's
-      // timer from the web UI is still the agent's work.
-      createdVia: timer.createdVia,
+      // timer from the web UI is still the agent's work. An imported
+      // session that reopens is live from here on.
+      createdVia: timer.createdVia === "import" ? ctx.via : timer.createdVia,
       isAiGenerated: timer.isAiGenerated,
       timerId: timer.id,
     },
@@ -498,15 +512,15 @@ export async function pauseTimer(
 
   const { entry, changed } = await prisma.$transaction(async (tx) => {
     const timer = await lockTimer(tx, ctx, timerId);
-    if (timer.status === "paused" && timer.pauseReason === "idle" && reason === "manual") {
-      // A human pausing an idle-paused timer means "keep it paused": stray
+    if (isAutoPaused(timer) && reason === "manual") {
+      // A human pausing an auto-paused timer means "keep it paused": stray
       // heartbeats must no longer resume it.
       await tx.timer.update({ where: { id: timer.id }, data: { pauseReason: "manual" } });
       await recordAudit(tx, ctx, {
         entityType: "timer",
         entityId: timer.id,
         action: "pause",
-        changes: { pauseReason: { from: "idle", to: "manual" } },
+        changes: { pauseReason: { from: timer.pauseReason, to: "manual" } },
       });
       return { entry: null, changed: true };
     }
@@ -550,7 +564,7 @@ export async function resumeTimer(
   opts: {
     at?: Date | string | null;
     /** Heartbeat path: only resume if the timer is (still) idle-paused under the lock. */
-    onlyIfIdlePaused?: boolean;
+    onlyIfAutoPaused?: boolean;
   } = {}
 ): Promise<TimerActionResult> {
   const requestedAt = resolveAt(ctx, opts.at);
@@ -562,7 +576,7 @@ export async function resumeTimer(
   const { entry, changed } = await prisma.$transaction(async (tx) => {
     const timer = await lockTimer(tx, ctx, timerId);
     if (timer.status === "running") return { entry: null, changed: false };
-    if (opts.onlyIfIdlePaused && !(timer.status === "paused" && timer.pauseReason === "idle")) {
+    if (opts.onlyIfAutoPaused && !isAutoPaused(timer)) {
       return { entry: null, changed: false };
     }
     await assertCanRunTimer(tx, ctx, { isAiGenerated: timer.isAiGenerated });
@@ -638,7 +652,7 @@ export async function stopTimer(
 
 /**
  * Records agent activity. Running timers get `lastActivityAt` bumped
- * (debounced); timers the idle sweeper paused resume. Manually paused and
+ * (debounced); timers the idle sweeper or the agent paused resume. Manually paused and
  * stopped timers are left alone — a stray heartbeat must not override a
  * human's decision to stop billing.
  */
@@ -654,10 +668,10 @@ export async function touchTimer(
   });
   if (!timer) throw createError("Timer not found", 404);
 
-  if (timer.status === "paused" && timer.pauseReason === "idle") {
+  if (isAutoPaused(timer)) {
     // Re-checked under the row lock: a stop or manual pause that lands
     // between this read and the resume wins.
-    const result = await resumeTimer(ctx, timer.id, { onlyIfIdlePaused: true });
+    const result = await resumeTimer(ctx, timer.id, { onlyIfAutoPaused: true });
     return { timer: result.timer, resumed: result.changed };
   }
 
@@ -901,7 +915,7 @@ export async function findTimerBySessionKey(ctx: ServiceContext, sessionKey: str
   if (!key) return null;
   return prisma.timer.findUnique({
     where: { userId_sessionKey: { userId: ctx.userId, sessionKey: key } },
-    select: { id: true, status: true, pauseReason: true },
+    select: { id: true, status: true, pauseReason: true, createdVia: true },
   });
 }
 
