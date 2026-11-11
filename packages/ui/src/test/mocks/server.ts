@@ -1,6 +1,15 @@
 import { setupServer } from "msw/node";
 import { http, HttpResponse } from "msw";
 
+/**
+ * Handlers match on the path only, whatever the origin or prefix. The client's
+ * base URL is VITE_API_URL when Vite injects it, else "/api" on the page
+ * origin — and under Vitest it ends up as http://localhost:3000/api, because
+ * api.ts reads the variable through a cast that Vitest doesn't replace. Use
+ * this for per-test overrides too: `server.use(http.get(apiPath("/tasks"), …))`.
+ */
+export const apiPath = (path: string) => `*${path}`;
+
 // Mock data
 const mockProjects = [
   {
@@ -48,13 +57,33 @@ const mockTasks = [
   },
 ];
 
+const zeroEarnings = () => ({
+  currentTimer: { earnings: 0, duration: 0, isRunning: false, hourlyRate: 0 },
+  today: { earnings: 0, duration: 0 },
+  thisWeek: { earnings: 0, duration: 0 },
+});
+
 let mockCurrentEntry: any = null;
 let mockTimeEntries: any[] = [];
+let mockTimers: any[] = [];
+let mockEarnings = zeroEarnings();
+let startTimerCalls: any[] = [];
+
+const isRunning = (entry: any) => entry && entry.startTime && !entry.endTime;
+
+/** Running entries, most recently started first (like GET /time-entries/running). */
+const runningEntries = () => {
+  const list = mockTimeEntries.filter(isRunning);
+  if (isRunning(mockCurrentEntry) && !list.some((e) => e.id === mockCurrentEntry.id)) {
+    list.unshift(mockCurrentEntry);
+  }
+  return list;
+};
 
 // Define request handlers
 export const handlers = [
   // Auth endpoints
-  http.post("http://localhost:3011/auth/login", () => {
+  http.post(apiPath("/auth/login"), () => {
     return HttpResponse.json({
       token: "mock-jwt-token",
       user: {
@@ -65,118 +94,149 @@ export const handlers = [
     });
   }),
 
-  // Projects endpoints - Fixed to match API service expectations
-  http.get("http://localhost:3011/projects", () => {
+  http.get(apiPath("/users/dashboard-earnings"), () => {
+    return HttpResponse.json({ earnings: mockEarnings });
+  }),
+
+  // Projects and tasks
+  http.get(apiPath("/projects"), () => {
     return HttpResponse.json({ projects: mockProjects });
   }),
 
-  http.get("http://localhost:3011/projects/:id/tasks", ({ params }) => {
-    const projectId = params.id;
-    const projectTasks = mockTasks.filter(
-      (task) => task.projectId === projectId
-    );
-    return HttpResponse.json(projectTasks);
+  http.get(apiPath("/tasks"), ({ request }) => {
+    const projectId = new URL(request.url).searchParams.get("projectId");
+    const tasks = projectId
+      ? mockTasks.filter((task) => task.projectId === projectId)
+      : mockTasks;
+    return HttpResponse.json({ tasks });
   }),
 
-  // Tasks endpoints - Fixed to match API service expectations
-  http.get("http://localhost:3011/tasks", ({ request }) => {
-    const url = new URL(request.url);
-    const projectId = url.searchParams.get("projectId");
-
-    if (projectId) {
-      const projectTasks = mockTasks.filter(
-        (task) => task.projectId === projectId
-      );
-      return HttpResponse.json(projectTasks);
-    }
-
-    return HttpResponse.json(mockTasks);
+  http.get(apiPath("/favorites"), () => {
+    return HttpResponse.json({ favorites: [] });
   }),
 
-  // Time entries endpoints
-  http.get("http://localhost:3011/time-entries/current", () => {
-    // Return 200 with { timeEntry: null } instead of 404 when no current entry
-    if (mockCurrentEntry === undefined || mockCurrentEntry === null) {
-      return HttpResponse.json({ timeEntry: null });
-    }
-
-    if (
-      mockCurrentEntry &&
-      mockCurrentEntry.startTime &&
-      !mockCurrentEntry.endTime
-    ) {
-      // Calculate duration for running timer
-      const startTime = new Date(mockCurrentEntry.startTime).getTime();
-      const now = new Date().getTime();
-      const calculatedDuration = Math.floor((now - startTime) / 1000);
-
-      return HttpResponse.json({
-        timeEntry: {
-          ...mockCurrentEntry,
-          duration: calculatedDuration,
-        },
-      });
-    }
-    return HttpResponse.json({ timeEntry: mockCurrentEntry });
+  // Time entries
+  http.get(apiPath("/time-entries"), () => {
+    const total = mockTimeEntries.length;
+    return HttpResponse.json({
+      entries: mockTimeEntries,
+      pagination: { page: 1, limit: 50, total, pages: total ? 1 : 0 },
+    });
   }),
 
-  http.post("http://localhost:3011/time-entries/start", async ({ request }) => {
+  // Legacy single-timer endpoint: most recently started running entry.
+  http.get(apiPath("/time-entries/current"), () => {
+    return HttpResponse.json({ timeEntry: runningEntries()[0] ?? null });
+  }),
+
+  http.get(apiPath("/time-entries/running"), () => {
+    return HttpResponse.json({ timeEntries: runningEntries() });
+  }),
+
+  // Projects and tasks are optional: the API allows unassigned timers.
+  http.post(apiPath("/time-entries/start"), async ({ request }) => {
     const body = (await request.json()) as any;
+    startTimerCalls.push(body);
 
-    // Simulate error if no projectId provided
-    if (!body.projectId) {
-      return HttpResponse.json(
-        { error: "Project ID is required" },
-        { status: 400 }
-      );
-    }
-
+    const now = new Date().toISOString();
     const newEntry = {
-      id: `entry-${Date.now()}`,
-      description: body.description || "",
-      startTime: new Date().toISOString(),
+      id: `entry-${startTimerCalls.length}-${Date.now()}`,
+      description: body.description ?? null,
+      startTime: now,
       endTime: null,
       duration: 0,
-      projectId: body.projectId,
-      taskId: body.taskId || null,
+      isRunning: true,
+      projectId: body.projectId ?? null,
+      taskId: body.taskId ?? null,
       userId: "user-1",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     };
 
     mockCurrentEntry = newEntry;
     mockTimeEntries.unshift(newEntry);
 
-    return HttpResponse.json(newEntry);
+    return HttpResponse.json(
+      { message: "Time entry started successfully", timeEntry: newEntry },
+      { status: 201 }
+    );
   }),
 
-  http.post(
-    "http://localhost:3011/time-entries/:id/stop",
-    async ({ params }) => {
-      const entryId = params.id;
-      const entry = mockTimeEntries.find((e) => e.id === entryId);
+  http.post(apiPath("/time-entries/:id/stop"), ({ params }) => {
+    const entryId = params.id;
+    const index = mockTimeEntries.findIndex((e) => e.id === entryId);
+    const entry =
+      index >= 0
+        ? mockTimeEntries[index]
+        : mockCurrentEntry?.id === entryId
+          ? mockCurrentEntry
+          : null;
 
-      if (!entry) {
-        return HttpResponse.json(
-          { error: "Time entry not found" },
-          { status: 404 }
-        );
-      }
-
-      const updatedEntry = {
-        ...entry,
-        endTime: new Date().toISOString(),
-        duration: 3600, // 1 hour for testing
-        updatedAt: new Date().toISOString(),
-      };
-
-      const index = mockTimeEntries.findIndex((e) => e.id === entryId);
-      mockTimeEntries[index] = updatedEntry;
-      mockCurrentEntry = null;
-
-      return HttpResponse.json(updatedEntry);
+    if (!entry) {
+      return HttpResponse.json(
+        { error: "Time entry not found" },
+        { status: 404 }
+      );
     }
-  ),
+    if (!isRunning(entry)) {
+      return HttpResponse.json(
+        { error: "Time entry is not running" },
+        { status: 400 }
+      );
+    }
+
+    const now = new Date().toISOString();
+    const updatedEntry = {
+      ...entry,
+      endTime: now,
+      duration: 3600, // 1 hour for testing
+      isRunning: false,
+      updatedAt: now,
+    };
+
+    if (index >= 0) mockTimeEntries[index] = updatedEntry;
+    if (mockCurrentEntry?.id === entryId) mockCurrentEntry = null;
+
+    return HttpResponse.json({
+      message: "Time entry stopped successfully",
+      timeEntry: updatedEntry,
+    });
+  }),
+
+  // Timers board (GET /timers?status=active → running + paused)
+  http.get(apiPath("/timers"), ({ request }) => {
+    const status = new URL(request.url).searchParams.get("status") || "active";
+    const timers = mockTimers.filter((t) =>
+      status === "all"
+        ? true
+        : status === "active"
+          ? t.status === "running" || t.status === "paused"
+          : t.status === status
+    );
+    return HttpResponse.json({ timers });
+  }),
+
+  http.post(apiPath("/timers/:id/:action"), ({ params }) => {
+    const nextStatus: Record<string, string> = {
+      pause: "paused",
+      resume: "running",
+      stop: "stopped",
+    };
+    const status = nextStatus[params.action as string];
+    const index = mockTimers.findIndex((t) => t.id === params.id);
+    if (!status || index < 0) {
+      return HttpResponse.json({ error: "Timer not found" }, { status: 404 });
+    }
+    const now = new Date().toISOString();
+    mockTimers[index] = {
+      ...mockTimers[index],
+      status,
+      pauseReason: status === "paused" ? "manual" : null,
+      stoppedAt: status === "stopped" ? now : null,
+      updatedAt: now,
+    };
+    return HttpResponse.json({ timer: mockTimers[index] });
+  }),
 ];
 
 // Create the server
@@ -186,11 +246,31 @@ export const server = setupServer(...handlers);
 export const resetMockData = () => {
   mockCurrentEntry = null;
   mockTimeEntries = [];
+  mockTimers = [];
+  mockEarnings = zeroEarnings();
+  startTimerCalls = [];
 };
 
 export const setMockCurrentEntry = (entry: any) => {
   mockCurrentEntry = entry;
 };
+
+export const setMockTimeEntries = (entries: any[]) => {
+  mockTimeEntries = [...entries];
+};
+
+export const setMockTimers = (timers: any[]) => {
+  mockTimers = [...timers];
+};
+
+export const setMockEarnings = (
+  earnings: Partial<ReturnType<typeof zeroEarnings>>
+) => {
+  mockEarnings = { ...zeroEarnings(), ...earnings };
+};
+
+/** Request bodies sent to POST /time-entries/start, oldest first. */
+export const getStartTimerCalls = () => startTimerCalls;
 
 // Helper to create a mock running timer that started X seconds ago
 export const setMockRunningTimer = (secondsAgo: number = 300) => {
@@ -200,12 +280,46 @@ export const setMockRunningTimer = (secondsAgo: number = 300) => {
     description: "Mock running timer",
     startTime: startTime,
     endTime: null,
-    duration: 0, // Will be calculated by getCurrentEntry
+    duration: 0,
     projectId: "project-1",
     taskId: null,
     userId: "user-1",
     createdAt: startTime,
     updatedAt: startTime,
+  };
+};
+
+/** A Timer as GET /timers returns it (see Timer in @timetrack/shared). */
+export const makeMockTimer = (overrides: Record<string, any> = {}) => {
+  const now = new Date().toISOString();
+  return {
+    id: "timer-1",
+    status: "running",
+    description: "Mock timer",
+    sessionKey: null,
+    agent: null,
+    createdVia: "web",
+    isAiGenerated: false,
+    cwd: null,
+    gitRemote: null,
+    gitBranch: null,
+    idleTimeoutSeconds: null,
+    lastActivityAt: now,
+    pauseReason: null,
+    startedAt: now,
+    stoppedAt: null,
+    costUsd: null,
+    projectId: "project-1",
+    taskId: null,
+    project: { id: "project-1", name: "Test Project 1", color: "#3B82F6" },
+    task: null,
+    currentEntry: null,
+    segmentCount: 1,
+    noteCount: 0,
+    trackedSeconds: 0,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
   };
 };
 
