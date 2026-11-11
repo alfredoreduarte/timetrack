@@ -124,7 +124,7 @@ describe("Timer Component", () => {
 
     // Real bug: Timer.tsx keeps selectedTaskId when the project changes, so the
     // start request pairs project-2 with project-1's task (the API rejects that).
-    it.skip("should not start with the previous project's task after switching projects", async () => {
+    it("should not start with the previous project's task after switching projects", async () => {
       const { user, store } = await renderTimer();
 
       await user.selectOptions(projectSelect(), "project-1");

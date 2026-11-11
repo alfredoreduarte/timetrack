@@ -49,7 +49,7 @@ describe("Dashboard-Timer Integration", () => {
   describe("Blank Screen Prevention", () => {
     // Real bug: projectsSlice stores the non-array result as-is and
     // TimersBoard.tsx:67 calls projects.filter() on it, unmounting the dashboard.
-    it.skip("should prevent blank screen when API returns malformed project data", async () => {
+    it("should prevent blank screen when API returns malformed project data", async () => {
       server.use(
         http.get(apiPath("/projects"), () => {
           return HttpResponse.json({ invalid: "response" });
@@ -63,7 +63,7 @@ describe("Dashboard-Timer Integration", () => {
 
     // Real bug: same crash at TimersBoard.tsx:67 for { projects: null } (and
     // Timer's `projects = []` default doesn't cover null either).
-    it.skip("should prevent blank screen when API returns null projects", async () => {
+    it("should prevent blank screen when API returns null projects", async () => {
       server.use(
         http.get(apiPath("/projects"), () => {
           return HttpResponse.json({ projects: null });
@@ -129,7 +129,7 @@ describe("Dashboard-Timer Integration", () => {
 
     // Real bug: TimersBoard.tsx:67 (and Timer) call projects.filter() on
     // whatever the slice holds, so a non-array projects value blanks the page.
-    it.skip("should handle corrupted Redux state gracefully", async () => {
+    it("should handle corrupted Redux state gracefully", async () => {
       const store = createMockStore();
 
       store.dispatch({

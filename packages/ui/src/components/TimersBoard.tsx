@@ -57,14 +57,14 @@ const TimersBoard: React.FC = () => {
   const assign = async (t: BoardTimer, projectId: string) => {
     const r = await dispatch(assignTimer({ id: t.id, projectId: projectId || null }));
     if (assignTimer.fulfilled.match(r) && r.payload.learnedRepoPattern) {
-      const name = projects.find((p) => p.id === projectId)?.name ?? "this project";
+      const name = (Array.isArray(projects) ? projects : []).find((p) => p.id === projectId)?.name ?? "this project";
       setNotice(`Future sessions in ${r.payload.learnedRepoPattern} will go to ${name} automatically.`);
     }
   };
 
   const running = items.filter((t) => t.status === "running").length;
   const paused = items.length - running;
-  const activeProjects = projects.filter((p) => p.isActive !== false);
+  const activeProjects = (Array.isArray(projects) ? projects : []).filter((p) => p.isActive !== false);
 
   return (
     <section className="card overflow-hidden" aria-labelledby="timers-board-title">

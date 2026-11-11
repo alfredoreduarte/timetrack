@@ -193,7 +193,8 @@ const projectsSlice = createSlice({
       })
       .addCase(fetchProjects.fulfilled, (state, action) => {
         state.loading = false;
-        state.projects = action.payload;
+        // Components map over this; a malformed response must not blank the page.
+        state.projects = Array.isArray(action.payload) ? action.payload : [];
       })
       .addCase(fetchProjects.rejected, (state, action) => {
         state.loading = false;
