@@ -127,14 +127,10 @@ export interface PublicTimesheet {
   timesheet: Timesheet;
 }
 
-// Public links can be refreshed by anyone holding the URL; a short-lived
-// cache keeps repeated views from rebuilding the sheet each time.
-const VIEW_TTL_MS = 30_000;
-const MAX_CACHED_VIEWS = 200;
-const viewCache = new Map<string, { at: number; timesheet: Timesheet }>();
-
-/** Test hook: forget cached public views. */
-export const clearPublicViewCache = () => viewCache.clear();
+// Concurrent views of one link share one build. Nothing is kept once it
+// settles: builds are cheap (O(n log n)), the route is rate limited, and a
+// retained copy per link would be memory anyone with links could fill.
+const inFlight = new Map<string, Promise<Timesheet>>();
 
 /**
  * Resolves a share token to the client view of the timesheet. Unknown,
@@ -155,8 +151,8 @@ export async function getPublicTimesheet(token: string, now = new Date()): Promi
     if (!key || !key.isActive || (key.expiresAt && key.expiresAt <= now)) throw createError("Not found", 404);
   }
 
-  let timesheet = viewCache.get(link.id);
-  if (!timesheet || now.getTime() - timesheet.at > VIEW_TTL_MS) {
+  let build = inFlight.get(link.id);
+  if (!build) {
     const maxSpanStart = new Date(now.getTime() - MAX_TIMESHEET_DAYS * 86400 * 1000 + 60_000);
     let startDate = link.rollingDays
       ? new Date(now.getTime() - link.rollingDays * 86400 * 1000)
@@ -165,15 +161,16 @@ export async function getPublicTimesheet(token: string, now = new Date()): Promi
     // An open-ended link keeps showing the most recent year once it is older.
     if (!link.endDate && startDate < maxSpanStart) startDate = maxSpanStart;
 
-    const sheet = await buildTimesheet(
+    build = buildTimesheet(
       link.userId,
       { startDate, endDate, projectId: link.projectId ?? undefined, timezone: link.timezone },
       { now, showNotes: link.showNotes }
-    );
-    if (viewCache.size >= MAX_CACHED_VIEWS) viewCache.clear();
-    timesheet = { at: now.getTime(), timesheet: redactTimesheet(sheet, { showAmounts: link.showAmounts, showNotes: link.showNotes }) };
-    viewCache.set(link.id, timesheet);
+    )
+      .then((sheet) => redactTimesheet(sheet, { showAmounts: link.showAmounts, showNotes: link.showNotes }))
+      .finally(() => inFlight.delete(link.id));
+    inFlight.set(link.id, build);
   }
+  const timesheet = await build;
 
   await prisma.shareLink.update({
     where: { id: link.id },
@@ -181,6 +178,6 @@ export async function getPublicTimesheet(token: string, now = new Date()): Promi
   });
   return {
     link: { name: link.name, expiresAt: link.expiresAt, showAmounts: link.showAmounts },
-    timesheet: timesheet.timesheet,
+    timesheet,
   };
 }

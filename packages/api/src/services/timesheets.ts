@@ -113,22 +113,34 @@ export function resolveTimezone(tz: string | null | undefined): string {
   return canonical;
 }
 
-const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+const HAS_ZONE = /(Z|[+-]\d{2}:?\d{2})$/i;
 
 /**
  * Parses a range bound. A bare date (YYYY-MM-DD, what agents usually send)
  * means local midnight in `tz`; as an end it is inclusive (the end of that
- * day). Anything else must be a full timestamp.
+ * day). A timestamp must say its zone — read without one, it would silently
+ * shift by the server's offset.
  */
 export function parseRangeDate(value: string, tz: string, edge: "start" | "end"): Date {
-  if (DATE_ONLY.test(value)) {
+  const bare = DATE_ONLY.exec(value);
+  if (bare) {
+    const [y, m, d] = bare.slice(1).map(Number);
+    const day = new Date(Date.UTC(y, m - 1, d));
+    // Date.UTC rolls Feb 30 into March; a date that doesn't exist is an error.
+    if (day.getUTCFullYear() !== y || day.getUTCMonth() !== m - 1 || day.getUTCDate() !== d) {
+      throw createError(`${edge}Date ${value} is not a calendar date`, 400);
+    }
     if (edge === "start") return startOfLocalDate(value, tz);
-    const next = new Date(Date.UTC(...(value.split("-").map(Number) as [number, number, number])) + 36 * 3600 * 1000);
+    const next = new Date(Date.UTC(y, m - 1, d + 1));
     return startOfLocalDate(next.toISOString().slice(0, 10), tz);
   }
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) throw createError(`${edge}Date must be an ISO 8601 date or timestamp`, 400);
-  return d;
+  if (!HAS_ZONE.test(value)) {
+    throw createError(`${edge}Date must be YYYY-MM-DD or a timestamp with a zone (e.g. 2026-03-02T09:00:00Z)`, 400);
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw createError(`${edge}Date must be an ISO 8601 date or timestamp`, 400);
+  return date;
 }
 
 /** Validates and defaults a range: default is the current local month. */
