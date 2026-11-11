@@ -23,15 +23,17 @@ INPUT=$(cat)
 # Prints: event, session id, cwd (raw, one per line), then a JSON object
 # with the whitelisted fields. No parser -> no tracking: a regex would pick
 # up keys nested inside tool input and report the wrong session.
-parse() {
-  if command -v jq >/dev/null 2>&1; then
-    printf '%s' "$INPUT" | jq -r '
+parse_jq() {
+  command -v jq >/dev/null 2>&1 || return 0
+  printf '%s' "$INPUT" | jq -r '
       def str: if type == "string" then gsub("[\r\n]"; " ") else "" end;
       (.hook_event_name | str), (.session_id | str), (.cwd | str),
       ({hook_event_name, session_id, cwd, source}
         | map_values(if type == "string" then . else null end) | tojson)' 2>/dev/null
-  elif command -v node >/dev/null 2>&1; then
-    printf '%s' "$INPUT" | node -e '
+}
+parse_node() {
+  command -v node >/dev/null 2>&1 || return 0
+  printf '%s' "$INPUT" | node -e '
       let d = "";
       process.stdin.on("data", (c) => (d += c)).on("end", () => {
         let j;
@@ -41,17 +43,22 @@ parse() {
         for (const k of ["hook_event_name", "session_id", "cwd", "source"]) o[k] = typeof j[k] === "string" ? j[k] : null;
         process.stdout.write([str(j.hook_event_name), str(j.session_id), str(j.cwd), JSON.stringify(o)].join("\n") + "\n");
       });' 2>/dev/null
-  elif command -v python3 >/dev/null 2>&1; then
-    printf '%s' "$INPUT" | python3 -c '
+}
+parse_python() {
+  command -v python3 >/dev/null 2>&1 || return 0
+  printf '%s' "$INPUT" | python3 -c '
 import json, sys
 j = json.load(sys.stdin)
 s = lambda v: v.replace("\r", " ").replace("\n", " ") if isinstance(v, str) else ""
 o = {k: (j.get(k) if isinstance(j.get(k), str) else None) for k in ("hook_event_name", "session_id", "cwd", "source")}
 print(s(j.get("hook_event_name"))); print(s(j.get("session_id"))); print(s(j.get("cwd"))); print(json.dumps(o, separators=(",", ":")))' 2>/dev/null
-  fi
 }
 
-PARSED=$(parse)
+# The first parser that works wins (a version-manager shim can be on PATH
+# and still fail).
+PARSED=$(parse_jq)
+[ -n "$PARSED" ] || PARSED=$(parse_node)
+[ -n "$PARSED" ] || PARSED=$(parse_python)
 { IFS= read -r EVENT; IFS= read -r SESSION; IFS= read -r CWD; IFS= read -r FIELDS; } <<EOF
 $PARSED
 EOF
@@ -92,6 +99,9 @@ elif [ -n "$CWD" ] && command -v git >/dev/null 2>&1 && { [ "$EVENT" = "SessionS
   BRANCH=$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null)
   # Detached HEAD or a repo without commits has no meaningful branch.
   [ "$BRANCH" = "HEAD" ] && BRANCH=""
+  # Metadata the server wouldn't store must never stop tracking: drop it.
+  [ "${#BRANCH}" -gt 255 ] && BRANCH=""
+  [ "${#REMOTE}" -gt 500 ] && REMOTE=""
   if [ -n "$REPO_CACHE" ]; then
     mkdir -p "$DATA" 2>/dev/null && printf '%s\n%s\n' "$REMOTE" "$BRANCH" >"$REPO_CACHE" 2>/dev/null
   fi

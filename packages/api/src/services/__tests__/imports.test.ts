@@ -114,3 +114,39 @@ describe("request paths", () => {
     expect((await api().get("//health")).status).toBe(200);
   });
 });
+
+describe("S5 re-review: import guards and hook metadata", () => {
+  beforeEach(resetDb);
+
+  it("a re-import that covers less time between the same endpoints is refused", async () => {
+    const { auth } = await createUser();
+    await api().post("/agent-sessions/import").set(auth).send({ sessions: [{ sessionKey: "sub", spans: [[iso(0), iso(600)]] }] });
+    // Same first and last moment, but a hole in the middle (a subagent file left out).
+    const holey = { sessionKey: "sub", spans: [[iso(0), iso(200)], [iso(599), iso(600)]] };
+    const again = await api().post("/agent-sessions/import").set(auth).send({ sessions: [holey] });
+    expect(again.body.sessions[0].status).toBe("skipped_partial");
+    expect(await prisma.timeEntry.aggregate({ _sum: { duration: true } })).toMatchObject({ _sum: { duration: 600 * 60 } });
+  });
+
+  it("a live-tracked session is reported as live, not as a partial import", async () => {
+    const { auth } = await createUser();
+    const started = await api().post("/agent-events").set(auth).send({ hook_event_name: "SessionStart", session_id: "live-x", cwd: "/tmp" });
+    expect(started.status).toBe(200);
+    const later = new Date(Date.now() + 2000).toISOString();
+    const res = await api()
+      .post("/agent-sessions/import")
+      .set(auth)
+      .send({ sessions: [{ sessionKey: "live-x", spans: [[new Date().toISOString(), later]] }] });
+    expect(res.body.sessions[0].status).toBe("skipped_live");
+  });
+
+  it("an over-long branch or remote never stops a session from being tracked", async () => {
+    const { auth } = await createUser();
+    const res = await api()
+      .post("/agent-events")
+      .set(auth)
+      .send({ hook_event_name: "SessionStart", session_id: "long", cwd: "/tmp/x", gitBranch: "b".repeat(309), gitRemote: "r".repeat(600) });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ tracked: true });
+  });
+});

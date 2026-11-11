@@ -83,7 +83,7 @@ function* walk(dir) {
       continue;
     }
     if (s.isDirectory()) yield* walk(p);
-    else if (name.endsWith(".jsonl") && s.mtimeMs >= since) yield p;
+    else if (name.endsWith(".jsonl")) yield { path: p, mtimeMs: s.mtimeMs };
   }
 }
 
@@ -92,53 +92,66 @@ const count = (v) => (Number.isInteger(v) && v >= 0 ? v : 0);
 const ACTIVITY_TYPES = new Set(["user", "assistant"]);
 const sessions = new Map();
 
-for (const file of walk(ROOT)) {
+/** Adds a transcript's activity to `sessions` (only for `only`'s ids when given). */
+async function readTranscript(file, only) {
   // Streamed: transcripts can be hundreds of MB.
   let lines;
   try {
     lines = createInterface({ input: createReadStream(file, "utf8"), crlfDelay: Infinity });
   } catch {
-    continue;
+    return;
   }
   try {
-  for await (const line of lines) {
-    if (!line) continue;
-    let o;
-    try {
-      o = JSON.parse(line);
-    } catch {
-      continue;
+    for await (const line of lines) {
+      if (!line) continue;
+      let o;
+      try {
+        o = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (!o.sessionId || !o.timestamp || !ACTIVITY_TYPES.has(o.type)) continue;
+      if (only && !only.has(o.sessionId)) continue;
+      const t = Date.parse(o.timestamp);
+      if (!t) continue;
+      let s = sessions.get(o.sessionId);
+      if (!s) {
+        s = { times: [], cwd: null, gitBranch: null, usage: {}, seen: new Set() };
+        sessions.set(o.sessionId, s);
+      }
+      s.times.push(t);
+      if (!s.cwd && o.cwd) s.cwd = o.cwd;
+      if (o.gitBranch) s.gitBranch = o.gitBranch;
+      const m = o.message;
+      if (o.type === "assistant" && m && m.model && m.usage) {
+        // A streamed message is written once per content block; count it once.
+        const dedupe = `${m.id || ""}:${o.requestId || ""}`;
+        if (s.seen.has(dedupe)) continue;
+        s.seen.add(dedupe);
+        const u = (s.usage[m.model] ||= { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
+        u.inputTokens += count(m.usage.input_tokens);
+        u.outputTokens += count(m.usage.output_tokens);
+        u.cacheReadTokens += count(m.usage.cache_read_input_tokens);
+        u.cacheWriteTokens += count(m.usage.cache_creation_input_tokens);
+      }
     }
-    if (!o.sessionId || !o.timestamp || !ACTIVITY_TYPES.has(o.type)) continue;
-    // The window picks sessions (below), not lines: a re-import with a
-    // shorter window must still send whole sessions, or it would replace
-    // what an earlier import stored with less.
-    const t = Date.parse(o.timestamp);
-    if (!t) continue;
-    let s = sessions.get(o.sessionId);
-    if (!s) {
-      s = { times: [], cwd: null, gitBranch: null, usage: {}, seen: new Set() };
-      sessions.set(o.sessionId, s);
-    }
-    s.times.push(t);
-    if (!s.cwd && o.cwd) s.cwd = o.cwd;
-    if (o.gitBranch) s.gitBranch = o.gitBranch;
-    const m = o.message;
-    if (o.type === "assistant" && m && m.model && m.usage) {
-      // A streamed message is written once per content block; count it once.
-      const dedupe = `${m.id || ""}:${o.requestId || ""}`;
-      if (s.seen.has(dedupe)) continue;
-      s.seen.add(dedupe);
-      const u = (s.usage[m.model] ||= { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
-      u.inputTokens += count(m.usage.input_tokens);
-      u.outputTokens += count(m.usage.output_tokens);
-      u.cacheReadTokens += count(m.usage.cache_read_input_tokens);
-      u.cacheWriteTokens += count(m.usage.cache_creation_input_tokens);
-    }
-  }
   } catch {
-    continue; // unreadable file
+    // unreadable file: skip it
   }
+}
+
+// The window picks sessions, never files: a session is selected when it has
+// activity in the window, and is then sent with ALL of its activity —
+// including older files that belong to it, such as subagent transcripts in
+// <project>/<sessionId>/subagents/. A re-import with a shorter window must
+// never send less of a session than an earlier import stored.
+const files = [...walk(ROOT)];
+for (const f of files) if (f.mtimeMs >= since) await readTranscript(f.path);
+const selected = new Set([...sessions].filter(([, s]) => s.times.some((t) => t >= since)).map(([id]) => id));
+for (const f of files) {
+  if (f.mtimeMs >= since) continue;
+  const parts = f.path.split(/[\\/]/).map((part) => part.replace(/\.jsonl$/, ""));
+  if (parts.some((part) => selected.has(part))) await readTranscript(f.path, selected);
 }
 
 const remotes = new Map();
