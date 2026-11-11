@@ -139,7 +139,7 @@ export function sessionContext(
   if (t.project) {
     const byFolder =
       opts.matchedRepoPattern && isPathPattern(opts.matchedRepoPattern)
-        ? ` The project was picked because this folder is under ${quoteData(opts.matchedRepoPattern, 120)}; if the user's request is clearly for a different client, ask them.`
+        ? ` The project was picked because this folder is under ${quoteData(opts.matchedRepoPattern, 120)}; if the user's request is clearly for a different client, ask them (and for a one-off, reassign with rememberRepo=false).`
         : "";
     return `TimeTrack is tracking this session as billable time for the project named ${quoteData(t.project.name)} (timer ${t.id}).${byFolder}${idle} ${tools}`;
   }

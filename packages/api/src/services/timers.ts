@@ -696,8 +696,10 @@ export interface UpdateTimerInput {
   idleTimeoutSeconds?: number | null;
   isAiGenerated?: boolean;
   /**
-   * When assigning a project to a timer whose repository no project claims
-   * yet, remember the mapping for future sessions (default true).
+   * When assigning a project, remember the timer's git remote for future
+   * sessions unless another active project claims that exact remote
+   * (default true). A remembered remote outranks folder mappings; folders
+   * are never remembered. False for a one-off reassignment.
    */
   rememberRepo?: boolean;
 }
