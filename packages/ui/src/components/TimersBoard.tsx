@@ -22,7 +22,6 @@ const statusLine = (t: BoardTimer) => {
     const since = new Date(t.lastActivityAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     return `Paused automatically — no activity since ${since}`;
   }
-  if (t.pauseReason === "agent") return "Paused by the agent — resumes when it continues";
   return "Paused";
 };
 
