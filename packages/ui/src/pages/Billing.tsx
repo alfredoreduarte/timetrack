@@ -5,7 +5,7 @@ import api from "../services/api";
 import { trialDaysLeft, useBillingStatus } from "../hooks/useBillingStatus";
 
 const PRO_FEATURES = [
-  "Unlimited parallel AI agent timers",
+  "Up to 25 AI agent timers running at once",
   "Full history in timesheets and imports",
   "Client share links",
   "AI usage cost lines on invoices",
@@ -16,7 +16,7 @@ const errorText = (e: unknown) =>
   (e as { response?: { data?: { error?: string } } })?.response?.data?.error || "Something went wrong";
 
 const Billing: React.FC = () => {
-  const { status, error, refresh } = useBillingStatus();
+  const { status, error, refresh } = useBillingStatus({ fresh: true });
   const [params] = useSearchParams();
   const justPaid = params.get("checkout") === "success";
 
@@ -47,8 +47,18 @@ const Billing: React.FC = () => {
     }
   };
 
-  if (error) return <p className="text-sm text-red-700">{error}</p>;
-  if (!status) return <p className="text-sm text-gray-500">Loading…</p>;
+  if (!status) {
+    return error ? (
+      <p className="text-sm text-red-700" role="alert">
+        Couldn't load your plan ({error}).{" "}
+        <button type="button" className="underline" onClick={() => refresh()}>
+          Try again
+        </button>
+      </p>
+    ) : (
+      <p className="text-sm text-gray-500">Loading…</p>
+    );
+  }
 
   const days = trialDaysLeft(status);
   const headline = (() => {
@@ -77,6 +87,11 @@ const Billing: React.FC = () => {
         <p className="text-gray-600">{headline}</p>
       </div>
 
+      {error && (
+        <p className="rounded-lg bg-amber-50 text-amber-900 px-4 py-2 text-sm" role="status">
+          Couldn't refresh your plan ({error}); showing the last known status.
+        </p>
+      )}
       {params.get("checkout") === "success" && (
         <p className="rounded-lg bg-emerald-50 text-emerald-900 px-4 py-2 text-sm">
           Thanks! Your subscription is being activated — it can take a few seconds to show here.

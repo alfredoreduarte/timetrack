@@ -105,6 +105,12 @@ export function currencyDigits(currency: string): number {
  * sum to the rounded total (largest remainder): rows on an invoice must add
  * up to the printed total. Returns integer minor units.
  */
+/** Adds amounts in whole minor units of the currency, so totals add up exactly. */
+function sumInMinorUnits(amounts: number[], currency: string): number {
+  const unit = 10 ** currencyDigits(currency);
+  return amounts.reduce((s, a) => s + Math.round(a * unit), 0) / unit;
+}
+
 export function splitCents(amounts: number[], digits = 2): number[] {
   const scale = 10 ** digits;
   const raw = amounts.map((a) => a * scale);
@@ -461,7 +467,8 @@ export async function buildTimesheet(
         costsAmount,
         costsBilledUsd,
         costsIncluded,
-        amount: round2(timeAmount + costsAmount),
+        // In the currency's minor unit, like the rows (KWD has 3 decimals).
+        amount: Math.round((timeAmount + costsAmount) * unit) / unit,
       },
       lines,
       costs,
@@ -485,7 +492,7 @@ export async function buildTimesheet(
       trackedSeconds: sheets.reduce((s, p) => s + p.totals.trackedSeconds, 0),
       wallClockSeconds: secs(unionMs(allIntervals)),
       billedSeconds: sheets.reduce((s, p) => s + p.totals.billedSeconds, 0),
-      amount: round2(sheets.reduce((s, p) => s + p.totals.amount, 0)),
+      amount: sumInMinorUnits(sheets.map((p) => p.totals.amount), user.currency),
     },
     projects: sheets,
   };

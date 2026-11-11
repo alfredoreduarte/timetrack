@@ -45,7 +45,7 @@ export async function assertAgentSlot(tx: TxClient, ctx: ServiceContext): Promis
   });
   if (runningAgents >= limits.maxRunningAgentTimers) {
     throw planLimitError(
-      `Your Free plan runs ${limits.maxRunningAgentTimers} AI agent timers at once; pause or stop one, or track unlimited parallel agents with Pro.`
+      `Your Free plan runs ${limits.maxRunningAgentTimers} AI agent timers at once; pause or stop one, or run up to ${MAX_RUNNING_ENTRIES} at once with Pro.`
     );
   }
 }
