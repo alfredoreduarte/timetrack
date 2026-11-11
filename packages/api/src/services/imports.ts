@@ -157,6 +157,12 @@ async function importOne(
     where: { userId_sessionKey: { userId: ctx.userId, sessionKey } },
     select: { id: true },
   });
+  // Live-tracked and edited sessions first, as under the lock: no import
+  // replaces them, so the plan window isn't the reason they're skipped.
+  if (existing) {
+    const blocker = await replaceBlocker(prisma, ctx.userId, existing.id);
+    if (blocker) throw new SkipSession(blocker);
+  }
   // A clipped import may replace a stored one only if that deletes nothing
   // from before the plan window (e.g. the stored copy was clipped too).
   if (existing && skipIfExisting) {
@@ -164,10 +170,6 @@ async function importOne(
       where: { timerId: existing.id, startTime: { lt: segments[0][0] } },
     });
     if (olderStored > 0) throw new SkipSession(skipIfExisting);
-  }
-  if (existing) {
-    const blocker = await replaceBlocker(prisma, ctx.userId, existing.id);
-    if (blocker) throw new SkipSession(blocker);
   }
 
   const gitRemote = normalizeGitRemote(s.gitRemote);

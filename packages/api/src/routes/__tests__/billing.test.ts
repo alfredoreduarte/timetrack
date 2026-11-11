@@ -413,6 +413,20 @@ describe("S4 review fixes", () => {
     expect(stored.some((e) => e.startTime.toISOString() === old[0])).toBe(true);
   });
 
+  it("on Free, an edited session is reported as edited, not as a plan limit", async () => {
+    enableBilling();
+    const { user, auth } = await freeUser();
+    const old = [at(20), at(19.9)];
+    const recent = [at(2), at(1.9)];
+    await prisma.user.update({ where: { id: user.id }, data: { subscriptionStatus: "active" } });
+    await api().post("/agent-sessions/import").set(auth).send({ sessions: [{ sessionKey: "e", spans: [old, recent] }] });
+    const entry = await prisma.timeEntry.findFirstOrThrow({ where: { userId: user.id } });
+    expect((await api().put(`/time-entries/${entry.id}`).set(auth).send({ description: "Reviewed with client" })).status).toBe(200);
+    await prisma.user.update({ where: { id: user.id }, data: { subscriptionStatus: null } });
+    const res = await api().post("/agent-sessions/import").set(auth).send({ sessions: [{ sessionKey: "e", spans: [old, recent] }] });
+    expect(res.body.sessions[0].status).toBe("skipped_edited");
+  });
+
   it("checkout starts a pending trial first, so going straight to checkout keeps the 14 days", async () => {
     enableBilling();
     const { auth } = await createUser({ isSubscriptionExempt: false, trialEndsAt: null });
