@@ -40,6 +40,18 @@ export interface CostLine {
   billedUsd: number;
 }
 
+/** A segment of a timer with an AI cost, placed on the timer's tracked-time line. */
+type CostSegmentRow = {
+  timerId: string;
+  projectId: string | null;
+  agent: string | null;
+  description: string | null;
+  costUsd: number;
+  entryId: string;
+  beforeMs: number;
+  totalMs: number;
+};
+
 /** What a client view keeps of the policy when amounts are hidden. */
 export type PublicPolicy = { overlapMode: OverlapMode };
 
@@ -89,7 +101,6 @@ export interface Timesheet {
 }
 
 const secs = (ms: number) => Math.round(ms / 1000);
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Decimal places a currency is printed with (JPY 0, USD 2, KWD 3). */
 export function currencyDigits(currency: string): number {
@@ -302,7 +313,7 @@ export async function buildTimesheet(
       projectId: true,
       timerId: true,
       task: { select: { name: true } },
-      timer: { select: { id: true, description: true, agent: true } },
+      timer: { select: { id: true, description: true, agent: true, projectId: true } },
     },
     orderBy: { startTime: "asc" },
   });
@@ -332,51 +343,48 @@ export async function buildTimesheet(
   // Notes and AI costs belong to a timer, but a timer's segments can sit in
   // different projects and periods. Both follow the segments, so each note
   // and each cent shows once: with the client and period of its time.
-  const showNotes = opts.showNotes !== false && timerIds.length > 0;
+  const showNotes = opts.showNotes !== false && entries.length > 0;
   const anyCosts = entitlements.limits.aiCostLines && projects.some((p) => p.includeAiCosts) && timerIds.length > 0;
-  const entryIds = entries.map((e) => e.id);
-  const [notes, costTimers] = await Promise.all([
-    // A note goes with the segment it was written during or after; one
-    // written before all of them (say the start was trimmed) goes with the
-    // timer's first segment in the timer's own project, or nowhere. Only
-    // notes whose segment is on this sheet are kept.
+  // Ids go in as one array joined with unnest(), so the plan stays a hash
+  // join however often a pooled connection reuses the statement.
+  const [notes, costSegments] = await Promise.all([
+    // A note is stored with the segment it was written on.
     showNotes
       ? prisma.$queryRaw<Array<{ entryId: string; body: string; createdAt: Date }>>`
-          SELECT s.id AS "entryId", n.body, n.created_at AS "createdAt"
+          SELECT n.time_entry_id AS "entryId", n.body, n.created_at AS "createdAt"
           FROM timer_notes n
-          JOIN timers t ON t.id = n.timer_id
-          CROSS JOIN LATERAL (
-            SELECT COALESCE(
-              (SELECT e.id FROM time_entries e
-                WHERE e.timer_id = n.timer_id AND e."startTime" <= n.created_at
-                ORDER BY e."startTime" DESC LIMIT 1),
-              (SELECT e.id FROM time_entries e
-                WHERE e.timer_id = n.timer_id AND e."projectId" IS NOT DISTINCT FROM t.project_id
-                ORDER BY e."startTime" ASC LIMIT 1)
-            ) AS id
-          ) s
-          WHERE n.user_id = ${userId} AND n.timer_id = ANY(${timerIds}) AND s.id = ANY(${entryIds})
-          ORDER BY n.created_at ASC`
+          JOIN unnest(${entries.map((e) => e.id)}::text[]) AS s(id) ON s.id = n.time_entry_id
+          WHERE n.user_id = ${userId}
+          ORDER BY n.created_at ASC, n.id ASC`
       : Promise.resolve([] as Array<{ entryId: string; body: string; createdAt: Date }>),
-    // A timer's cost is spread over all its tracked time; each sheet bills
-    // the part that falls on its projects and range.
+    // Every segment of each timer with a cost, laid end to end in start
+    // order: where it begins on the timer's tracked-time line, and the
+    // line's length.
     anyCosts
-      ? prisma.$queryRaw<Array<{ id: string; agent: string | null; description: string | null; costUsd: number; totalMs: number }>>`
-          SELECT t.id, t.agent, t.description, t.cost_usd AS "costUsd",
-            SUM(EXTRACT(EPOCH FROM (COALESCE(e."endTime", ${now}) - e."startTime")) * 1000)::float8 AS "totalMs"
+      ? prisma.$queryRaw<CostSegmentRow[]>`
+          SELECT t.id AS "timerId", t.project_id AS "projectId", t.agent, t.description,
+            t.cost_usd AS "costUsd", e.id AS "entryId",
+            (SUM(d.ms) OVER w - d.ms)::float8 AS "beforeMs",
+            (SUM(d.ms) OVER (PARTITION BY t.id))::float8 AS "totalMs"
           FROM timers t
+          JOIN unnest(${timerIds}::text[]) AS s(id) ON s.id = t.id
           JOIN time_entries e ON e.timer_id = t.id
-          WHERE t.user_id = ${userId} AND t.id = ANY(${timerIds}) AND t.cost_usd > 0
-          GROUP BY t.id`
-      : Promise.resolve([] as Array<{ id: string; agent: string | null; description: string | null; costUsd: number; totalMs: number }>),
+          CROSS JOIN LATERAL (
+            SELECT GREATEST(0, EXTRACT(EPOCH FROM (
+              CASE WHEN e."isRunning" OR e."endTime" IS NULL THEN (${now}::timestamptz AT TIME ZONE 'UTC') ELSE e."endTime" END
+              - e."startTime")) * 1000) AS ms
+          ) d
+          WHERE t.user_id = ${userId} AND t.cost_usd > 0
+          WINDOW w AS (PARTITION BY t.id ORDER BY e."startTime", e.id ROWS UNBOUNDED PRECEDING)`
+      : Promise.resolve([] as CostSegmentRow[]),
   ]);
-  const notesByEntry = new Map<string, Array<{ day: string; body: string }>>();
+  const notesByEntry = new Map<string, Array<{ createdAt: Date; body: string }>>();
   for (const n of notes) {
     let list = notesByEntry.get(n.entryId);
     if (!list) notesByEntry.set(n.entryId, (list = []));
-    list.push({ day: localDateKey(n.createdAt, timezone), body: n.body });
+    list.push({ createdAt: n.createdAt, body: n.body });
   }
-  const costTimerById = new Map(costTimers.map((t) => [t.id, t]));
+  const costSegmentById = new Map(costSegments.map((c) => [c.entryId, c]));
 
   const groups = new Map<string, typeof entries>();
   for (const e of entries) {
@@ -416,8 +424,11 @@ export async function buildTimesheet(
     for (const e of group) {
       const alloc = bill.allocations.get(e.id);
       if (!alloc) continue;
+      // The timer's text describes the timer's own client; a segment moved
+      // elsewhere never borrows it.
+      const timerText = e.timer && e.timer.projectId === e.projectId ? e.timer.description : null;
       const description =
-        e.description || e.timer?.description || e.task?.name || (e.isAiGenerated ? `${agentLabel(e.timer?.agent)} session` : "Work");
+        e.description || timerText || e.task?.name || (e.isAiGenerated ? `${agentLabel(e.timer?.agent)} session` : "Work");
       const keyFor = (day: string) => `${day}|${e.timerId ?? `entry:${e.id}`}|${description}`;
       for (const [day, a] of alloc) {
         const lineKey = keyFor(day);
@@ -444,12 +455,18 @@ export async function buildTimesheet(
         line.billedSeconds += a.billedMs / 1000;
         line.amount += a.amount;
       }
-      // This segment's notes, on their own day's line (or the segment's
-      // nearest day, for a note written before it began or after it ended).
+      // This segment's notes. Each sits at one instant of the segment (when
+      // it was written, or the nearest end of the segment if written outside
+      // it), and shows on the sheet and day of that instant only.
+      const segEnd = e.isRunning || !e.endTime ? now : e.endTime;
+      const last = Math.max(e.startTime.getTime(), segEnd.getTime() - 1);
       const days = Array.from(alloc.keys()).sort();
       for (const note of notesByEntry.get(e.id) ?? []) {
-        const day = alloc.has(note.day) ? note.day : note.day < days[0] ? days[0] : days[days.length - 1];
-        lineMap.get(keyFor(day))?.notes.push(note.body);
+        const at = new Date(Math.min(Math.max(note.createdAt.getTime(), e.startTime.getTime()), last));
+        if (at < start || at >= end) continue;
+        const day = localDateKey(at, timezone);
+        const lineDay = alloc.has(day) ? day : day < days[0] ? days[0] : days[days.length - 1];
+        lineMap.get(keyFor(lineDay))?.notes.push(note.body);
       }
     }
     const shown = Array.from(lineMap.values()).filter((l) => Math.round(l.trackedSeconds) > 0);
@@ -466,40 +483,55 @@ export async function buildTimesheet(
       }))
       .sort((a, b) => a.date.localeCompare(b.date) || b.trackedSeconds - a.trackedSeconds);
 
-    // This project's part of each timer's cost: the timer's cost times the
-    // share of its tracked time that is this project's, in this range.
-    const costParts = new Map<string, { ms: number; first: Date; description: string | null }>();
+    // This project's part of each timer's cost, by its share of the timer's
+    // tracked time. Each piece of time is a stretch [lo, hi) of the timer's
+    // tracked-time line and bills R(hi) - R(lo), with R(x) the cost of the
+    // first x ms rounded to the cent. Every sheet cuts the same line, so a
+    // timer's pieces across projects and periods add up to its cost exactly.
+    const costParts = new Map<string, { cents: number; billedCents: number; first: Date; description: string | null }>();
     if (policy.includeAiCosts) {
+      const markup = 1 + policy.aiCostMarkupPercent / 100;
       for (const e of group) {
-        if (!e.timerId || !costTimerById.has(e.timerId)) continue;
+        const c = costSegmentById.get(e.id);
+        if (!c || !(c.totalMs > 0)) continue;
         const from = e.startTime < start ? start : e.startTime;
         const rawTo = e.isRunning || !e.endTime ? now : e.endTime;
         const to = rawTo > end ? end : rawTo;
-        const part = costParts.get(e.timerId) ?? { ms: 0, first: from, description: null };
-        part.ms += Math.max(0, to.getTime() - from.getTime());
+        const length = Math.max(0, rawTo.getTime() - e.startTime.getTime());
+        const offset = (d: Date) => Math.min(Math.max(d.getTime() - e.startTime.getTime(), 0), length);
+        const lo = c.beforeMs + offset(from);
+        const hi = c.beforeMs + offset(to);
+        if (!(hi > lo)) continue;
+        const costCents = Math.round(c.costUsd * 100);
+        const R = (x: number, factor: number) => Math.round((costCents * factor * x) / c.totalMs);
+        const part = costParts.get(c.timerId) ?? { cents: 0, billedCents: 0, first: from, description: null };
+        part.cents += R(hi, 1) - R(lo, 1);
+        part.billedCents += R(hi, markup) - R(lo, markup);
         if (from < part.first) part.first = from;
         part.description ??= e.description;
-        costParts.set(e.timerId, part);
+        costParts.set(c.timerId, part);
       }
     }
+    const costTimerById = new Map(costSegments.map((c) => [c.timerId, c]));
     const costs: CostLine[] = Array.from(costParts)
+      .filter(([, part]) => part.cents > 0 || part.billedCents > 0)
       .map(([timerId, part]) => {
         const t = costTimerById.get(timerId)!;
-        const costUsd = t.totalMs > 0 ? (t.costUsd * part.ms) / t.totalMs : 0;
+        // Like lines: the timer's text only on the timer's own client.
+        const timerText = (t.projectId ?? "none") === key ? t.description : null;
         return {
           timerId,
           date: localDateKey(part.first, timezone),
-          description: part.description || t.description || `${agentLabel(t.agent)} session`,
-          costUsd: round2(costUsd),
-          billedUsd: round2(costUsd * (1 + policy.aiCostMarkupPercent / 100)),
+          description: part.description || timerText || `${agentLabel(t.agent)} session`,
+          costUsd: part.cents / 100,
+          billedUsd: part.billedCents / 100,
         };
       })
-      .filter((c) => c.costUsd > 0)
       .sort((a, b) => a.date.localeCompare(b.date));
 
     // Totals are the sum of the rows the client sees, so they always add up.
     const timeAmount = cents.reduce((s, c) => s + c, 0) / unit;
-    const costsBilledUsd = round2(costs.reduce((s, c) => s + c.billedUsd, 0));
+    const costsBilledUsd = costs.reduce((s, c) => s + Math.round(c.billedUsd * 100), 0) / 100;
     // Costs are priced in USD; they only join the total on a USD sheet.
     const costsIncluded = user.currency === "USD";
     const costsAmount = costsIncluded ? costsBilledUsd : 0;
