@@ -10,7 +10,7 @@ const D = (h: number, m = 0) => new Date(Date.UTC(2026, 2, 2, h, m)).toISOString
 const RANGE = "startDate=2026-03-01T00:00:00Z&endDate=2026-03-08T00:00:00Z";
 
 async function seed() {
-  const { user, auth } = await createUser({ name: "Ada Dev", defaultHourlyRate: 100, aiMultiplier: 1 });
+  const { user, auth } = await createUser({ name: "Ada Dev", defaultHourlyRate: 100 });
   const key = await createApiKey(user.id, { name: "Claude Code" });
   const acme = await createProject(user.id, { name: "Acme", hourlyRate: 100 });
   const globex = await createProject(user.id, { name: "Globex", hourlyRate: 80, overlapMode: "sum" });
@@ -73,7 +73,7 @@ describe("GET /reports/timesheet", () => {
     expect(human).toMatchObject({ description: "Code review", billedSeconds: 1800, amount: 50 });
   });
 
-  it("applies project policies: flat agent rate, multipliers, cost pass-through with markup", async () => {
+  it("applies project policies: flat agent rate, cost pass-through with markup", async () => {
     const { auth, acme, timerA } = await seed();
     await api().put(`/projects/${acme.id}`).set(auth).send({ agentHourlyRate: 40, includeAiCosts: true, aiCostMarkupPercent: 10 });
     await api()

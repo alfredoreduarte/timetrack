@@ -26,7 +26,6 @@ export interface CostLine {
 
 export interface BillingPolicy {
   overlapMode: "dedupe" | "sum";
-  aiMultiplier: number;
   agentHourlyRate: number | null;
   includeAiCosts: boolean;
   aiCostMarkupPercent: number;

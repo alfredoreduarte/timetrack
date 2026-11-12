@@ -15,7 +15,6 @@ export interface Project {
   repoPatterns?: string[];
   // Billing policy overrides (null = use the account default)
   overlapMode?: "dedupe" | "sum" | null;
-  aiMultiplier?: number | null;
   agentHourlyRate?: number | null;
   includeAiCosts?: boolean;
   aiCostMarkupPercent?: number;

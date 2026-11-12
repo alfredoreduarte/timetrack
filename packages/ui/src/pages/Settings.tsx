@@ -18,7 +18,6 @@ const Settings: React.FC = () => {
     email: "",
     defaultHourlyRate: "",
     idleTimeoutMinutes: "",
-    aiMultiplier: "",
   });
 
   const [hasChanges, setHasChanges] = useState(false);
@@ -41,10 +40,6 @@ const Settings: React.FC = () => {
             ? user.defaultHourlyRate.toString()
             : "",
         idleTimeoutMinutes: idleMinutes,
-        aiMultiplier:
-          user.aiMultiplier !== null && user.aiMultiplier !== undefined
-            ? user.aiMultiplier.toString()
-            : "3",
       });
     }
   }, [user]);
@@ -67,19 +62,9 @@ const Settings: React.FC = () => {
           : "10";
       const hasIdleTimeoutChange =
         formData.idleTimeoutMinutes !== currentIdleMinutes;
-      const currentMultiplier =
-        user.aiMultiplier !== null && user.aiMultiplier !== undefined
-          ? user.aiMultiplier.toString()
-          : "3";
-      const hasMultiplierChange =
-        formData.aiMultiplier !== currentMultiplier;
 
       setHasChanges(
-        hasNameChange ||
-          hasEmailChange ||
-          hasRateChange ||
-          hasIdleTimeoutChange ||
-          hasMultiplierChange
+        hasNameChange || hasEmailChange || hasRateChange || hasIdleTimeoutChange
       );
     }
   }, [formData, user]);
@@ -105,7 +90,6 @@ const Settings: React.FC = () => {
       email?: string;
       defaultHourlyRate?: number;
       idleTimeoutSeconds?: number;
-      aiMultiplier?: number;
     } = {};
 
     if (formData.name !== (user?.name || "")) {
@@ -146,19 +130,6 @@ const Settings: React.FC = () => {
       updateData.idleTimeoutSeconds = minutes * 60;
     }
 
-    const currentMultiplier =
-      user?.aiMultiplier !== null && user?.aiMultiplier !== undefined
-        ? user.aiMultiplier.toString()
-        : "3";
-    if (formData.aiMultiplier !== currentMultiplier) {
-      const multiplier = parseFloat(formData.aiMultiplier);
-      if (isNaN(multiplier) || multiplier < 1 || multiplier > 20) {
-        toast.error("AI multiplier must be between 1 and 20.");
-        return;
-      }
-      updateData.aiMultiplier = multiplier;
-    }
-
     try {
       await dispatch(updateProfile(updateData)).unwrap();
       toast.success("Profile updated successfully!");
@@ -183,10 +154,6 @@ const Settings: React.FC = () => {
             ? user.defaultHourlyRate.toString()
             : "",
         idleTimeoutMinutes: idleMinutes,
-        aiMultiplier:
-          user.aiMultiplier !== null && user.aiMultiplier !== undefined
-            ? user.aiMultiplier.toString()
-            : "3",
       });
     }
   };
@@ -281,29 +248,6 @@ const Settings: React.FC = () => {
               />
               <p className="mt-1 text-xs text-gray-500">
                 Stop running timers automatically after this many minutes of inactivity.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                AI Billing Multiplier
-              </label>
-              <input
-                type="number"
-                name="aiMultiplier"
-                value={formData.aiMultiplier}
-                onChange={handleInputChange}
-                className="input-field mt-1"
-                placeholder="3"
-                min="1"
-                max="20"
-                step="0.1"
-                required
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                AI-agent time is billed at this multiple of your rate (1 = same rate). It applies after
-                overlapping parallel agent time on a project is counted once, so 1 AI hour bills as{" "}
-                {parseFloat(formData.aiMultiplier || "1").toFixed(1)} hours. Projects can override it.
               </p>
             </div>
 

@@ -164,7 +164,6 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
             name: true,
             email: true,
             defaultHourlyRate: true,
-            aiMultiplier: true,
             agentIdleTimeoutSeconds: true,
           },
         });
@@ -227,7 +226,6 @@ export function buildMcpServer(ctx: ServiceContext): McpServer {
         repoPatterns: z.array(z.string()).max(50).optional(),
         addRepoPattern: z.string().optional(),
         overlapMode: z.enum(["dedupe", "sum"]).nullable().optional().describe("dedupe: overlapping parallel timers billed once; sum: each timer billed in full"),
-        aiMultiplier: z.number().min(0).max(20).nullable().optional(),
         agentHourlyRate: z.number().nonnegative().nullable().optional().describe("Flat hourly rate for AI-assisted time"),
         includeAiCosts: z.boolean().optional().describe("Pass agents' API-equivalent token cost through to the client"),
         aiCostMarkupPercent: z.number().min(0).max(100).optional(),

@@ -13,7 +13,7 @@ features:
     description: "Over MCP, Claude can assign a project, add a note for the client, backfill or correct past entries — every change kept in an audit trail."
     icon: "WrenchScrewdriverIcon"
   - title: "Ready for your client"
-    description: "Read-only share links (with or without amounts), Markdown and CSV exports, flat agent rates or multipliers, AI usage passed through at list price."
+    description: "Read-only share links (with or without amounts), Markdown and CSV exports, optional flat agent rates, AI usage passed through at list price."
     icon: "DocumentTextIcon"
   - title: "Never sees your code"
     description: "Only the session id, folder, git remote and branch leave your machine — never prompts, tool output or files."

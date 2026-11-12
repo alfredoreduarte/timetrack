@@ -19,7 +19,6 @@ export const projectSelect = {
   isActive: true,
   repoPatterns: true,
   overlapMode: true,
-  aiMultiplier: true,
   agentHourlyRate: true,
   includeAiCosts: true,
   aiCostMarkupPercent: true,
@@ -78,7 +77,6 @@ export interface ProjectInput {
   repoPatterns?: string[];
   // Billing policy (null = inherit from the user)
   overlapMode?: "dedupe" | "sum" | null;
-  aiMultiplier?: number | null;
   agentHourlyRate?: number | null;
   includeAiCosts?: boolean;
   aiCostMarkupPercent?: number;
@@ -101,7 +99,6 @@ const checkRange = (v: number | null | undefined, field: string, min: number, ma
 /** Validated billing-policy fields present in the input. */
 type PolicyFields = {
   overlapMode?: string | null;
-  aiMultiplier?: number | null;
   agentHourlyRate?: number | null;
   includeAiCosts?: boolean;
   aiCostMarkupPercent?: number;
@@ -110,7 +107,6 @@ type PolicyFields = {
 const policyData = (input: ProjectInput): PolicyFields => {
   const data: PolicyFields = {};
   if (input.overlapMode !== undefined) data.overlapMode = checkOverlap(input.overlapMode);
-  if (input.aiMultiplier !== undefined) data.aiMultiplier = checkRange(input.aiMultiplier, "aiMultiplier", 0, 20);
   if (input.agentHourlyRate !== undefined) data.agentHourlyRate = checkRate(input.agentHourlyRate);
   if (input.includeAiCosts !== undefined) data.includeAiCosts = input.includeAiCosts;
   if (input.aiCostMarkupPercent !== undefined) {

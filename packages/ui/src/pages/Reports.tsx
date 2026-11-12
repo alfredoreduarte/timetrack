@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { SparklesIcon } from "@heroicons/react/24/outline";
 import { RootState, AppDispatch } from "../store";
@@ -22,10 +22,6 @@ const Reports: React.FC = () => {
     error,
     currentWeekOffset,
   } = useSelector((state: RootState) => state.reports);
-  const user = useSelector((state: RootState) => state.auth.user);
-
-  const aiMultiplier = user?.aiMultiplier ?? 3;
-  const [applyMultiplier, setApplyMultiplier] = useState(false);
 
   useEffect(() => {
     dispatch(fetchWeeklyData(0));
@@ -46,31 +42,19 @@ const Reports: React.FC = () => {
     }
   };
 
-  const totals = useMemo(() => {
+  // The week's totals are in the chart below; this adds how much was AI work.
+  const ai = useMemo(() => {
     let duration = 0;
     let earnings = 0;
-    let aiDuration = 0;
-    let aiEarnings = 0;
     for (const entry of detailedEntries) {
+      if (!entry.isAiGenerated) continue;
       duration += entry.duration || 0;
       earnings += entry.earnings || 0;
-      if (entry.isAiGenerated) {
-        aiDuration += entry.duration || 0;
-        aiEarnings += entry.earnings || 0;
-      }
     }
-    const extraMultiplier = aiMultiplier - 1;
-    return {
-      duration,
-      earnings,
-      aiDuration,
-      aiEarnings,
-      adjustedDuration: duration + aiDuration * extraMultiplier,
-      adjustedEarnings: earnings + aiEarnings * extraMultiplier,
-    };
-  }, [detailedEntries, aiMultiplier]);
+    return { duration, earnings };
+  }, [detailedEntries]);
 
-  const hasAi = totals.aiDuration > 0;
+  const hasAi = ai.duration > 0;
 
   return (
     <div className="space-y-6">
@@ -79,21 +63,6 @@ const Reports: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
           <p className="text-gray-600">Analyze your time tracking data</p>
         </div>
-        {hasAi && (
-          <label className="inline-flex items-center gap-2 cursor-pointer select-none px-3 py-2 rounded-md bg-violet-50 border border-violet-200">
-            <SparklesIcon className="h-4 w-4 text-violet-600" aria-hidden="true" />
-            <span className="text-sm font-medium text-violet-900">
-              Bill AI work at {aiMultiplier.toFixed(1)}×
-            </span>
-            <input
-              type="checkbox"
-              className="rounded ml-1"
-              checked={applyMultiplier}
-              onChange={(e) => setApplyMultiplier(e.target.checked)}
-              aria-label="Apply AI billing multiplier to totals"
-            />
-          </label>
-        )}
       </div>
 
       {error && (
@@ -103,31 +72,10 @@ const Reports: React.FC = () => {
       )}
 
       {hasAi && (
-        <div className="card p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-gray-500">Billable hours</p>
-            <p className="text-2xl font-semibold text-gray-900 tabular-nums">
-              {formatHours(applyMultiplier ? totals.adjustedDuration : totals.duration)}
-            </p>
-            {applyMultiplier && (
-              <p className="text-xs text-violet-700 mt-1">
-                +{formatHours(totals.adjustedDuration - totals.duration)} from {aiMultiplier.toFixed(1)}× multiplier on{" "}
-                {formatHours(totals.aiDuration)} AI work
-              </p>
-            )}
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wider text-gray-500">Billable earnings</p>
-            <p className="text-2xl font-semibold text-gray-900 tabular-nums">
-              ${(applyMultiplier ? totals.adjustedEarnings : totals.earnings).toFixed(2)}
-            </p>
-            {applyMultiplier && (
-              <p className="text-xs text-violet-700 mt-1">
-                +${(totals.adjustedEarnings - totals.earnings).toFixed(2)} from multiplier
-              </p>
-            )}
-          </div>
-        </div>
+        <p className="card px-4 py-3 text-sm text-violet-800 inline-flex items-center gap-2">
+          <SparklesIcon className="h-4 w-4 text-violet-600" aria-hidden="true" />
+          AI work this week: {formatHours(ai.duration)} · ${ai.earnings.toFixed(2)}
+        </p>
       )}
 
       {weeklyData && (
