@@ -1,10 +1,14 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, getDefaultNormalizer } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { BrowserRouter } from "react-router-dom";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
 import TimeEntries from "../TimeEntries";
+import { money } from "../../utils/agentFormat";
+
+// Amounts are formatted in the runner's locale; match them as rendered.
+const exact = { normalizer: getDefaultNormalizer({ collapseWhitespace: false }) };
 import { reducers } from "../../store/reducers";
 import { projectsAPI, tasksAPI, timeEntriesAPI } from "../../services/api";
 
@@ -220,8 +224,8 @@ describe("TimeEntries Component", () => {
 
       await renderPage();
 
-      expect(screen.getByText("$50.00")).toBeInTheDocument();
-      expect(screen.getByText("$0.00")).toBeInTheDocument();
+      expect(screen.getByText(money(50, "USD"), exact)).toBeInTheDocument();
+      expect(screen.getByText(money(0, "USD"), exact)).toBeInTheDocument();
     });
 
     it("shows delete button only for completed entries", async () => {

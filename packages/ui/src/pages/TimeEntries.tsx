@@ -16,8 +16,11 @@ import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 import { ClockIcon, PencilIcon } from "@heroicons/react/24/outline";
 import { StopIcon } from "@heroicons/react/24/solid";
 import FavoriteButton from "../components/FavoriteButton";
+import { money } from "../utils/agentFormat";
+import { useCurrency } from "../hooks/useCurrency";
 
 const TimeEntries: React.FC = () => {
+  const currency = useCurrency();
   const dispatch = useDispatch<AppDispatch>();
   const { entries, loading, error, pagination } = useSelector(
     (state: RootState) => state.timeEntries
@@ -311,7 +314,7 @@ const TimeEntries: React.FC = () => {
                         {formatReportsDuration(entry.duration || 0)}
                       </div>
                       <div className="text-sm text-green-600 font-medium">
-                        ${calculateEarnings(entry).toFixed(2)}
+                        {money(calculateEarnings(entry), currency)}
                       </div>
                       {isRunning ? (
                         <button
