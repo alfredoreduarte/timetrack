@@ -324,7 +324,9 @@ async function applyEntryUpdate(
   ctx: ServiceContext,
   existing: ExistingEntry,
   patch: UpdateEntryInput,
-  events: PendingEvent[]
+  events: PendingEvent[],
+  /** Entries this same batch updates itself (left out of the sibling rename). */
+  batchIds: ReadonlySet<string> = new Set()
 ): Promise<EntryView> {
   const startChanged = patch.startTime !== undefined && !sameInstant(patch.startTime, existing.startTime);
   const endChanged = patch.endTime !== undefined && !sameInstant(patch.endTime, existing.endTime);
@@ -452,7 +454,7 @@ async function applyEntryUpdate(
         // old text take the new one (the timer's lock is held, see
         // lockAndLoadEntry).
         const stale = await tx.timeEntry.findMany({
-          where: { timerId: timer.id, id: { not: updated.id }, description: timer.description },
+          where: { timerId: timer.id, id: { notIn: [updated.id, ...batchIds] }, description: timer.description },
           select: entrySelect,
           orderBy: { id: "asc" },
         });
@@ -546,7 +548,7 @@ export async function bulkUpdateEntries(ctx: ServiceContext, input: BulkUpdateIn
         });
         const out: EntryView[] = [];
         for (const existing of found) {
-          out.push(await applyEntryUpdate(tx, ctx, existing, input.set, events));
+          out.push(await applyEntryUpdate(tx, ctx, existing, input.set, events, new Set(ids)));
         }
         return out;
       },
