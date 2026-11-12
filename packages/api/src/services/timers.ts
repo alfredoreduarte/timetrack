@@ -229,6 +229,11 @@ async function openSegment(
     },
     select: entrySelect,
   });
+  // Notes written before the timer had a segment on its client go here.
+  await tx.timerNote.updateMany({
+    where: { timerId: timer.id, awaitingSegment: true },
+    data: { timeEntryId: entry.id, awaitingSegment: false },
+  });
   await recordAudit(tx, ctx, {
     entityType: "time_entry",
     entityId: entry.id,
@@ -263,16 +268,17 @@ async function closeSegment(
   const duration = Math.floor((end.getTime() - running.startTime.getTime()) / 1000);
 
   if (duration === 0 && !keepEmpty) {
-    // A note written in that instant goes with the segment before it, if
-    // that one is the same client's.
+    // A note written in that instant goes with the segment before it on
+    // the same client, else with the next segment the timer opens.
     await tx.$executeRaw`
-      UPDATE timer_notes SET time_entry_id = (
+      UPDATE timer_notes n SET time_entry_id = prev.id, awaiting_segment = prev.id IS NULL
+      FROM (SELECT (
         SELECT e.id FROM time_entries e
         WHERE e.timer_id = ${timerId} AND e.id <> ${running.id}
           AND e."projectId" IS NOT DISTINCT FROM ${running.projectId}::text
           AND e."startTime" <= ${running.startTime}
-        ORDER BY e."startTime" DESC, e.id DESC LIMIT 1)
-      WHERE time_entry_id = ${running.id}`;
+        ORDER BY e."startTime" DESC, e.id DESC LIMIT 1) AS id) prev
+      WHERE n.time_entry_id = ${running.id}`;
     await tx.timeEntry.delete({ where: { id: running.id } });
     await recordAudit(tx, ctx, {
       entityType: "time_entry",
@@ -810,10 +816,14 @@ export async function updateTimer(
       if (input.isAiGenerated !== undefined && seg.isAiGenerated !== input.isAiGenerated) {
         segData.isAiGenerated = input.isAiGenerated;
       }
+      // A rename reaches the segments on the timer's client (all of them,
+      // when the timer moves); segments moved to other clients keep their
+      // text.
       if (
         description !== undefined &&
         updated.description !== timer.description &&
-        seg.description === timer.description
+        seg.description === timer.description &&
+        (assignmentChanged || seg.projectId === timer.projectId)
       ) {
         segData.description = updated.description;
       }
@@ -874,15 +884,24 @@ export async function addTimerNote(ctx: ServiceContext, timerId: string, body: s
   const { timer, note } = await prisma.$transaction(async (tx) => {
     const timer = await lockTimer(tx, ctx, timerId);
     // The note is about the work in progress, or the work just done: the
-    // running segment, else the latest. Timesheets show it with that
-    // segment, wherever it is billed.
+    // running segment, else the latest on the timer's own client (never a
+    // segment moved to another client). With neither, it goes with the
+    // next segment the timer opens. Timesheets show it with its segment.
     const segment = await tx.timeEntry.findFirst({
-      where: { timerId },
+      where: { timerId, OR: [{ isRunning: true }, { projectId: timer.projectId }] },
       select: { id: true },
       orderBy: [{ isRunning: "desc" }, { startTime: "desc" }, { id: "desc" }],
     });
     const note = await tx.timerNote.create({
-      data: { timerId, userId: ctx.userId, body: text, via: ctx.via, createdAt: ctx.now(), timeEntryId: segment?.id ?? null },
+      data: {
+        timerId,
+        userId: ctx.userId,
+        body: text,
+        via: ctx.via,
+        createdAt: ctx.now(),
+        timeEntryId: segment?.id ?? null,
+        awaitingSegment: !segment,
+      },
       select: { id: true, body: true, via: true, createdAt: true, timerId: true },
     });
     return { timer, note };

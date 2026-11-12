@@ -498,3 +498,148 @@ describe("release review round 4", () => {
     expect((await prisma.timerNote.findUniqueOrThrow({ where: { id } })).timeEntryId).toBe(seg.id);
   });
 });
+
+describe("release review round 5", () => {
+  const sheetOf = async (auth: Record<string, string>, range = RANGE) =>
+    (await api().get(`/reports/timesheet?${range}&format=json`).set(auth)).body.timesheet;
+  type Sheet = { projects: Array<{ project: { name: string }; lines: Array<{ date: string; description: string; trackedSeconds: number; notes: string[] }>; costs: Array<{ costUsd: number; billedUsd: number }> }> };
+  const byName = (sheet: Sheet) => Object.fromEntries(sheet.projects.map((p) => [p.project.name, p]));
+  /** A running timer on `projectId` whose current segment started an hour ago. */
+  async function runningTimer(auth: Record<string, string>, projectId: string, description: string) {
+    const started = await api().post("/timers").set(auth).send({ projectId, description });
+    const timerId = started.body.timer?.id ?? started.body.id;
+    await prisma.timeEntry.updateMany({ where: { timerId }, data: { startTime: new Date(Date.now() - 3600_000) } });
+    return timerId as string;
+  }
+  const today = () => {
+    const d = new Date();
+    const s = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - 1));
+    return `startDate=${s.toISOString()}&endDate=${new Date(s.getTime() + 3 * 86400_000).toISOString()}`;
+  };
+
+  it("moving the running segment to another client and retitling it in one save leaves the old client's segments alone", async () => {
+    const { user, auth } = await createUser();
+    const a = await createProject(user.id, { name: "Client A", hourlyRate: 100 });
+    const b = await createProject(user.id, { name: "Client B", hourlyRate: 100 });
+    const timerId = await runningTimer(auth, b.id, "B: merger due diligence");
+    await api().post(`/timers/${timerId}/pause`).set(auth).send({});
+    await api().post(`/timers/${timerId}/resume`).set(auth).send({});
+    const running = await prisma.timeEntry.findFirstOrThrow({ where: { timerId, isRunning: true } });
+    const put = await api().put(`/time-entries/${running.id}`).set(auth).send({ projectId: a.id, description: "A: Project Falcon" });
+    expect(put.status).toBe(200);
+    const segs = await prisma.timeEntry.findMany({ where: { timerId }, orderBy: { startTime: "asc" }, select: { projectId: true, description: true } });
+    expect(segs).toEqual([
+      { projectId: b.id, description: "B: merger due diligence" },
+      { projectId: a.id, description: "A: Project Falcon" },
+    ]);
+    const sheet = byName(await sheetOf(auth, today()));
+    expect(JSON.stringify(sheet["Client B"])).not.toContain("Falcon");
+  });
+
+  it("retitling a timer or its running segment never rewrites a segment moved to another client", async () => {
+    const { user, auth } = await createUser();
+    const b = await createProject(user.id, { name: "Client B", hourlyRate: 100 });
+    const c = await createProject(user.id, { name: "Client C", hourlyRate: 100 });
+    const timerId = await runningTimer(auth, b.id, "Untitled");
+    await api().post(`/timers/${timerId}/pause`).set(auth).send({});
+    const first = await prisma.timeEntry.findFirstOrThrow({ where: { timerId } });
+    // The first hour was C's; its text stays what it was.
+    expect((await api().put(`/time-entries/${first.id}`).set(auth).send({ projectId: c.id })).status).toBe(200);
+    await api().post(`/timers/${timerId}/resume`).set(auth).send({});
+    const running = await prisma.timeEntry.findFirstOrThrow({ where: { timerId, isRunning: true } });
+    expect((await api().put(`/time-entries/${running.id}`).set(auth).send({ description: "B: merger due diligence" })).status).toBe(200);
+    expect((await prisma.timeEntry.findUniqueOrThrow({ where: { id: first.id } })).description).toBe("Untitled");
+    expect((await api().patch(`/timers/${timerId}`).set(auth).send({ description: "B: merger, phase 2" })).status).toBe(200);
+    expect((await prisma.timeEntry.findUniqueOrThrow({ where: { id: first.id } })).description).toBe("Untitled");
+    expect((await prisma.timeEntry.findUniqueOrThrow({ where: { id: running.id } })).description).toBe("B: merger, phase 2");
+  });
+
+  it("a note written while paused never lands on another client's segment; it waits for the timer's next one", async () => {
+    const { user, auth } = await createUser();
+    const a = await createProject(user.id, { name: "Client A", hourlyRate: 100 });
+    const c = await createProject(user.id, { name: "Client C", hourlyRate: 100 });
+    const timerId = await runningTimer(auth, a.id, "merger");
+    await api().post(`/timers/${timerId}/pause`).set(auth).send({});
+    const s1 = await prisma.timeEntry.findFirstOrThrow({ where: { timerId } });
+    expect((await api().put(`/time-entries/${s1.id}`).set(auth).send({ projectId: c.id, description: "C work" })).status).toBe(200);
+    await api().post(`/timers/${timerId}/resume`).set(auth).send({});
+    const running = await prisma.timeEntry.findFirstOrThrow({ where: { timerId, isRunning: true } });
+    // Deleting the running segment pauses the timer.
+    expect((await api().delete(`/time-entries/${running.id}`).set(auth)).status).toBe(200);
+    const id = await writeNote(auth, timerId, "A: acquisition due diligence", new Date());
+    expect(await prisma.timerNote.findUniqueOrThrow({ where: { id } })).toMatchObject({ timeEntryId: null, awaitingSegment: true });
+    let sheet = byName(await sheetOf(auth, today()));
+    expect(JSON.stringify(sheet["Client C"])).not.toContain("due diligence");
+    const link = await api().post("/share-links").set(auth).send({ projectId: c.id, rollingDays: 7 });
+    expect(link.status).toBe(201);
+    const md = await api().get(`/public/timesheets/${link.body.url.split("/share/")[1]}?format=markdown`);
+    expect(md.text).toContain("C work");
+    expect(md.text).not.toContain("due diligence");
+    // Resumed on A: the note goes with the new segment.
+    await api().post(`/timers/${timerId}/resume`).set(auth).send({});
+    const next = await prisma.timeEntry.findFirstOrThrow({ where: { timerId, isRunning: true } });
+    expect(await prisma.timerNote.findUniqueOrThrow({ where: { id } })).toMatchObject({ timeEntryId: next.id, awaitingSegment: false });
+    await prisma.timeEntry.update({ where: { id: next.id }, data: { startTime: new Date(Date.now() - 600_000) } });
+    sheet = byName(await sheetOf(auth, today()));
+    expect(sheet["Client A"].lines.flatMap((l) => l.notes)).toEqual(["A: acquisition due diligence"]);
+    expect(JSON.stringify(sheet["Client C"])).not.toContain("due diligence");
+  });
+
+  it("a note on a first segment discarded as empty goes with the segment the timer opens next", async () => {
+    const { user, auth } = await createUser();
+    const p = await createProject(user.id, { name: "Acme", hourlyRate: 100 });
+    const started = await api().post("/timers").set(auth).send({ projectId: p.id, description: "quiet start" });
+    const timerId = started.body.timer?.id ?? started.body.id;
+    const id = await writeNote(auth, timerId, "Planned the work", new Date());
+    // Paused with nothing tracked (as the idle sweeper does when the last
+    // activity is the start): the empty segment is discarded.
+    await prisma.timeEntry.updateMany({ where: { timerId }, data: { startTime: new Date(Date.now() + 60_000) } });
+    await api().post(`/timers/${timerId}/pause`).set(auth).send({});
+    expect(await prisma.timeEntry.count({ where: { timerId } })).toBe(0);
+    expect(await prisma.timerNote.findUniqueOrThrow({ where: { id } })).toMatchObject({ timeEntryId: null, awaitingSegment: true });
+    await api().post(`/timers/${timerId}/resume`).set(auth).send({});
+    const seg = await prisma.timeEntry.findFirstOrThrow({ where: { timerId } });
+    await prisma.timeEntry.update({ where: { id: seg.id }, data: { startTime: new Date(Date.now() - 600_000) } });
+    const sheet = (await sheetOf(auth, today())) as Sheet;
+    expect(sheet.projects[0].lines.flatMap((l) => l.notes)).toEqual(["Planned the work"]);
+  });
+
+  it("each client's share of a cost is within a cent of exact, and billed never drops below cost", async () => {
+    const { user, auth } = await createUser();
+    const a = await createProject(user.id, { name: "Client A", hourlyRate: 100, includeAiCosts: true });
+    const b = await createProject(user.id, { name: "Client B", hourlyRate: 100, includeAiCosts: true });
+    const { timer } = await agentTimer(user.id, a.id, "alternating", [["09:00", "09:10"]], 100.5);
+    await prisma.timeEntry.deleteMany({ where: { timerId: timer.id } });
+    // 100 alternating 10-minute segments, half A's and half B's.
+    const base = Date.parse("2026-03-02T00:00:00Z");
+    await prisma.timeEntry.createMany({
+      data: Array.from({ length: 100 }, (_, i) => ({
+        userId: user.id, projectId: i % 2 ? b.id : a.id, timerId: timer.id, startTime: new Date(base + i * 600_000), endTime: new Date(base + (i + 1) * 600_000),
+        duration: 600, isRunning: false, isAiGenerated: true, hourlyRateSnapshot: 100,
+      })),
+    });
+    const sheet = byName(await sheetOf(auth));
+    expect(sheet["Client A"].costs.map((c) => c.costUsd)).toEqual([50.25]);
+    expect(sheet["Client B"].costs.map((c) => c.costUsd)).toEqual([50.25]);
+
+    const { user: u2, auth: auth2 } = await createUser();
+    const x = await createProject(u2.id, { name: "X", hourlyRate: 100, includeAiCosts: true, aiCostMarkupPercent: 15 });
+    const y = await createProject(u2.id, { name: "Y", hourlyRate: 100, includeAiCosts: true, aiCostMarkupPercent: 15 });
+    const tiny = await agentTimer(u2.id, x.id, "tiny", [["09:00", "10:00"], ["11:00", "12:00"]], 0.01);
+    await api().put(`/time-entries/${tiny.entries[1].id}`).set(auth2).send({ projectId: y.id });
+    for (const p of ((await sheetOf(auth2)) as Sheet).projects) for (const c of p.costs) expect(c.billedUsd).toBeGreaterThanOrEqual(c.costUsd);
+  });
+
+  it("a note on a day piece under half a second still shows, once per sheet", async () => {
+    const { user, auth } = await createUser();
+    const p = await createProject(user.id, { name: "Acme", hourlyRate: 100 });
+    const { timer, entries } = await agentTimer(user.id, p.id, "midnight", [["09:00", "10:00"]]);
+    await prisma.timeEntry.update({ where: { id: entries[0].id }, data: { startTime: new Date("2026-03-07T23:00:00Z"), endTime: new Date("2026-03-08T00:00:00.300Z"), duration: 3600 } });
+    await writeNote(auth, timer.id, "Shipped it", new Date("2026-03-08T00:05:00Z"));
+    const notesIn = async (range: string) =>
+      ((await sheetOf(auth, range)) as Sheet).projects.flatMap((x) => x.lines.filter((l) => l.notes.length).map((l) => [l.date, l.notes]));
+    expect(await notesIn("startDate=2026-03-01T00:00:00Z&endDate=2026-04-01T00:00:00Z")).toEqual([["2026-03-07", ["Shipped it"]]]);
+    expect(await notesIn(RANGE)).toEqual([]);
+    expect(await notesIn("startDate=2026-03-08T00:00:00Z&endDate=2026-03-15T00:00:00Z")).toEqual([["2026-03-08", ["Shipped it"]]]);
+  });
+});

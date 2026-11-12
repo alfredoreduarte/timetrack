@@ -347,35 +347,46 @@ export async function buildTimesheet(
   const anyCosts = entitlements.limits.aiCostLines && projects.some((p) => p.includeAiCosts) && timerIds.length > 0;
   // Ids go in as one array joined with unnest(), so the plan stays a hash
   // join however often a pooled connection reuses the statement.
+  const entryIds = entries.map((e) => e.id);
   const [notes, costSegments] = await Promise.all([
     // A note is stored with the segment it was written on.
     showNotes
       ? prisma.$queryRaw<Array<{ entryId: string; body: string; createdAt: Date }>>`
           SELECT n.time_entry_id AS "entryId", n.body, n.created_at AS "createdAt"
           FROM timer_notes n
-          JOIN unnest(${entries.map((e) => e.id)}::text[]) AS s(id) ON s.id = n.time_entry_id
+          JOIN unnest(${entryIds}::text[]) AS s(id) ON s.id = n.time_entry_id
           WHERE n.user_id = ${userId}
           ORDER BY n.created_at ASC, n.id ASC`
       : Promise.resolve([] as Array<{ entryId: string; body: string; createdAt: Date }>),
-    // Every segment of each timer with a cost, laid end to end in start
-    // order: where it begins on the timer's tracked-time line, and the
-    // line's length.
+    // Each timer with a cost lays all its segments end to end: client by
+    // client, each client's in start order. For this sheet's segments: where
+    // each begins on that tracked-time line, and the line's length.
     anyCosts
       ? prisma.$queryRaw<CostSegmentRow[]>`
-          SELECT t.id AS "timerId", t.project_id AS "projectId", t.agent, t.description,
-            t.cost_usd AS "costUsd", e.id AS "entryId",
-            (SUM(d.ms) OVER w - d.ms)::float8 AS "beforeMs",
-            (SUM(d.ms) OVER (PARTITION BY t.id))::float8 AS "totalMs"
-          FROM timers t
-          JOIN unnest(${timerIds}::text[]) AS s(id) ON s.id = t.id
-          JOIN time_entries e ON e.timer_id = t.id
-          CROSS JOIN LATERAL (
-            SELECT GREATEST(0, EXTRACT(EPOCH FROM (
-              CASE WHEN e."isRunning" OR e."endTime" IS NULL THEN (${now}::timestamptz AT TIME ZONE 'UTC') ELSE e."endTime" END
-              - e."startTime")) * 1000) AS ms
-          ) d
-          WHERE t.user_id = ${userId} AND t.cost_usd > 0
-          WINDOW w AS (PARTITION BY t.id ORDER BY e."startTime", e.id ROWS UNBOUNDED PRECEDING)`
+          WITH ct AS (
+            SELECT t.id, t.project_id, t.agent, t.description, t.cost_usd
+            FROM timers t
+            JOIN unnest(${timerIds}::text[]) AS s(id) ON s.id = t.id
+            WHERE t.user_id = ${userId} AND t.cost_usd > 0
+          ), placed AS (
+            SELECT e.id, e.timer_id,
+              SUM(d.ms) OVER w - d.ms AS before_ms,
+              SUM(d.ms) OVER (PARTITION BY e.timer_id) AS total_ms
+            FROM time_entries e
+            JOIN ct ON ct.id = e.timer_id
+            CROSS JOIN LATERAL (
+              SELECT GREATEST(0, EXTRACT(EPOCH FROM (
+                CASE WHEN e."isRunning" OR e."endTime" IS NULL THEN (${now}::timestamptz AT TIME ZONE 'UTC') ELSE e."endTime" END
+                - e."startTime")) * 1000) AS ms
+            ) d
+            WINDOW w AS (PARTITION BY e.timer_id ORDER BY e."projectId" NULLS LAST, e."startTime", e.id ROWS UNBOUNDED PRECEDING)
+          )
+          SELECT ct.id AS "timerId", ct.project_id AS "projectId", ct.agent, ct.description,
+            ct.cost_usd AS "costUsd", p.id AS "entryId",
+            p.before_ms::float8 AS "beforeMs", p.total_ms::float8 AS "totalMs"
+          FROM placed p
+          JOIN unnest(${entryIds}::text[]) AS q(id) ON q.id = p.id
+          JOIN ct ON ct.id = p.timer_id`
       : Promise.resolve([] as CostSegmentRow[]),
   ]);
   const notesByEntry = new Map<string, Array<{ createdAt: Date; body: string }>>();
@@ -421,6 +432,8 @@ export async function buildTimesheet(
     // timer-less entries. A segment's own description wins: it's what the
     // user last said this time was (the timer may describe other segments).
     const lineMap = new Map<string, TimesheetLine>();
+    // Notes per line, with the instant each sits at (lines list them in order).
+    const lineNotes = new Map<string, Array<{ at: number; body: string }>>();
     for (const e of group) {
       const alloc = bill.allocations.get(e.id);
       if (!alloc) continue;
@@ -466,10 +479,32 @@ export async function buildTimesheet(
         if (at < start || at >= end) continue;
         const day = localDateKey(at, timezone);
         const lineDay = alloc.has(day) ? day : day < days[0] ? days[0] : days[days.length - 1];
-        lineMap.get(keyFor(lineDay))?.notes.push(note.body);
+        const lineKey = keyFor(lineDay);
+        let list = lineNotes.get(lineKey);
+        if (!list) lineNotes.set(lineKey, (list = []));
+        list.push({ at: at.getTime(), body: note.body });
       }
     }
-    const shown = Array.from(lineMap.values()).filter((l) => Math.round(l.trackedSeconds) > 0);
+    // Lines under half a second are left out; their notes move to the
+    // nearest shown day of the same work (timer and text) on this sheet, or
+    // keep their line.
+    const isShown = (l: TimesheetLine) => Math.round(l.trackedSeconds) > 0;
+    const workOf = (lineKey: string) => lineKey.slice(lineKey.indexOf("|"));
+    const placed = new Map<TimesheetLine, Array<{ at: number; body: string }>>();
+    for (const [lineKey, list] of lineNotes) {
+      const line = lineMap.get(lineKey)!;
+      let target = line;
+      if (!isShown(line)) {
+        const day = Date.parse(line.date);
+        for (const [k, l] of lineMap) {
+          if (workOf(k) !== workOf(lineKey) || !isShown(l)) continue;
+          if (target === line || Math.abs(Date.parse(l.date) - day) < Math.abs(Date.parse(target.date) - day)) target = l;
+        }
+      }
+      placed.set(target, [...(placed.get(target) ?? []), ...list]);
+    }
+    for (const [l, list] of placed) l.notes = list.sort((a, b) => a.at - b.at).map((n) => n.body);
+    const shown = Array.from(lineMap.values()).filter((l) => isShown(l) || l.notes.length > 0);
     const digits = currencyDigits(user.currency);
     const unit = 10 ** digits;
     const cents = splitCents(shown.map((l) => l.amount), digits);
@@ -487,10 +522,13 @@ export async function buildTimesheet(
     // tracked time. Each piece of time is a stretch [lo, hi) of the timer's
     // tracked-time line and bills R(hi) - R(lo), with R(x) the cost of the
     // first x ms rounded to the cent. Every sheet cuts the same line, so a
-    // timer's pieces across projects and periods add up to its cost exactly.
+    // timer's pieces across projects and periods add up to its cost exactly;
+    // a client's segments sit together on it, so this sheet's piece for one
+    // client is a single stretch, within a cent of its exact share. The
+    // markup is its own line the same way, so billed never drops below cost.
     const costParts = new Map<string, { cents: number; billedCents: number; first: Date; description: string | null }>();
     if (policy.includeAiCosts) {
-      const markup = 1 + policy.aiCostMarkupPercent / 100;
+      const markup = policy.aiCostMarkupPercent / 100;
       for (const e of group) {
         const c = costSegmentById.get(e.id);
         if (!c || !(c.totalMs > 0)) continue;
@@ -506,7 +544,7 @@ export async function buildTimesheet(
         const R = (x: number, factor: number) => Math.round((costCents * factor * x) / c.totalMs);
         const part = costParts.get(c.timerId) ?? { cents: 0, billedCents: 0, first: from, description: null };
         part.cents += R(hi, 1) - R(lo, 1);
-        part.billedCents += R(hi, markup) - R(lo, markup);
+        part.billedCents += R(hi, 1) - R(lo, 1) + R(hi, markup) - R(lo, markup);
         if (from < part.first) part.first = from;
         part.description ??= e.description;
         costParts.set(c.timerId, part);

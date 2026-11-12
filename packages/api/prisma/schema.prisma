@@ -211,11 +211,14 @@ model TimerNote {
   timer   Timer  @relation(fields: [timerId], references: [id], onDelete: Cascade)
   userId  String @map("user_id")
   user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// The segment the note was written on (the running one, else the latest).
-  /// Timesheets show the note wherever that segment is billed; a deleted
-  /// segment's notes show on no timesheet.
-  timeEntryId String?    @map("time_entry_id")
-  timeEntry   TimeEntry? @relation(fields: [timeEntryId], references: [id], onDelete: SetNull)
+  /// The segment the note was written on: the running one, else the latest
+  /// on the timer's own client. Timesheets show the note wherever that
+  /// segment is billed; a deleted segment's notes show on no timesheet.
+  timeEntryId     String?    @map("time_entry_id")
+  timeEntry       TimeEntry? @relation(fields: [timeEntryId], references: [id], onDelete: SetNull)
+  /// Written when the timer had no such segment yet (or its only one was
+  /// discarded as empty): goes with the next segment the timer opens.
+  awaitingSegment Boolean    @default(false) @map("awaiting_segment")
 
   @@index([timerId, createdAt])
   @@index([userId, createdAt])
