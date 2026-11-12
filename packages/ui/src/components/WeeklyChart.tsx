@@ -11,6 +11,7 @@ import {
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import { DailyData } from "../store/slices/reportsSlice";
 import { formatReportsDuration } from "../utils/dateTime";
+import { money } from "../utils/agentFormat";
 
 interface WeeklyChartProps {
   data: DailyData[];
@@ -19,6 +20,8 @@ interface WeeklyChartProps {
   loading: boolean;
   onPreviousWeek: () => void;
   onNextWeek: () => void;
+  /** The user's currency (earnings are in it). */
+  currency?: string;
 }
 
 type ChartMode = "hours" | "earnings";
@@ -28,6 +31,7 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
   weekStartDate,
   weekEndDate,
   loading,
+  currency = "USD",
   onPreviousWeek,
   onNextWeek,
 }) => {
@@ -75,7 +79,7 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
           <p className="text-blue-600">
             Hours: {formatReportsDuration(data.totalDuration)}
           </p>
-          <p className="text-green-600">Earnings: ${data.earnings}</p>
+          <p className="text-green-600">Earnings: {money(data.earnings, currency)}</p>
           <p className="text-gray-600">Entries: {data.entryCount}</p>
         </div>
       );
@@ -88,7 +92,11 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
     if (chartMode === "hours") {
       return `${value}h`;
     }
-    return `$${value}`;
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
+    } catch {
+      return `${value} ${currency}`;
+    }
   };
 
   // Calculate totals for the summary
@@ -201,7 +209,7 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
           </div>
           <div className="text-center">
             <p className="text-2xl font-bold text-green-600 tabular-nums">
-              ${Math.round(totalEarnings * 100) / 100}
+              {money(totalEarnings, currency)}
             </p>
             <p className="text-sm text-gray-600">Total Earnings</p>
           </div>

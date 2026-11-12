@@ -8,6 +8,7 @@ import {
 } from "../store/slices/reportsSlice";
 import WeeklyChart from "../components/WeeklyChart";
 import DetailedTimeEntriesTable from "../components/DetailedTimeEntriesTable";
+import { money } from "../utils/agentFormat";
 
 const formatHours = (seconds: number) =>
   `${(seconds / 3600).toFixed(2)} h`;
@@ -22,6 +23,8 @@ const Reports: React.FC = () => {
     error,
     currentWeekOffset,
   } = useSelector((state: RootState) => state.reports);
+  // Rates, and so earnings, are in the user's currency.
+  const currency = useSelector((state: RootState) => state.auth.user?.currency) || "USD";
 
   useEffect(() => {
     dispatch(fetchWeeklyData(0));
@@ -74,7 +77,7 @@ const Reports: React.FC = () => {
       {hasAi && (
         <p className="card px-4 py-3 text-sm text-violet-800 inline-flex items-center gap-2">
           <SparklesIcon className="h-4 w-4 text-violet-600" aria-hidden="true" />
-          AI work this week: {formatHours(ai.duration)} · ${ai.earnings.toFixed(2)}
+          AI work this week: {formatHours(ai.duration)} · {money(ai.earnings, currency)}
         </p>
       )}
 
@@ -86,12 +89,14 @@ const Reports: React.FC = () => {
           loading={loading}
           onPreviousWeek={handlePreviousWeek}
           onNextWeek={handleNextWeek}
+          currency={currency}
         />
       )}
 
       <DetailedTimeEntriesTable
         entries={detailedEntries}
         loading={detailedLoading}
+        currency={currency}
       />
 
       {!weeklyData && loading && (

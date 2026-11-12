@@ -1,11 +1,14 @@
 import React from "react";
 import { DetailedTimeEntry } from "../store/slices/reportsSlice";
 import AiBadge from "./AiBadge";
+import { money } from "../utils/agentFormat";
 import { getUserTimezone } from "../../../shared/src/utils/timezone";
 
 interface DetailedTimeEntriesTableProps {
   entries: DetailedTimeEntry[];
   loading: boolean;
+  /** The user's currency (earnings are in it). */
+  currency?: string;
 }
 
 interface GroupedEntry {
@@ -27,13 +30,6 @@ const formatDuration = (seconds: number): string => {
   return `${hours}h${minutes.toString().padStart(2, "0")}m`;
 };
 
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-  }).format(amount);
-};
 
 const formatDate = (dateString: string): string => {
   const date = new Date(dateString + 'T12:00:00'); // Add time to avoid timezone issues
@@ -64,7 +60,9 @@ const getDateInTimezone = (dateString: string): string => {
 const DetailedTimeEntriesTable: React.FC<DetailedTimeEntriesTableProps> = ({
   entries,
   loading,
+  currency = "USD",
 }) => {
+  const formatCurrency = (amount: number) => money(amount, currency);
   // State to track which project groups are expanded
   const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
     new Set()
