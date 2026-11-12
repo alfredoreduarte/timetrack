@@ -73,7 +73,9 @@ describe("S3 review: client views", () => {
     const token = link.body.url.split("/share/")[1];
     const res = await api().get(`/public/timesheets/${token}`);
     expect(res.status).toBe(200);
-    const json = JSON.stringify(res.body);
+    // generatedAt is the clock (it could contain "35" or "175" by chance).
+    const { generatedAt: _clock, ...sheet } = res.body.timesheet;
+    const json = JSON.stringify({ ...res.body, timesheet: sheet });
     for (const leak of ["175", "2.5", "35", "12.34", "agentHourlyRate", "aiMultiplier", "aiCostMarkupPercent", user.id, p.id]) {
       expect([leak, json.includes(leak)]).toEqual([leak, false]);
     }

@@ -447,6 +447,30 @@ async function applyEntryUpdate(
     if (changes.isAiGenerated) timerData.isAiGenerated = updated.isAiGenerated;
     if (Object.keys(timerData).length > 0) {
       await tx.timer.update({ where: { id: timer.id }, data: timerData });
+      if (changes.description) {
+        // As a timer rename does: its other segments that still carry the
+        // old text take the new one (the timer's lock is held, see
+        // lockAndLoadEntry).
+        const stale = await tx.timeEntry.findMany({
+          where: { timerId: timer.id, id: { not: updated.id }, description: timer.description },
+          select: entrySelect,
+          orderBy: { id: "asc" },
+        });
+        for (const seg of stale) {
+          const after = await tx.timeEntry.update({
+            where: { id: seg.id },
+            data: { description: updated.description },
+            select: entrySelect,
+          });
+          await recordAudit(tx, ctx, {
+            entityType: "time_entry",
+            entityId: seg.id,
+            action: "update",
+            changes: { description: { from: seg.description, to: after.description } },
+          });
+          events.push({ event: "time-entry-updated", payload: after });
+        }
+      }
       const timerChanges: Record<string, { from: unknown; to: unknown }> = {};
       for (const k of Object.keys(timerData)) {
         timerChanges[k] = {
