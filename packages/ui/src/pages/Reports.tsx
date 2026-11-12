@@ -22,6 +22,7 @@ const Reports: React.FC = () => {
     detailedLoading,
     error,
     currentWeekOffset,
+    detailedWeekOffset,
   } = useSelector((state: RootState) => state.reports);
   // Rates, and so earnings, are in the user's currency.
   const currency = useSelector((state: RootState) => state.auth.user?.currency) || "USD";
@@ -58,6 +59,8 @@ const Reports: React.FC = () => {
   }, [detailedEntries]);
 
   const hasAi = ai.duration > 0;
+  // Named for the week the figures are from.
+  const whichWeek = detailedWeekOffset === 0 ? "this week" : detailedWeekOffset === -1 ? "last week" : "that week";
 
   return (
     <div className="space-y-6">
@@ -77,7 +80,7 @@ const Reports: React.FC = () => {
       {hasAi && (
         <p className="card px-4 py-3 text-sm text-violet-800 inline-flex items-center gap-2">
           <SparklesIcon className="h-4 w-4 text-violet-600" aria-hidden="true" />
-          AI work this week: {formatHours(ai.duration)} · {money(ai.earnings, currency)}
+          AI work {whichWeek}: {formatHours(ai.duration)} · {money(ai.earnings, currency)}
         </p>
       )}
 
