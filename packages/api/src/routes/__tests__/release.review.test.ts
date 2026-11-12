@@ -643,3 +643,102 @@ describe("release review round 5", () => {
     expect(await notesIn("startDate=2026-03-08T00:00:00Z&endDate=2026-03-15T00:00:00Z")).toEqual([["2026-03-08", ["Shipped it"]]]);
   });
 });
+
+describe("release review round 6", () => {
+  const sheetOf = async (auth: Record<string, string>, range = RANGE) =>
+    (await api().get(`/reports/timesheet?${range}&format=json`).set(auth)).body.timesheet;
+  type Line = { date: string; description: string; trackedSeconds: number; amount: number; notes: string[] };
+  type Sheet = { totals: { amount: number }; projects: Array<{ project: { name: string }; lines: Line[]; costs: Array<{ date: string; costUsd: number }> }> };
+  const notesOf = (sheet: Sheet) => sheet.projects.flatMap((p) => p.lines.flatMap((l) => l.notes));
+  const today = () => {
+    const d = new Date();
+    const s = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - 1));
+    return `startDate=${s.toISOString()}&endDate=${new Date(s.getTime() + 3 * 86400_000).toISOString()}`;
+  };
+
+  it("a line kept only for its note bills nothing, so totals match with notes hidden", async () => {
+    const { user, auth } = await createUser();
+    const p = await createProject(user.id, { name: "Acme", hourlyRate: 100 });
+    const { timer, entries } = await agentTimer(user.id, p.id, "work", [["09:00", "10:00"]]);
+    await prisma.timeEntry.update({ where: { id: entries[0].id }, data: { startTime: new Date("2026-03-07T23:00:00Z"), endTime: new Date("2026-03-08T00:00:00.450Z"), duration: 3600 } });
+    await writeNote(auth, timer.id, "Shipped it", new Date("2026-03-08T00:00:00.200Z"));
+    const range = "startDate=2026-03-08T00:00:00Z&endDate=2026-03-15T00:00:00Z";
+    const sheet = (await sheetOf(auth, range)) as Sheet;
+    expect(sheet.projects[0].lines).toMatchObject([{ trackedSeconds: 0, amount: 0, notes: ["Shipped it"] }]);
+    expect(sheet.totals.amount).toBe(0);
+    const totalVia = async (showNotes: boolean) => {
+      const made = await api().post("/share-links").set(auth).send({ startDate: "2026-03-08T00:00:00Z", endDate: "2026-03-15T00:00:00Z", showNotes });
+      expect(made.status).toBe(201);
+      return (await api().get(`/public/timesheets/${made.body.url.split("/share/")[1]}`)).body.timesheet.totals.amount;
+    };
+    expect(await totalVia(true)).toBe(await totalVia(false));
+  });
+
+  it("a waiting note goes on a backfill, a segment moved back, or the timer's new client, even if the timer then stops", async () => {
+    const { user, auth } = await createUser();
+    const a = await createProject(user.id, { name: "Client A", hourlyRate: 100 });
+    const c = await createProject(user.id, { name: "Client C", hourlyRate: 100 });
+    const day = today();
+
+    // (a) Backfill after the running segment was deleted.
+    let timerId = (await api().post("/timers").set(auth).send({ projectId: a.id, description: "a" })).body.timer.id;
+    const running = await prisma.timeEntry.findFirstOrThrow({ where: { timerId, isRunning: true } });
+    await api().delete(`/time-entries/${running.id}`).set(auth);
+    await writeNote(auth, timerId, "note (a)", new Date());
+    const back = await api().post("/time-entries").set(auth).send({ timerId, startTime: new Date(Date.now() - 3600_000).toISOString(), endTime: new Date(Date.now() - 1800_000).toISOString() });
+    expect(back.status).toBe(201);
+    await api().post(`/timers/${timerId}/stop`).set(auth).send({});
+
+    // (b) The only segment moved to C, a note, then moved back to A.
+    timerId = (await api().post("/timers").set(auth).send({ projectId: a.id, description: "b" })).body.timer.id;
+    await prisma.timeEntry.updateMany({ where: { timerId }, data: { startTime: new Date(Date.now() - 7200_000) } });
+    await api().post(`/timers/${timerId}/pause`).set(auth).send({});
+    const s1 = await prisma.timeEntry.findFirstOrThrow({ where: { timerId } });
+    await api().put(`/time-entries/${s1.id}`).set(auth).send({ projectId: c.id });
+    await writeNote(auth, timerId, "note (b)", new Date());
+    await api().put(`/time-entries/${s1.id}`).set(auth).send({ projectId: a.id });
+    await api().post(`/timers/${timerId}/stop`).set(auth).send({});
+
+    // (c) The only segment moved to C, a note, then the whole timer moved to C.
+    timerId = (await api().post("/timers").set(auth).send({ projectId: a.id, description: "c" })).body.timer.id;
+    await prisma.timeEntry.updateMany({ where: { timerId }, data: { startTime: new Date(Date.now() - 10800_000) } });
+    await api().post(`/timers/${timerId}/pause`).set(auth).send({});
+    const s2 = await prisma.timeEntry.findFirstOrThrow({ where: { timerId } });
+    await api().put(`/time-entries/${s2.id}`).set(auth).send({ projectId: c.id });
+    await writeNote(auth, timerId, "note (c)", new Date());
+    expect((await api().patch(`/timers/${timerId}`).set(auth).send({ projectId: c.id })).status).toBe(200);
+    await api().post(`/timers/${timerId}/stop`).set(auth).send({});
+
+    expect(await prisma.timerNote.count({ where: { userId: user.id, awaitingSegment: true } })).toBe(0);
+    const sheet = (await sheetOf(auth, day)) as Sheet;
+    const byName = Object.fromEntries(sheet.projects.map((p) => [p.project.name, notesOf({ ...sheet, projects: [p] })]));
+    expect(byName["Client A"].sort()).toEqual(["note (a)", "note (b)"]);
+    expect(byName["Client C"]).toEqual(["note (c)"]);
+  });
+
+  it("after a segment moves between clients, every cost piece stays within a cent and the pieces add up", async () => {
+    const { user, auth } = await createUser();
+    const late = await createProject(user.id, { name: "late", hourlyRate: 100, includeAiCosts: true });
+    const early = await createProject(user.id, { name: "early", hourlyRate: 100, includeAiCosts: true });
+    const { timer } = await agentTimer(user.id, late.id, "t", [["09:00", "10:00"]], 0.1);
+    await prisma.timeEntry.deleteMany({ where: { timerId: timer.id } });
+    const seg = async (projectId: string, from: string) =>
+      prisma.timeEntry.create({ data: { userId: user.id, projectId, timerId: timer.id, startTime: new Date(from), endTime: new Date(new Date(from).getTime() + 3600_000), duration: 3600, isRunning: false, isAiGenerated: true, hourlyRateSnapshot: 100 } });
+    await seg(late.id, "2026-03-02T09:00:00Z");
+    await seg(early.id, "2026-03-03T09:00:00Z");
+    const third = await seg(early.id, "2026-03-16T09:00:00Z");
+    const weeks = ["startDate=2026-03-01T00:00:00Z&endDate=2026-03-08T00:00:00Z", "startDate=2026-03-15T00:00:00Z&endDate=2026-03-22T00:00:00Z"];
+    const pieces = async () => {
+      const out: Array<[string, number]> = [];
+      for (const w of weeks) for (const p of ((await sheetOf(auth, w)) as Sheet).projects) for (const c of p.costs) out.push([p.project.name, Math.round(c.costUsd * 100)]);
+      return out;
+    };
+    for (const state of ["before", "after"]) {
+      if (state === "after") await api().put(`/time-entries/${third.id}`).set(auth).send({ projectId: late.id });
+      const all = await pieces();
+      expect(all.reduce((s, [, c]) => s + c, 0)).toBe(10);
+      // Each piece is one hour of three: 10/3 cents, within a cent.
+      for (const [, c] of all) expect(Math.abs(c - 10 / 3)).toBeLessThan(1);
+    }
+  });
+});

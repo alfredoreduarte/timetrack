@@ -12,6 +12,7 @@ import { cleanText, DESCRIPTION_MAX } from "./text";
 import { assertAgentSlot, assertCanRunTimer } from "./limits";
 import { learnRepoMapping, resolveProjectForRepo } from "./repos";
 import { estimateCost, TokenCounts } from "../billing/pricing";
+import { settleAwaitingNotes } from "./timerNotes";
 
 /** How far ahead of server time a client clock may be before we reject. */
 export const FUTURE_SKEW_MS = 5 * 60 * 1000;
@@ -230,10 +231,7 @@ async function openSegment(
     select: entrySelect,
   });
   // Notes written before the timer had a segment on its client go here.
-  await tx.timerNote.updateMany({
-    where: { timerId: timer.id, awaitingSegment: true },
-    data: { timeEntryId: entry.id, awaitingSegment: false },
-  });
+  await settleAwaitingNotes(tx, timer.id);
   await recordAudit(tx, ctx, {
     entityType: "time_entry",
     entityId: entry.id,
@@ -260,7 +258,7 @@ async function closeSegment(
 ): Promise<EntryView | null> {
   const running = await tx.timeEntry.findFirst({
     where: { timerId, isRunning: true },
-    select: { id: true, startTime: true, projectId: true },
+    select: { id: true, startTime: true },
   });
   if (!running) return null;
 
@@ -268,17 +266,12 @@ async function closeSegment(
   const duration = Math.floor((end.getTime() - running.startTime.getTime()) / 1000);
 
   if (duration === 0 && !keepEmpty) {
-    // A note written in that instant goes with the segment before it on
-    // the same client, else with the next segment the timer opens.
-    await tx.$executeRaw`
-      UPDATE timer_notes n SET time_entry_id = prev.id, awaiting_segment = prev.id IS NULL
-      FROM (SELECT (
-        SELECT e.id FROM time_entries e
-        WHERE e.timer_id = ${timerId} AND e.id <> ${running.id}
-          AND e."projectId" IS NOT DISTINCT FROM ${running.projectId}::text
-          AND e."startTime" <= ${running.startTime}
-        ORDER BY e."startTime" DESC, e.id DESC LIMIT 1) AS id) prev
-      WHERE n.time_entry_id = ${running.id}`;
+    // A note written in that instant waits for the timer's latest (or
+    // next) segment on its client.
+    await tx.timerNote.updateMany({
+      where: { timeEntryId: running.id },
+      data: { timeEntryId: null, awaitingSegment: true },
+    });
     await tx.timeEntry.delete({ where: { id: running.id } });
     await recordAudit(tx, ctx, {
       entityType: "time_entry",
@@ -290,6 +283,7 @@ async function closeSegment(
       },
     });
     events.push({ event: "time-entry-deleted", payload: { id: running.id } });
+    await settleAwaitingNotes(tx, timerId);
     return null;
   }
 
@@ -858,6 +852,8 @@ export async function updateTimer(
       action: "update",
       changes: timerChanges,
     });
+    // A timer moved to another client may now have a segment there.
+    if (assignmentChanged) await settleAwaitingNotes(tx, timer.id);
 
     if (
       assignmentChanged &&
@@ -885,25 +881,13 @@ export async function addTimerNote(ctx: ServiceContext, timerId: string, body: s
     const timer = await lockTimer(tx, ctx, timerId);
     // The note is about the work in progress, or the work just done: the
     // running segment, else the latest on the timer's own client (never a
-    // segment moved to another client). With neither, it goes with the
-    // next segment the timer opens. Timesheets show it with its segment.
-    const segment = await tx.timeEntry.findFirst({
-      where: { timerId, OR: [{ isRunning: true }, { projectId: timer.projectId }] },
-      select: { id: true },
-      orderBy: [{ isRunning: "desc" }, { startTime: "desc" }, { id: "desc" }],
-    });
+    // segment moved to another client). With neither, it waits for the
+    // timer's first one. Timesheets show it with its segment.
     const note = await tx.timerNote.create({
-      data: {
-        timerId,
-        userId: ctx.userId,
-        body: text,
-        via: ctx.via,
-        createdAt: ctx.now(),
-        timeEntryId: segment?.id ?? null,
-        awaitingSegment: !segment,
-      },
+      data: { timerId, userId: ctx.userId, body: text, via: ctx.via, createdAt: ctx.now(), awaitingSegment: true },
       select: { id: true, body: true, via: true, createdAt: true, timerId: true },
     });
+    await settleAwaitingNotes(tx, timerId);
     return { timer, note };
   });
   // A note from an agent is a sign of life.

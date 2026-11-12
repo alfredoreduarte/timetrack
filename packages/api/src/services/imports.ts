@@ -12,6 +12,7 @@ import { cleanText } from "./text";
 import { cleanAgent, cleanSessionKey, cleanToken, FUTURE_SKEW_MS, validateUsage } from "./timers";
 import { agentLabel } from "./agentEvents";
 import { estimateCost } from "../billing/pricing";
+import { settleAwaitingNotes } from "./timerNotes";
 import { getEntitlements, historyFloor } from "./entitlements";
 
 export const MAX_IMPORT_SESSIONS = 100;
@@ -342,6 +343,7 @@ async function importOne(
               ORDER BY e."startTime" ASC, e.id ASC LIMIT 1))
           WHERE n.id = ANY(${notesToReattach})`;
       }
+      if (existing) await settleAwaitingNotes(tx, timerId);
       await recordAudit(tx, ctx, {
         entityType: "timer",
         entityId: timerId,

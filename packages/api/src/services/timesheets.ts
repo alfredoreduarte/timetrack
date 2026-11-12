@@ -504,11 +504,14 @@ export async function buildTimesheet(
       placed.set(target, [...(placed.get(target) ?? []), ...list]);
     }
     for (const [l, list] of placed) l.notes = list.sort((a, b) => a.at - b.at).map((n) => n.body);
-    const shown = Array.from(lineMap.values()).filter((l) => isShown(l) || l.notes.length > 0);
+    // Billed lines are the shown ones; a line kept only for its note bills
+    // nothing, so amounts never depend on whether notes are shown.
+    const billedLines = Array.from(lineMap.values()).filter(isShown);
+    const noteOnly = Array.from(lineMap.values()).filter((l) => !isShown(l) && l.notes.length > 0);
     const digits = currencyDigits(user.currency);
     const unit = 10 ** digits;
-    const cents = splitCents(shown.map((l) => l.amount), digits);
-    const lines = shown
+    const cents = splitCents(billedLines.map((l) => l.amount), digits);
+    const lines = billedLines
       .map((l, i) => ({
         ...l,
         trackedSeconds: Math.round(l.trackedSeconds),
@@ -516,16 +519,20 @@ export async function buildTimesheet(
         rate: l.billedSeconds > 0 ? Math.round((l.amount / (l.billedSeconds / 3600)) * unit) / unit : 0,
         amount: cents[i] / unit,
       }))
+      .concat(noteOnly.map((l) => ({ ...l, trackedSeconds: 0, billedSeconds: 0, rate: 0, amount: 0 })))
       .sort((a, b) => a.date.localeCompare(b.date) || b.trackedSeconds - a.trackedSeconds);
 
     // This project's part of each timer's cost, by its share of the timer's
     // tracked time. Each piece of time is a stretch [lo, hi) of the timer's
     // tracked-time line and bills R(hi) - R(lo), with R(x) the cost of the
-    // first x ms rounded to the cent. Every sheet cuts the same line, so a
-    // timer's pieces across projects and periods add up to its cost exactly;
-    // a client's segments sit together on it, so this sheet's piece for one
-    // client is a single stretch, within a cent of its exact share. The
-    // markup is its own line the same way, so billed never drops below cost.
+    // first x ms rounded to the cent. Sheets built from the same data cut the
+    // same line, so a timer's pieces across projects and periods add up to
+    // its cost exactly. A client's segments sit together on it, so this
+    // sheet's piece for one client is a single stretch, within a cent of its
+    // exact share. (Moving a segment to another client reorders the line, so
+    // other pieces of that timer can change by a cent; each stays within a
+    // cent of exact.) The markup is its own line the same way, so billed
+    // never drops below cost.
     const costParts = new Map<string, { cents: number; billedCents: number; first: Date; description: string | null }>();
     if (policy.includeAiCosts) {
       const markup = policy.aiCostMarkupPercent / 100;
