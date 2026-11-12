@@ -329,30 +329,91 @@ export async function buildTimesheet(
   const projectById = new Map(projects.map((p) => [p.id, p]));
 
   const timerIds = Array.from(new Set(entries.map((e) => e.timerId).filter((x): x is string => !!x)));
-  const [notes, costTimers] = await Promise.all([
+  // Notes and AI costs belong to a timer, but a timer's segments can sit in
+  // different projects (a segment reassigned to another client). Both follow
+  // the segments, so a sheet never shows another project's notes or costs.
+  const costTimers = await prisma.timer.findMany({
+    where: { userId, costUsd: { gt: 0 }, startedAt: { gte: start, lt: end } },
+    select: { id: true, agent: true, description: true, projectId: true, costUsd: true, startedAt: true },
+  });
+  const segmentTimerIds = Array.from(new Set([...timerIds, ...costTimers.map((t) => t.id)]));
+  type NoteRow = { timerId: string; body: string; createdAt: Date };
+  type SegmentRow = {
+    id: string;
+    timerId: string | null;
+    projectId: string | null;
+    description: string | null;
+    startTime: Date;
+    endTime: Date | null;
+    isRunning: boolean;
+  };
+  const [notes, timerSegments] = await Promise.all([
     opts.showNotes === false || timerIds.length === 0
-      ? Promise.resolve([])
+      ? Promise.resolve([] as NoteRow[])
       : prisma.timerNote.findMany({
           where: { userId, timerId: { in: timerIds }, createdAt: { gte: start, lt: end } },
           select: { timerId: true, body: true, createdAt: true },
           orderBy: { createdAt: "asc" },
         }),
-    prisma.timer.findMany({
-      where: {
-        userId,
-        costUsd: { gt: 0 },
-        startedAt: { gte: start, lt: end },
-        ...(q.projectId ? { projectId: q.projectId } : { projectId: { in: projectIds } }),
-      },
-      select: { id: true, description: true, agent: true, projectId: true, costUsd: true, startedAt: true },
-    }),
+    segmentTimerIds.length === 0
+      ? Promise.resolve([] as SegmentRow[])
+      : prisma.timeEntry.findMany({
+          where: { userId, timerId: { in: segmentTimerIds } },
+          select: { id: true, timerId: true, projectId: true, description: true, startTime: true, endTime: true, isRunning: true },
+          orderBy: { startTime: "asc" },
+        }),
   ]);
-  const notesByTimerDay = new Map<string, string[]>();
+  const segmentsByTimer = new Map<string, SegmentRow[]>();
+  for (const seg of timerSegments) {
+    let list = segmentsByTimer.get(seg.timerId!);
+    if (!list) segmentsByTimer.set(seg.timerId!, (list = []));
+    list.push(seg);
+  }
+
+  // A note goes with the segment it was written during, or the last one
+  // before it (the first one if it predates them all).
+  const notesByEntry = new Map<string, Array<{ day: string; body: string }>>();
   for (const n of notes) {
-    const key = `${n.timerId}|${localDateKey(n.createdAt, timezone)}`;
-    let list = notesByTimerDay.get(key);
-    if (!list) notesByTimerDay.set(key, (list = []));
-    list.push(n.body);
+    const segs = segmentsByTimer.get(n.timerId) ?? [];
+    let seg = segs[0];
+    for (const candidate of segs) {
+      if (candidate.startTime <= n.createdAt) seg = candidate;
+      else break;
+    }
+    if (!seg) continue;
+    let list = notesByEntry.get(seg.id);
+    if (!list) notesByEntry.set(seg.id, (list = []));
+    list.push({ day: localDateKey(n.createdAt, timezone), body: n.body });
+  }
+
+  // A timer's cost is split across projects by its tracked time in each,
+  // described by that project's own segment text.
+  const costsByProject = new Map<string, Array<{ timerId: string; date: string; description: string; costUsd: number }>>();
+  for (const t of costTimers) {
+    const shares = new Map<string, { ms: number; description: string | null }>();
+    let totalMs = 0;
+    for (const seg of segmentsByTimer.get(t.id) ?? []) {
+      const ms = Math.max(0, (seg.isRunning || !seg.endTime ? now : seg.endTime).getTime() - seg.startTime.getTime());
+      const key = seg.projectId ?? "none";
+      const share = shares.get(key) ?? { ms: 0, description: null };
+      share.ms += ms;
+      share.description ??= seg.description;
+      shares.set(key, share);
+      totalMs += ms;
+    }
+    // No tracked time to go by: the cost stays with the timer's project.
+    if (totalMs === 0) shares.set(t.projectId ?? "none", { ms: (totalMs = 1), description: t.description });
+    for (const [key, share] of shares) {
+      if (share.ms === 0) continue;
+      let list = costsByProject.get(key);
+      if (!list) costsByProject.set(key, (list = []));
+      list.push({
+        timerId: t.id,
+        date: localDateKey(t.startedAt, timezone),
+        description: share.description || `${agentLabel(t.agent)} session`,
+        costUsd: ((t.costUsd ?? 0) * share.ms) / totalMs,
+      });
+    }
   }
 
   const groups = new Map<string, typeof entries>();
@@ -386,19 +447,23 @@ export async function buildTimesheet(
     });
     const bill = billProject(billable, policy, timezone);
 
-    // Lines: one per (local day, timer) — or per entry for timer-less entries.
+    // Lines: one per (local day, timer, description) — or per entry for
+    // timer-less entries. A segment's own description wins: it's what the
+    // user last said this time was (the timer may describe other segments).
     const lineMap = new Map<string, TimesheetLine>();
     for (const e of group) {
       const alloc = bill.allocations.get(e.id);
       if (!alloc) continue;
+      const description =
+        e.description || e.timer?.description || e.task?.name || (e.isAiGenerated ? `${agentLabel(e.timer?.agent)} session` : "Work");
+      const keyFor = (day: string) => `${day}|${e.timerId ?? `entry:${e.id}`}|${description}`;
       for (const [day, a] of alloc) {
-        const lineKey = `${day}|${e.timerId ?? `entry:${e.id}`}`;
+        const lineKey = keyFor(day);
         let line = lineMap.get(lineKey);
         if (!line) {
           line = {
             date: day,
-            description:
-              e.timer?.description || e.description || e.task?.name || (e.isAiGenerated ? `${agentLabel(e.timer?.agent)} session` : "Work"),
+            description,
             kind: e.isAiGenerated ? "agent" : "human",
             agent: e.timer?.agent ?? null,
             task: e.task?.name ?? null,
@@ -408,7 +473,7 @@ export async function buildTimesheet(
             billedSeconds: 0,
             rate: 0,
             amount: 0,
-            notes: e.timerId ? notesByTimerDay.get(`${e.timerId}|${day}`) ?? [] : [],
+            notes: [],
           };
           lineMap.set(lineKey, line);
         }
@@ -416,6 +481,12 @@ export async function buildTimesheet(
         line.trackedSeconds += a.trackedMs / 1000;
         line.billedSeconds += a.billedMs / 1000;
         line.amount += a.amount;
+      }
+      // This segment's notes, on their own day's line (or its last day's,
+      // for a note written after it ended).
+      const days = Array.from(alloc.keys()).sort();
+      for (const note of notesByEntry.get(e.id) ?? []) {
+        lineMap.get(keyFor(alloc.has(note.day) ? note.day : days[days.length - 1]))?.notes.push(note.body);
       }
     }
     const shown = Array.from(lineMap.values()).filter((l) => Math.round(l.trackedSeconds) > 0);
@@ -433,15 +504,13 @@ export async function buildTimesheet(
       .sort((a, b) => a.date.localeCompare(b.date) || b.trackedSeconds - a.trackedSeconds);
 
     const costs: CostLine[] = policy.includeAiCosts
-      ? costTimers
-          .filter((t) => (t.projectId ?? "none") === key)
-          .map((t) => ({
-            timerId: t.id,
-            date: localDateKey(t.startedAt, timezone),
-            description: t.description || `${agentLabel(t.agent)} session`,
-            costUsd: round2(t.costUsd ?? 0),
-            billedUsd: round2((t.costUsd ?? 0) * (1 + policy.aiCostMarkupPercent / 100)),
-          }))
+      ? (costsByProject.get(key) ?? []).map((c) => ({
+          timerId: c.timerId,
+          date: c.date,
+          description: c.description,
+          costUsd: round2(c.costUsd),
+          billedUsd: round2(c.costUsd * (1 + policy.aiCostMarkupPercent / 100)),
+        }))
       : [];
 
     // Totals are the sum of the rows the client sees, so they always add up.
