@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within, getDefaultNormalizer } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Dashboard from "../../pages/Dashboard";
+import { money } from "../../utils/agentFormat";
+
+// Amounts are formatted in the runner's locale; match them as rendered
+// (a no-break space in "125,50 $" must not be collapsed).
+const usd = (amount: number) => money(amount, "USD");
+const exact = { normalizer: getDefaultNormalizer({ collapseWhitespace: false }) };
 import { renderWithProviders, createMockStore } from "../../test/utils";
 import {
   apiPath,
@@ -76,8 +82,8 @@ describe("Dashboard Component", () => {
 
       await renderDashboard();
 
-      expect(await screen.findByText("$125.50")).toBeInTheDocument();
-      expect(screen.getByText("$400.00")).toBeInTheDocument();
+      expect(await screen.findByText(usd(125.5), exact)).toBeInTheDocument();
+      expect(screen.getByText(usd(400), exact)).toBeInTheDocument();
       expect(screen.queryByText("Earning Now")).not.toBeInTheDocument();
     });
   });
@@ -189,7 +195,7 @@ describe("Dashboard Component", () => {
       expect(await section.findByText("Wrote tests")).toBeInTheDocument();
       expect(section.getByText("Test Project 1")).toBeInTheDocument();
       expect(section.getByText("1h 0m")).toBeInTheDocument();
-      expect(section.getByText("$50.00")).toBeInTheDocument();
+      expect(section.getByText(usd(50), exact)).toBeInTheDocument();
     });
   });
 

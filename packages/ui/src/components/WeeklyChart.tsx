@@ -104,7 +104,8 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
     (sum, day) => sum + day.totalDuration,
     0
   );
-  const totalEarnings = chartData.reduce((sum, day) => sum + day.earnings, 0);
+  // From the unrounded days, rounded once (as the table and AI line are).
+  const totalEarnings = data.reduce((sum, day) => sum + day.totalEarnings, 0);
   const totalEntries = chartData.reduce((sum, day) => sum + day.entryCount, 0);
 
   return (
@@ -187,6 +188,8 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={formatYAxis}
+                // Money ticks are whole units (labels drop the cents).
+                allowDecimals={chartMode === "hours"}
               />
               <Tooltip content={customTooltip} />
               <Bar

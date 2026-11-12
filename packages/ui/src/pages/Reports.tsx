@@ -9,9 +9,11 @@ import {
 import WeeklyChart from "../components/WeeklyChart";
 import DetailedTimeEntriesTable from "../components/DetailedTimeEntriesTable";
 import { money } from "../utils/agentFormat";
+import { useCurrency } from "../hooks/useCurrency";
 
-const formatHours = (seconds: number) =>
-  `${(seconds / 3600).toFixed(2)} h`;
+// In the browser's locale, like the money beside it.
+const hoursFormat = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatHours = (seconds: number) => `${hoursFormat.format(seconds / 3600)} h`;
 
 const Reports: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -24,8 +26,7 @@ const Reports: React.FC = () => {
     currentWeekOffset,
     detailedWeekOffset,
   } = useSelector((state: RootState) => state.reports);
-  // Rates, and so earnings, are in the user's currency.
-  const currency = useSelector((state: RootState) => state.auth.user?.currency) || "USD";
+  const currency = useCurrency();
 
   useEffect(() => {
     dispatch(fetchWeeklyData(0));
