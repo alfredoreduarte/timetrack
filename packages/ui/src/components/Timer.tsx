@@ -89,7 +89,11 @@ const Timer: React.FC<TimerProps> = ({ className = "" }) => {
               <select
                 id="project"
                 value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedProjectId(e.target.value);
+                  // A task belongs to one project; keeping it would start an invalid timer.
+                  setSelectedTaskId("");
+                }}
                 onKeyDown={handleKeyDown}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
                 required

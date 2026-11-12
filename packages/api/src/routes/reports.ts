@@ -3,8 +3,29 @@ import { z } from "zod";
 import { prisma } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, AuthenticatedRequest } from "../middleware/auth";
+import { buildTimesheet } from "../services/timesheets";
+import { getEntitlements, historyFloor } from "../services/entitlements";
+import { timesheetToCsv, timesheetToMarkdown } from "../billing/render";
 
 const router = express.Router();
+
+/**
+ * Free accounts see the same recent window in reports and exports as in
+ * timesheets: entries that started before it are left out, and JSON
+ * responses say so (an additive field; existing clients ignore it).
+ */
+async function applyPlanWindow(
+  userId: string,
+  where: { startTime?: { gte?: Date; lte?: Date } }
+): Promise<{ historyDays: number; since: string } | null> {
+  const now = new Date();
+  const entitlements = await getEntitlements(userId, prisma, now);
+  const floor = historyFloor(entitlements, now);
+  if (!floor) return null;
+  where.startTime = where.startTime ?? {};
+  if (!where.startTime.gte || where.startTime.gte < floor) where.startTime.gte = floor;
+  return { historyDays: entitlements.limits.historyDays!, since: floor.toISOString() };
+}
 
 // Apply authentication to all routes
 router.use(authenticate);
@@ -101,6 +122,7 @@ router.get(
         where.startTime.lte = new Date(endDate);
       }
     }
+    const limitedByPlan = await applyPlanWindow(req.user!.id, where);
 
     if (projectId) {
       where.projectId = projectId;
@@ -201,6 +223,7 @@ router.get(
     }, {} as Record<string, any>);
 
     res.json({
+      limitedByPlan,
       summary: {
         totalDuration, // in seconds
         totalEarnings,
@@ -280,6 +303,7 @@ router.get(
         where.startTime.lte = new Date(endDate);
       }
     }
+    const limitedByPlan = await applyPlanWindow(req.user!.id, where);
 
     if (projectId) {
       where.projectId = projectId;
@@ -328,6 +352,7 @@ router.get(
     }));
 
     res.json({
+      limitedByPlan,
       timeEntries: entriesWithEarnings,
       totalEntries: timeEntries.length,
     });
@@ -395,6 +420,7 @@ router.get(
         where.startTime.lte = new Date(endDate);
       }
     }
+    const limitedByPlan = await applyPlanWindow(req.user!.id, where);
 
     if (projectId) {
       where.projectId = projectId;
@@ -482,6 +508,7 @@ router.get(
     }, {} as Record<string, any>);
 
     res.json({
+      limitedByPlan,
       earnings: {
         totalEarnings,
         totalHours,
@@ -557,6 +584,7 @@ router.get(
         where.startTime.lte = new Date(endDate);
       }
     }
+    const limitedByPlan = await applyPlanWindow(req.user!.id, where);
 
     if (projectId) {
       where.projectId = projectId;
@@ -631,12 +659,59 @@ router.get(
       .map((row: any) => row.map((field: any) => `"${field}"`).join(","))
       .join("\n");
 
+    if (limitedByPlan) res.setHeader("X-Limited-By-Plan-Days", String(limitedByPlan.historyDays));
     res.setHeader("Content-Type", "text/csv");
     res.setHeader(
       "Content-Disposition",
       'attachment; filename="timetrack-export.csv"'
     );
     res.send(csvContent);
+  })
+);
+
+const timesheetQuerySchema = z.object({
+  startDate: z.string().datetime({ offset: true }).optional(),
+  endDate: z.string().datetime({ offset: true }).optional(),
+  projectId: z.string().optional(),
+  timezone: z.string().max(100).optional(),
+  format: z.enum(["json", "markdown", "csv"]).optional(),
+});
+
+/**
+ * @swagger
+ * /reports/timesheet:
+ *   get:
+ *     summary: Client-ready timesheet with overlap-aware billing
+ *     description: |
+ *       Entries are clipped to the range and billed per project under that
+ *       project's policy (dedupe overlapping parallel timers or sum them,
+ *       AI multiplier or flat agent rate, optional AI cost pass-through).
+ *       Lines are grouped per day and timer, with agent notes and an
+ *       auto-generated disclosure. Defaults to the current month.
+ *     tags: [Reports]
+ *     parameters:
+ *       - { in: query, name: startDate, schema: { type: string, format: date-time } }
+ *       - { in: query, name: endDate, schema: { type: string, format: date-time } }
+ *       - { in: query, name: projectId, schema: { type: string } }
+ *       - { in: query, name: timezone, schema: { type: string } }
+ *       - { in: query, name: format, schema: { type: string, enum: [json, markdown, csv] } }
+ */
+router.get(
+  "/timesheet",
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const q = timesheetQuerySchema.parse(req.query);
+    const sheet = await buildTimesheet(req.user!.id, {
+      startDate: q.startDate ? new Date(q.startDate) : undefined,
+      endDate: q.endDate ? new Date(q.endDate) : undefined,
+      projectId: q.projectId,
+      timezone: q.timezone,
+    });
+    if (q.format === "markdown") return res.type("text/markdown").send(timesheetToMarkdown(sheet));
+    if (q.format === "csv") {
+      res.setHeader("Content-Disposition", 'attachment; filename="timesheet.csv"');
+      return res.type("text/csv").send(timesheetToCsv(sheet));
+    }
+    return res.json({ timesheet: sheet });
   })
 );
 

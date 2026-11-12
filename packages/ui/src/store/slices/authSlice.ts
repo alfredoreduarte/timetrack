@@ -8,9 +8,25 @@ export interface User {
   defaultHourlyRate?: number;
   idleTimeoutSeconds?: number;
   aiMultiplier?: number | null;
+  /** Agent timers fed by hooks pause after this much silence. */
+  agentIdleTimeoutSeconds?: number;
+  /** Default for projects: bill overlapping parallel timers once or per timer. */
+  overlapMode?: "dedupe" | "sum";
+  currency?: string;
   avatar?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface ProfileUpdate {
+  name?: string;
+  email?: string;
+  defaultHourlyRate?: number;
+  idleTimeoutSeconds?: number;
+  aiMultiplier?: number;
+  agentIdleTimeoutSeconds?: number;
+  overlapMode?: "dedupe" | "sum";
+  currency?: string;
 }
 
 interface AuthState {
@@ -130,12 +146,7 @@ export const getCurrentUser = createAsyncThunk(
 export const updateProfile = createAsyncThunk(
   "auth/updateProfile",
   async (
-    profileData: {
-      name?: string;
-      email?: string;
-      defaultHourlyRate?: number;
-      idleTimeoutSeconds?: number;
-    },
+    profileData: ProfileUpdate,
     { rejectWithValue }
   ) => {
     try {

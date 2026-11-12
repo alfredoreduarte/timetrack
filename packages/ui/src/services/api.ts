@@ -1,9 +1,32 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
-import { User } from "../store/slices/authSlice";
+import { User, ProfileUpdate } from "../store/slices/authSlice";
 import { Project, Task } from "../store/slices/projectsSlice";
 import { TimeEntry } from "../store/slices/timeEntriesSlice";
 import { Favorite } from "../store/slices/favoritesSlice";
 import { ApiKey } from "../store/slices/apiKeysSlice";
+import type {
+  AuditEvent,
+  BillingStatus,
+  PublicTimesheetView,
+  ShareLink,
+  Timer,
+  TimerNote,
+  Timesheet,
+} from "../types/agent";
+
+export interface TimesheetParams {
+  startDate?: string;
+  endDate?: string;
+  projectId?: string;
+  timezone?: string;
+}
+
+const query = (params: Record<string, string | number | undefined>) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") q.set(k, String(v));
+  const s = q.toString();
+  return s ? `?${s}` : "";
+};
 
 // In production the UI is served by nginx which reverse-proxies /api/ to the
 // API container, so no absolute URL is needed. VITE_API_URL is only required
@@ -66,8 +89,13 @@ class APIClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
-        // Handle rate limiting (429)
-        if (error.response?.status === 429) {
+        // Handle rate limiting (429). Only the rate limiter's 429 (it sends
+        // Retry-After and a retryAfter field) means "back off"; other 429s,
+        // like the running-timer cap, are ordinary errors with a message.
+        const isRateLimit =
+          error.response?.status === 429 &&
+          (error.response.headers?.["retry-after"] != null || error.response.data?.retryAfter != null);
+        if (isRateLimit) {
           const retryAfter = error.response.headers?.["retry-after"];
           // Use Retry-After header if present, otherwise default to 60s
           const parsed = retryAfter ? Number(retryAfter) : NaN;
@@ -102,6 +130,12 @@ class APIClient {
       url,
       data,
     });
+    return response.data;
+  }
+
+  /** Raw text responses (Markdown/CSV exports). */
+  private async requestText(url: string): Promise<string> {
+    const response = await this.client.request<string>({ method: "GET", url, responseType: "text" });
     return response.data;
   }
 
@@ -157,12 +191,7 @@ class APIClient {
       );
     },
 
-    updateProfile: async (profileData: {
-      name?: string;
-      email?: string;
-      defaultHourlyRate?: number;
-      idleTimeoutSeconds?: number;
-    }) => {
+    updateProfile: async (profileData: ProfileUpdate) => {
       const response = await this.request<{ message: string; user: User }>(
         "PUT",
         "/users/profile",
@@ -349,13 +378,15 @@ class APIClient {
       projectId?: string;
       taskId?: string;
     }) => {
-      return this.request<TimeEntry>("POST", "/time-entries", entryData);
+      // The API answers { message, timeEntry }.
+      const response = await this.request<{ timeEntry: TimeEntry }>("POST", "/time-entries", entryData);
+      return response.timeEntry;
     },
 
     updateTimeEntry: async (
       id: string,
       entryData: {
-        description?: string;
+        description?: string | null;
         startTime?: string;
         endTime?: string;
         hours?: number;
@@ -363,7 +394,8 @@ class APIClient {
         taskId?: string | null;
       }
     ) => {
-      return this.request<TimeEntry>("PUT", `/time-entries/${id}`, entryData);
+      const response = await this.request<{ timeEntry: TimeEntry }>("PUT", `/time-entries/${id}`, entryData);
+      return response.timeEntry;
     },
 
     deleteTimeEntry: async (id: string) => {
@@ -521,6 +553,63 @@ class APIClient {
   };
 
   // Health check
+  timers = {
+    list: async (status: "active" | "running" | "paused" | "stopped" | "all" = "active", limit = 50) =>
+      (await this.request<{ timers: Timer[] }>("GET", `/timers${query({ status, limit })}`)).timers,
+    get: async (id: string) =>
+      (await this.request<{ timer: Timer & { segments: unknown[]; notes: TimerNote[] } }>("GET", `/timers/${id}`)).timer,
+    pause: async (id: string) => this.request<{ timer: Timer }>("POST", `/timers/${id}/pause`, {}),
+    resume: async (id: string) => this.request<{ timer: Timer }>("POST", `/timers/${id}/resume`, {}),
+    stop: async (id: string) => this.request<{ timer: Timer }>("POST", `/timers/${id}/stop`, {}),
+    update: async (id: string, data: { description?: string | null; projectId?: string | null; taskId?: string | null }) =>
+      this.request<{ timer: Timer; learnedRepoPattern?: string | null }>("PATCH", `/timers/${id}`, data),
+    addNote: async (id: string, body: string) =>
+      (await this.request<{ note: TimerNote }>("POST", `/timers/${id}/notes`, { body })).note,
+    history: async (id: string) =>
+      (await this.request<{ events: AuditEvent[] }>("GET", `/timers/${id}/history`)).events,
+  };
+
+  entryHistory = async (id: string) =>
+    (await this.request<{ events: AuditEvent[] }>("GET", `/time-entries/${id}/history`)).events;
+
+  timesheets = {
+    get: async (params: TimesheetParams) =>
+      (await this.request<{ timesheet: Timesheet }>("GET", `/reports/timesheet${query({ ...params })}`)).timesheet,
+    markdown: async (params: TimesheetParams) =>
+      this.requestText(`/reports/timesheet${query({ ...params, format: "markdown" })}`),
+    csv: async (params: TimesheetParams) => this.requestText(`/reports/timesheet${query({ ...params, format: "csv" })}`),
+  };
+
+  shareLinks = {
+    list: async () => (await this.request<{ shareLinks: ShareLink[] }>("GET", "/share-links")).shareLinks,
+    create: async (data: {
+      name?: string;
+      projectId?: string;
+      startDate?: string;
+      endDate?: string;
+      rollingDays?: number;
+      timezone?: string;
+      showAmounts?: boolean;
+      showNotes?: boolean;
+      expiresAt?: string;
+    }) => this.request<{ shareLink: ShareLink; token: string; url: string }>("POST", "/share-links", data),
+    revoke: async (id: string) => this.request<{ revoked: boolean }>("DELETE", `/share-links/${id}`),
+  };
+
+  publicTimesheets = {
+    get: async (token: string) =>
+      this.request<PublicTimesheetView>("GET", `/public/timesheets/${encodeURIComponent(token)}`),
+    markdown: async (token: string) =>
+      this.requestText(`/public/timesheets/${encodeURIComponent(token)}?format=markdown`),
+  };
+
+  billing = {
+    status: async () => this.request<BillingStatus>("GET", "/billing/status"),
+    checkout: async (interval: "month" | "year") =>
+      this.request<{ url: string }>("POST", "/billing/checkout", { interval }),
+    portal: async () => this.request<{ url: string }>("POST", "/billing/portal", {}),
+  };
+
   health = {
     check: async () => {
       const response: AxiosResponse<{

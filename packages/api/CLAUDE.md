@@ -15,8 +15,29 @@
 ## Key Endpoints
 
 - `/auth/*` — Registration, login, password reset
-- `/time-entries/*` — Timer operations (start/stop/current)
-- `/projects/*`, `/tasks/*` — CRUD
+- `/timers/*` — Pausable timers (one per agent session or task): start (idempotent by
+  `sessionKey`), pause, resume, stop, heartbeat, notes, history. Each running stretch is a
+  TimeEntry segment; the idle sweeper (`src/jobs/idleSweeper.ts`) pauses heartbeat-fed timers
+  at their last activity
+- `/time-entries/*` — Entries/segments: legacy start/stop/current/running (routed through
+  timers, shapes unchanged for native apps), CRUD incl. editing running entries, bulk update,
+  per-entry audit history
+- `/agent-events` — Agent lifecycle ingestion (Claude Code / Cursor hook payloads or a
+  generic shape): session start → start/resume, any activity → heartbeat, session end →
+  stop. Whitelists fields; never stores prompts/tool payloads. `?format=claude-code` returns
+  hook output that tells the agent its timer id/project. Limits return 200 `not_tracked`
+- `/mcp` — Remote MCP server (Streamable HTTP, stateless, Bearer API key). Tools live in
+  `src/mcp/server.ts` and call the same services as REST
+- `/agent-sessions/import` — Backfill past agent sessions from activity spans (dry run supported)
+- `/reports/timesheet` — Overlap-aware, client-ready timesheet (JSON/Markdown/CSV); billing math
+  in `src/billing/engine.ts` (pure, property-tested), policies per project
+- `/share-links`, `/public/timesheets/:token` — Read-only client timesheet links (hashed tokens)
+- `/billing/*` — Plan status, Stripe checkout/portal (JWT only), `/billing/webhook` (raw body,
+  mounted before the JSON parser). Plans in `src/services/entitlements.ts`; billing is enforced only
+  when all `STRIPE_*` env vars are set (`scripts/stripe-setup.ts` creates product/prices/webhook)
+- `/projects/*`, `/tasks/*` — CRUD (`src/services/catalog.ts`); projects carry `repoPatterns`
+  (normalized git remotes or path prefixes) used to auto-assign agent timers;
+  `POST /projects/resolve`
 - `/reports/*` — Time and earnings analytics
 
 ## Key Files
@@ -106,5 +127,29 @@ ALLOWED_ORIGINS       # CORS origins (comma-separated)
 
 ## Testing
 
-- Jest configured, minimal coverage currently
-- Test files in `src/__tests__/`
+Integration tests run the real Express app (`createApp()` from `src/app.ts`) through
+supertest against a real Postgres **test** database. The harness refuses to run
+against a database whose name doesn't contain `test`, and truncates every table
+between tests.
+
+```bash
+# One-time: create the test DB next to your dev Postgres (port 3012)
+docker exec timetrack-postgres psql -U timetrack_user -d timetrack_db -c "CREATE DATABASE timetrack_test;"
+
+# Run (migrations are applied automatically in jest globalSetup)
+TEST_DATABASE_URL=postgresql://timetrack_user:<password>@localhost:3012/timetrack_test npm test
+```
+
+- Tests live in `src/**/__tests__/*.test.ts`; helpers in `src/test/helpers.ts`
+  (`api()`, `resetDb()`, `createUser()`, `createApiKey()`, `createProject()`, `createTask()`)
+- `timeEntries.legacy.test.ts` pins the endpoints shipped native apps depend on — change
+  those expectations only deliberately
+- Set `TEST_LOGS=1` to see API logs during tests
+
+## Service layer
+
+New business logic lives in `src/services/` and takes a `ServiceContext`
+(`contextFromRequest(req)` or `systemContext(userId)`) instead of an Express request,
+so REST routes, the MCP endpoint and background jobs share one implementation.
+Mutations of billable data call `recordAudit()`; realtime pushes go through
+`emitToUser()` in `src/realtime.ts`.

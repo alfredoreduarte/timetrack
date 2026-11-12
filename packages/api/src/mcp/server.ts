@@ -1,0 +1,684 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import { prisma } from "../utils/database";
+import { AppError } from "../middleware/errorHandler";
+import { logger } from "../utils/logger";
+import { ServiceContext } from "../services/context";
+import {
+  addTimerNote,
+  getTimerDetail,
+  listTimers,
+  pauseTimer,
+  resumeTimer,
+  startTimer,
+  stopTimer,
+  touchTimer,
+  updateTimer,
+} from "../services/timers";
+import {
+  bulkUpdateEntries,
+  createEntry,
+  deleteEntry,
+  getEntryHistory,
+  listEntries,
+  updateEntry,
+} from "../services/entries";
+import { buildTimesheet, parseRangeDate, resolveTimezone } from "../services/timesheets";
+import { timesheetToMarkdown } from "../billing/render";
+import { createShareLink, listShareLinks, revokeShareLink } from "../services/shareLinks";
+import { recordTimerUsage } from "../services/timers";
+import { getEntitlements } from "../services/entitlements";
+import {
+  createProject,
+  createTask,
+  listProjects,
+  listTasks,
+  updateProject,
+  updateTask,
+} from "../services/catalog";
+
+export const MCP_SERVER_VERSION = "2.0.0";
+
+export const MCP_INSTRUCTIONS = `TimeTrack records billable time for a developer whose AI agents work in parallel.
+
+Model: a TIMER is one unit of work (usually one agent session). It can be paused and resumed; each running stretch is a TIME ENTRY (segment). Many timers may run at once — one per parallel session. Entries can be edited, backfilled or deleted at any time, including past ones; every change is recorded in an audit trail.
+
+Guidance:
+- If your context says "TimeTrack is tracking this session (timer X)", hooks created that timer and keep it accurate: they pause it when the session goes quiet and resume it when you continue. Do NOT start another, and don't pause or stop it yourself unless the user asks. Use that timerId with add_note and update_timer.
+- Otherwise call start_timer when you begin billable work and pass a stable sessionKey (any id unique to your session) so retries never create duplicates. Call pause_timer while you wait on the human and resume_timer when work continues (start_timer with the same sessionKey also resumes it); stop_timer when the work is done.
+- Assign work to the right client project (list_projects). If the repository has no project, ask the user or use update_timer once they tell you — TimeTrack remembers a repo by its git remote.
+- Log what you accomplished with add_note; these notes become timesheet lines the client reads, so write them for a client.
+- Times are ISO 8601. Never invent times in the future.`;
+
+type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
+
+const ok = (data: unknown): ToolResult => ({
+  content: [{ type: "text", text: JSON.stringify(data) }],
+});
+
+const fail = (message: string): ToolResult => ({
+  content: [{ type: "text", text: `Error: ${message}` }],
+  isError: true,
+});
+
+/**
+ * Runs a tool body, turning service errors into MCP tool errors. Anything
+ * unexpected is logged and reported generically — never with internals.
+ */
+const guard = async (fn: () => Promise<ToolResult>): Promise<ToolResult> => {
+  try {
+    return await fn();
+  } catch (e) {
+    const err = e as AppError;
+    if (err && typeof err.statusCode === "number" && err.statusCode < 500) return fail(err.message);
+    if (e instanceof z.ZodError) return fail(e.errors.map((x) => x.message).join("; "));
+    logger.error("MCP tool failed", { error: (e as Error)?.message, stack: (e as Error)?.stack });
+    return fail("Internal error; the change was not made. Try again, or report it if it keeps happening.");
+  }
+};
+
+/** Same as guard, for tools that return JSON data. */
+const run = (fn: () => Promise<unknown>): Promise<ToolResult> => guard(async () => ok(await fn()));
+
+const ISO_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+const iso = z
+  .string()
+  .refine((v) => ISO_RE.test(v) && !Number.isNaN(Date.parse(v)), "must be an ISO 8601 date or timestamp")
+  .describe("ISO 8601 timestamp, e.g. 2026-03-02T15:04:05Z");
+const id = (what: string) => z.string().min(1).describe(`${what} id`);
+/** Optional timestamp; "" (agents' "none") means omitted, i.e. now. */
+const optIso = (description?: string) => {
+  const schema = z.preprocess((v) => (v === "" ? undefined : v), iso.optional());
+  return description ? schema.describe(description) : schema;
+};
+/** Optional id; agents often send "" for "none", which means omitted. */
+const optId = (what: string) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v === "" ? undefined : v))
+    .describe(`${what} id`);
+/** Optional, clearable id: null clears, "" or omitted leaves it unchanged. */
+const clearableId = (what: string) =>
+  z
+    .string()
+    .nullable()
+    .optional()
+    .transform((v) => (v === "" ? undefined : v))
+    .describe(`${what} id, or null to clear`);
+
+/** Trims a timer view to what an LLM needs. */
+const compactTimer = (t: Awaited<ReturnType<typeof listTimers>>[number]) => ({
+  id: t.id,
+  status: t.status,
+  description: t.description,
+  project: t.project,
+  task: t.task,
+  agent: t.agent,
+  sessionKey: t.sessionKey,
+  pauseReason: t.pauseReason,
+  trackedSeconds: t.trackedSeconds,
+  segmentCount: t.segmentCount,
+  lastActivityAt: t.lastActivityAt,
+  repo: t.gitRemote ?? t.cwd,
+  currentEntryId: t.currentEntry?.id ?? null,
+});
+
+type ToolAnnotations = { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean };
+
+export function buildMcpServer(ctx: ServiceContext): McpServer {
+  const server = new McpServer(
+    { name: "timetrack", version: MCP_SERVER_VERSION },
+    { instructions: MCP_INSTRUCTIONS }
+  );
+
+  // The SDK's registerTool generics exceed TypeScript's instantiation depth
+  // with this many tools; this wrapper keeps zod-inferred argument types.
+  const register = <S extends z.ZodRawShape>(
+    name: string,
+    config: { description: string; inputSchema: S; annotations?: ToolAnnotations },
+    cb: (args: z.objectOutputType<S, z.ZodTypeAny>) => Promise<ToolResult>
+  ): void => {
+    (server.registerTool as unknown as (n: string, c: unknown, f: unknown) => void).call(
+      server,
+      name,
+      config,
+      cb
+    );
+  };
+
+  // ---- Account ------------------------------------------------------------
+  register(
+    "whoami",
+    {
+      description: "The authenticated user, their billing settings and currently active timers.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    () =>
+      run(async () => {
+        const user = await prisma.user.findUniqueOrThrow({
+          where: { id: ctx.userId },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            defaultHourlyRate: true,
+            aiMultiplier: true,
+            agentIdleTimeoutSeconds: true,
+          },
+        });
+        const timers = await listTimers(ctx, { status: "active" });
+        const plan = await getEntitlements(ctx.userId);
+        return {
+          user,
+          plan: { plan: plan.plan, reason: plan.reason, trialEndsAt: plan.trialEndsAt, limits: plan.limits },
+          actingAs: ctx.actorLabel ?? ctx.actorType,
+          activeTimers: timers.map(compactTimer),
+        };
+      })
+  );
+
+  // ---- Projects & tasks ---------------------------------------------------
+  register(
+    "list_projects",
+    {
+      description: "List projects (clients) with their hourly rate and linked repositories.",
+      inputSchema: { includeInactive: z.boolean().optional() },
+      annotations: { readOnlyHint: true },
+    },
+    ({ includeInactive }) =>
+      run(async () => ({
+        projects: (await listProjects(ctx, includeInactive ? {} : { isActive: true })).map((p) => ({
+          id: p.id,
+          name: p.name,
+          hourlyRate: p.hourlyRate,
+          isActive: p.isActive,
+          repoPatterns: p.repoPatterns,
+        })),
+      }))
+  );
+
+  register(
+    "create_project",
+    {
+      description: "Create a project (typically a client). repoPatterns links repositories (git remotes like github.com/acme/web, or absolute paths).",
+      inputSchema: {
+        name: z.string().min(1),
+        description: z.string().optional(),
+        color: z.string().optional().describe("Hex color like #3B82F6"),
+        hourlyRate: z.number().nonnegative().optional(),
+        repoPatterns: z.array(z.string()).max(50).optional(),
+      },
+    },
+    (args) => run(async () => ({ project: await createProject(ctx, args) }))
+  );
+
+  register(
+    "update_project",
+    {
+      description: "Update a project, including its billing policy. repoPatterns replaces the whole list; addRepoPattern appends one.",
+      inputSchema: {
+        projectId: id("Project"),
+        name: z.string().optional(),
+        description: z.string().nullable().optional(),
+        hourlyRate: z.number().nonnegative().nullable().optional(),
+        isActive: z.boolean().optional(),
+        repoPatterns: z.array(z.string()).max(50).optional(),
+        addRepoPattern: z.string().optional(),
+        overlapMode: z.enum(["dedupe", "sum"]).nullable().optional().describe("dedupe: overlapping parallel timers billed once; sum: each timer billed in full"),
+        aiMultiplier: z.number().min(0).max(20).nullable().optional(),
+        agentHourlyRate: z.number().nonnegative().nullable().optional().describe("Flat hourly rate for AI-assisted time"),
+        includeAiCosts: z.boolean().optional().describe("Pass agents' API-equivalent token cost through to the client"),
+        aiCostMarkupPercent: z.number().min(0).max(100).optional(),
+      },
+    },
+    ({ projectId, addRepoPattern, ...rest }) =>
+      run(async () => {
+        let repoPatterns = rest.repoPatterns;
+        if (addRepoPattern) {
+          const current =
+            repoPatterns ??
+            (await prisma.project.findFirst({
+              where: { id: projectId, userId: ctx.userId },
+              select: { repoPatterns: true },
+            }))?.repoPatterns ??
+            [];
+          repoPatterns = [...current, addRepoPattern];
+        }
+        return { project: await updateProject(ctx, projectId, { ...rest, repoPatterns }) };
+      })
+  );
+
+  register(
+    "list_tasks",
+    {
+      description: "List tasks, optionally for one project.",
+      inputSchema: { projectId: optId("Project"), includeCompleted: z.boolean().optional() },
+      annotations: { readOnlyHint: true },
+    },
+    ({ projectId, includeCompleted }) =>
+      run(async () => ({
+        tasks: (
+          await listTasks(ctx, { projectId, ...(includeCompleted ? {} : { isCompleted: false }) })
+        ).map((t) => ({
+          id: t.id,
+          name: t.name,
+          project: t.project,
+          hourlyRate: t.hourlyRate,
+          isCompleted: t.isCompleted,
+        })),
+      }))
+  );
+
+  register(
+    "create_task",
+    {
+      description: "Create a task under a project.",
+      inputSchema: {
+        projectId: id("Project"),
+        name: z.string().min(1),
+        description: z.string().optional(),
+        hourlyRate: z.number().nonnegative().optional(),
+      },
+    },
+    (args) => run(async () => ({ task: await createTask(ctx, args) }))
+  );
+
+  register(
+    "update_task",
+    {
+      description: "Rename a task, change its rate, or mark it complete.",
+      inputSchema: {
+        taskId: id("Task"),
+        name: z.string().optional(),
+        description: z.string().nullable().optional(),
+        hourlyRate: z.number().nonnegative().nullable().optional(),
+        isCompleted: z.boolean().optional(),
+      },
+    },
+    ({ taskId, ...rest }) => run(async () => ({ task: await updateTask(ctx, taskId, rest) }))
+  );
+
+  // ---- Timers -------------------------------------------------------------
+  register(
+    "start_timer",
+    {
+      description:
+        "Start a timer for billable work. Many timers may run in parallel. Pass a sessionKey unique to your session: repeating the call with the same key returns (or resumes) the same timer instead of creating a duplicate. If no project is given, TimeTrack picks the one linked to gitRemote/cwd.",
+      inputSchema: {
+        description: z.string().optional().describe("What you're working on, written for the client"),
+        projectId: optId("Project"),
+        taskId: optId("Task"),
+        sessionKey: z.string().max(200).optional(),
+        agent: z.string().optional().describe("Your agent name, e.g. claude_code, cursor, codex"),
+        cwd: z.string().optional(),
+        gitRemote: z.string().optional(),
+        gitBranch: z.string().optional(),
+        startedAt: optIso("Only to backdate (max 24h ago)"),
+        idleTimeoutSeconds: z
+          .number()
+          .int()
+          .optional()
+          .describe("Auto-pause after this many seconds without activity (heartbeat_timer, add_note, or start_timer with the same sessionKey); omit unless you'll call heartbeat_timer during long silent work"),
+      },
+    },
+    (args) =>
+      run(async () => {
+        const r = await startTimer(ctx, args);
+        return { timer: compactTimer(r.timer), created: r.created, matchedRepoPattern: r.matchedRepoPattern ?? null };
+      })
+  );
+
+  const timerAction = (
+    name: string,
+    description: string,
+    fn: (timerId: string, at?: string) => Promise<{ timer: Parameters<typeof compactTimer>[0]; changed: boolean }>
+  ) =>
+    register(
+      name,
+      {
+        description,
+        inputSchema: {
+          timerId: id("Timer"),
+          at: optIso("Backdate the action (never in the future)"),
+        },
+      },
+      ({ timerId, at }) =>
+        run(async () => {
+          const r = await fn(timerId, at);
+          return { timer: compactTimer(r.timer), changed: r.changed };
+        })
+    );
+
+  timerAction(
+    "pause_timer",
+    "Pause a timer; time while paused is not billed. The pause holds until resume_timer (or start_timer with the same sessionKey, or the user) resumes it — hooks and heartbeats never undo it. On hook-tracked sessions, pause only when the user asks: hooks already pause quiet sessions.",
+    (t, at) => pauseTimer(ctx, t, { at, reason: "manual" })
+  );
+  timerAction("resume_timer", "Resume a paused or stopped timer as a new segment.", (t, at) =>
+    resumeTimer(ctx, t, { at })
+  );
+
+  register(
+    "heartbeat_timer",
+    {
+      description:
+        "Report that you're still working on a timer. Only needed for timers with idleTimeoutSeconds during long stretches without other TimeTrack calls; it also resumes a timer the idle detector paused (never one paused on request).",
+      inputSchema: { timerId: id("Timer") },
+      annotations: { idempotentHint: true },
+    },
+    ({ timerId }) =>
+      run(async () => {
+        const r = await touchTimer(ctx, timerId, {});
+        return { timer: compactTimer(r.timer), resumed: r.resumed };
+      })
+  );
+
+  register(
+    "stop_timer",
+    {
+      description:
+        "Stop a timer when the work is done. If timerId is omitted and exactly one timer is running, that one is stopped; otherwise you get the list to choose from.",
+      inputSchema: { timerId: optId("Timer"), at: optIso() },
+    },
+    ({ timerId, at }) =>
+      run(async () => {
+        let target = timerId;
+        if (!target) {
+          const running = await listTimers(ctx, { status: "running" });
+          if (running.length !== 1) {
+            return {
+              stopped: false,
+              reason: running.length === 0 ? "No timer is running." : "Several timers are running; call again with timerId.",
+              running: running.map(compactTimer),
+            };
+          }
+          target = running[0].id;
+        }
+        const r = await stopTimer(ctx, target, { at });
+        return { stopped: true, timer: compactTimer(r.timer), changed: r.changed };
+      })
+  );
+
+  register(
+    "list_timers",
+    {
+      description: "List timers. Default: active (running + paused).",
+      inputSchema: {
+        status: z.enum(["running", "paused", "stopped", "active", "all"]).optional(),
+        limit: z.number().int().min(1).max(100).optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    ({ status, limit }) => run(async () => ({ timers: (await listTimers(ctx, { status, limit })).map(compactTimer) }))
+  );
+
+  register(
+    "get_timer",
+    {
+      description: "A timer with all its segments and notes.",
+      inputSchema: { timerId: id("Timer") },
+      annotations: { readOnlyHint: true },
+    },
+    ({ timerId }) => run(async () => ({ timer: await getTimerDetail(ctx, timerId) }))
+  );
+
+  register(
+    "update_timer",
+    {
+      description:
+        "Change a timer's project, task, description or AI flag. Applies to all of its segments (rates are recomputed). Assigning a project also remembers the timer's git remote for future sessions (they go to this project from then on, even where a folder mapping picked another), unless another active project already claims that exact remote. Folders are never remembered. Pass rememberRepo=false for a one-off reassignment.",
+      inputSchema: {
+        timerId: id("Timer"),
+        description: z.string().nullable().optional(),
+        projectId: clearableId("Project"),
+        taskId: clearableId("Task"),
+        isAiGenerated: z.boolean().optional(),
+        rememberRepo: z.boolean().optional().describe("false for a one-off reassignment that shouldn't change future sessions"),
+      },
+    },
+    ({ timerId, ...rest }) =>
+      run(async () => {
+        const r = await updateTimer(ctx, timerId, rest);
+        return {
+          timer: compactTimer(r.timer),
+          changed: r.changed,
+          entriesUpdated: r.entriesUpdated,
+          learnedRepoPattern: r.learnedRepoPattern,
+        };
+      })
+  );
+
+  register(
+    "add_note",
+    {
+      description: "Append a work-log note to a timer. Notes appear on the client's timesheet, so write what was accomplished in plain language.",
+      inputSchema: { timerId: id("Timer"), note: z.string().min(1).max(2000) },
+    },
+    ({ timerId, note }) => run(async () => ({ note: await addTimerNote(ctx, timerId, note) }))
+  );
+
+  // ---- Entries ------------------------------------------------------------
+  register(
+    "list_entries",
+    {
+      description: "List time entries (segments), most recent first. Filter by date range, project, timer or AI flag.",
+      inputSchema: {
+        startDate: optIso(),
+        endDate: optIso(),
+        projectId: optId("Project"),
+        timerId: optId("Timer"),
+        isAiGenerated: z.boolean().optional(),
+        isRunning: z.boolean().optional(),
+        limit: z.number().int().min(1).max(100).optional(),
+        page: z.number().int().min(1).optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    (args) =>
+      run(async () => {
+        const r = await listEntries(ctx, {
+          ...args,
+          startDate: args.startDate ? new Date(args.startDate) : undefined,
+          endDate: args.endDate ? new Date(args.endDate) : undefined,
+        });
+        return {
+          entries: r.entries.map((e) => ({
+            id: e.id,
+            description: e.description,
+            startTime: e.startTime,
+            endTime: e.endTime,
+            durationSeconds: e.duration,
+            isRunning: e.isRunning,
+            project: e.project,
+            task: e.task,
+            isAiGenerated: e.isAiGenerated,
+            timerId: e.timerId,
+            hourlyRate: e.hourlyRateSnapshot,
+          })),
+          pagination: r.pagination,
+        };
+      })
+  );
+
+  register(
+    "create_entry",
+    {
+      description: "Backfill a finished entry (max 24h, never in the future). Attach it to a timer with timerId.",
+      inputSchema: {
+        startTime: iso,
+        endTime: iso,
+        description: z.string().optional(),
+        projectId: optId("Project"),
+        taskId: optId("Task"),
+        timerId: optId("Timer"),
+        isAiGenerated: z.boolean().optional(),
+      },
+    },
+    (args) => run(async () => ({ entry: await createEntry(ctx, args) }))
+  );
+
+  register(
+    "update_entry",
+    {
+      description:
+        "Edit an entry, past or running: description, times, project, task, AI flag. For a running entry the end can't be set — pause or stop its timer instead.",
+      inputSchema: {
+        entryId: id("Time entry"),
+        description: z.string().nullable().optional(),
+        startTime: optIso(),
+        endTime: optIso(),
+        projectId: clearableId("Project"),
+        taskId: clearableId("Task"),
+        isAiGenerated: z.boolean().optional(),
+      },
+    },
+    ({ entryId, ...rest }) => run(async () => ({ entry: await updateEntry(ctx, entryId, rest) }))
+  );
+
+  register(
+    "delete_entry",
+    {
+      description: "Delete an entry. Deleting a timer's running segment pauses the timer. The deletion is recorded in the audit trail.",
+      inputSchema: { entryId: id("Time entry") },
+      annotations: { destructiveHint: true },
+    },
+    ({ entryId }) =>
+      run(async () => {
+        await deleteEntry(ctx, entryId);
+        return { deleted: true, entryId };
+      })
+  );
+
+  register(
+    "bulk_update_entries",
+    {
+      description: "Apply the same change (project, task, description, AI flag) to up to 500 entries atomically.",
+      inputSchema: {
+        entryIds: z.array(z.string()).min(1).max(500),
+        description: z.string().nullable().optional(),
+        projectId: clearableId("Project"),
+        taskId: clearableId("Task"),
+        isAiGenerated: z.boolean().optional(),
+      },
+    },
+    ({ entryIds, ...set }) =>
+      run(async () => {
+        const r = await bulkUpdateEntries(ctx, { ids: entryIds, set });
+        return { updated: r.updated };
+      })
+  );
+
+  register(
+    "entry_history",
+    {
+      description: "Audit trail of an entry: who changed what, when, and through which client.",
+      inputSchema: { entryId: id("Time entry") },
+      annotations: { readOnlyHint: true },
+    },
+    ({ entryId }) => run(async () => ({ events: await getEntryHistory(ctx, entryId) }))
+  );
+
+  // ---- Billing --------------------------------------------------------------
+  register(
+    "timesheet",
+    {
+      description:
+        "Client-ready timesheet for a period: billed time per project (overlapping parallel agents handled per the project's policy), lines per day with agent notes, AI cost lines and a disclosure. format=markdown (default) is ready to paste into an invoice email.",
+      inputSchema: {
+        startDate: iso.optional().describe("YYYY-MM-DD (local day) or timestamp. Default: start of the current month"),
+        endDate: iso.optional().describe("YYYY-MM-DD (inclusive local day) or timestamp. Default: now"),
+        projectId: optId("Project"),
+        timezone: z.string().optional().describe("IANA timezone for day boundaries, e.g. Europe/Madrid"),
+        format: z.enum(["markdown", "json"]).optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    ({ startDate, endDate, projectId, timezone, format }) =>
+      guard(async () => {
+        // Bare dates mean local days in the requested zone (end inclusive).
+        const tz = resolveTimezone(timezone);
+        const sheet = await buildTimesheet(ctx.userId, {
+          startDate: startDate ? parseRangeDate(startDate, tz, "start") : undefined,
+          endDate: endDate ? parseRangeDate(endDate, tz, "end") : undefined,
+          projectId,
+          timezone,
+        });
+        if (format === "json") return ok({ timesheet: sheet });
+        return { content: [{ type: "text", text: timesheetToMarkdown(sheet) }] };
+      })
+  );
+
+  register(
+    "create_share_link",
+    {
+      description:
+        "Create a read-only timesheet link to send to a client. Use rollingDays for a live link (e.g. 30), or a fixed startDate/endDate. The URL is returned once.",
+      inputSchema: {
+        name: z.string().optional(),
+        projectId: optId("Project"),
+        startDate: iso.optional(),
+        endDate: iso.optional(),
+        rollingDays: z.number().int().min(1).max(366).optional(),
+        timezone: z.string().optional(),
+        showAmounts: z.boolean().optional().describe("Default true; false shows hours only"),
+        showNotes: z.boolean().optional(),
+        expiresAt: iso.optional().describe("YYYY-MM-DD (end of that local day) or timestamp with a zone"),
+      },
+    },
+    (args) =>
+      run(async () => {
+        const tz = resolveTimezone(args.timezone);
+        const r = await createShareLink(ctx, {
+          ...args,
+          timezone: tz,
+          startDate: args.startDate ? parseRangeDate(args.startDate, tz, "start").toISOString() : undefined,
+          endDate: args.endDate ? parseRangeDate(args.endDate, tz, "end").toISOString() : undefined,
+          // A bare expiry date means the end of that day in the link's zone.
+          expiresAt: args.expiresAt ? parseRangeDate(args.expiresAt, tz, "end", "expiresAt").toISOString() : undefined,
+        });
+        return { url: r.url, shareLink: r.shareLink };
+      })
+  );
+
+  register(
+    "list_share_links",
+    { description: "List timesheet share links (tokens are never shown again).", inputSchema: {}, annotations: { readOnlyHint: true } },
+    () => run(async () => ({ shareLinks: await listShareLinks(ctx) }))
+  );
+
+  register(
+    "revoke_share_link",
+    { description: "Revoke a timesheet share link.", inputSchema: { shareLinkId: id("Share link") }, annotations: { destructiveHint: true } },
+    ({ shareLinkId }) =>
+      run(async () => {
+        await revokeShareLink(ctx, shareLinkId);
+        return { revoked: true };
+      })
+  );
+
+  register(
+    "report_usage",
+    {
+      description:
+        "Report your token usage for a timer, per model (cumulative totals with mode=replace, the default). TimeTrack computes the API-equivalent cost, which projects can pass through to the client.",
+      inputSchema: {
+        timerId: id("Timer"),
+        usage: z.record(
+          z.string(),
+          z.object({
+            inputTokens: z.number().int().nonnegative().optional(),
+            outputTokens: z.number().int().nonnegative().optional(),
+            cacheReadTokens: z.number().int().nonnegative().optional(),
+            cacheWriteTokens: z.number().int().nonnegative().optional(),
+          })
+        ).describe('e.g. {"claude-opus-5-5": {"inputTokens": 12000, "outputTokens": 3400}}'),
+        mode: z.enum(["replace", "add"]).optional(),
+      },
+    },
+    ({ timerId, usage, mode }) => run(async () => recordTimerUsage(ctx, timerId, usage, mode))
+  );
+
+  return server;
+}

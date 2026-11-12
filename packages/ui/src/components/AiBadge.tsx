@@ -8,6 +8,14 @@ interface AiBadgeProps {
 
 const labelFor = (via?: string) => {
   switch (via) {
+    case "claude_code":
+      return "Claude Code";
+    case "cursor":
+      return "Cursor";
+    case "codex":
+      return "Codex";
+    case "import":
+      return "AI · imported";
     case "mcp":
       return "AI · MCP";
     case "api":
@@ -20,7 +28,7 @@ const labelFor = (via?: string) => {
 const AiBadge: React.FC<AiBadgeProps> = ({ via, className }) => (
   <span
     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-700 ${className || ""}`}
-    title="Created by an AI agent — eligible for billing multiplier"
+    title="AI-agent work — billed by this project\u2019s AI policy"
   >
     <SparklesIcon className="h-3 w-3" aria-hidden="true" />
     {labelFor(via)}

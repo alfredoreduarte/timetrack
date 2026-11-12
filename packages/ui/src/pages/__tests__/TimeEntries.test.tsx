@@ -1,22 +1,19 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { BrowserRouter } from "react-router-dom";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
 import TimeEntries from "../TimeEntries";
-import authSlice from "../../store/slices/authSlice";
-import timerSlice from "../../store/slices/timerSlice";
-import projectsSlice from "../../store/slices/projectsSlice";
-import timeEntriesSlice from "../../store/slices/timeEntriesSlice";
-import dashboardSlice from "../../store/slices/dashboardSlice";
+import { reducers } from "../../store/reducers";
+import { projectsAPI, tasksAPI, timeEntriesAPI } from "../../services/api";
 
 // Mock the Timer component
 vi.mock("../../components/Timer", () => ({
   default: () => <div data-testid="timer-component">Timer Component</div>,
 }));
 
-// Mock the API
+// Mock the API calls the page makes on mount
 vi.mock("../../services/api", () => ({
   timeEntriesAPI: {
     getTimeEntries: vi.fn(),
@@ -25,17 +22,60 @@ vi.mock("../../services/api", () => ({
   projectsAPI: {
     getProjects: vi.fn(),
   },
+  tasksAPI: {
+    getTasks: vi.fn(),
+  },
 }));
 
-const createTestStore = (initialState = {}) => {
+type TimeEntriesResponse = Awaited<ReturnType<typeof timeEntriesAPI.getTimeEntries>>;
+type MockEntry = TimeEntriesResponse["entries"][number];
+
+const testProject = {
+  id: "1",
+  name: "Test Project",
+  description: "Test project description",
+  color: "#3B82F6",
+  hourlyRate: 50,
+  isActive: true,
+  createdAt: "2023-01-01T00:00:00Z",
+  updatedAt: "2023-01-01T00:00:00Z",
+};
+
+const pagination = (total: number, pages = total > 0 ? 1 : 0) => ({
+  page: 1,
+  limit: 50,
+  total,
+  pages,
+});
+
+const completedEntry = (overrides: Partial<MockEntry> = {}): MockEntry => ({
+  id: "1",
+  description: "Working on feature X",
+  startTime: "2023-01-01T10:00:00Z",
+  endTime: "2023-01-01T11:00:00Z",
+  duration: 3600,
+  projectId: "1",
+  userId: "1",
+  project: {
+    id: "1",
+    name: "Test Project",
+    color: "#3B82F6",
+  },
+  createdAt: "2023-01-01T10:00:00Z",
+  updatedAt: "2023-01-01T11:00:00Z",
+  ...overrides,
+});
+
+/** What GET /time-entries returns for the page's mount fetch. */
+const respondWith = (response: unknown) => {
+  vi.mocked(timeEntriesAPI.getTimeEntries).mockResolvedValue(
+    response as TimeEntriesResponse
+  );
+};
+
+const createTestStore = () => {
   return configureStore({
-    reducer: {
-      auth: authSlice,
-      timer: timerSlice,
-      projects: projectsSlice,
-      timeEntries: timeEntriesSlice,
-      dashboard: dashboardSlice,
-    },
+    reducer: reducers,
     preloadedState: {
       auth: {
         user: { id: "1", email: "test@example.com", name: "Test User" },
@@ -45,74 +85,12 @@ const createTestStore = (initialState = {}) => {
         error: null,
         hasCheckedAuth: true,
       },
-      timer: {
-        runningEntries: [],
-        elapsedById: {},
-        stoppingIds: {},
-        isRunning: false,
-        elapsedTime: 0,
-        currentEntry: null,
-        loading: false,
-        fetchingCurrentEntry: false,
-        error: null,
-      },
-      projects: {
-        projects: [
-          {
-            id: "1",
-            name: "Test Project",
-            description: "Test project description",
-            color: "#3B82F6",
-            hourlyRate: 50,
-            isActive: true,
-            createdAt: "2023-01-01T00:00:00Z",
-            updatedAt: "2023-01-01T00:00:00Z",
-          },
-        ],
-        tasks: [],
-        loading: false,
-        error: null,
-      },
-      timeEntries: {
-        entries: [],
-        currentEntry: null,
-        pagination: {
-          page: 1,
-          limit: 50,
-          total: 0,
-          pages: 0,
-        },
-        loading: false,
-        error: null,
-      },
-      dashboard: {
-        earnings: null,
-        loading: false,
-        error: null,
-      },
-      ...initialState,
     },
   });
 };
 
-const renderWithProviders = (
-  component: React.ReactElement,
-  initialState = {}
-) => {
-  const store = createTestStore(initialState);
-
-  // Mock the dispatch calls to prevent state changes during component mount
-  const originalDispatch = store.dispatch;
-  store.dispatch = vi.fn().mockImplementation((action) => {
-    // Prevent fetchTimeEntries and fetchProjects from executing
-    if (
-      action.type?.startsWith("timeEntries/fetchTimeEntries") ||
-      action.type?.startsWith("projects/fetchProjects")
-    ) {
-      return { type: "mocked", payload: null };
-    }
-    return originalDispatch(action);
-  });
+const renderWithProviders = (component: React.ReactElement) => {
+  const store = createTestStore();
 
   return {
     store,
@@ -124,16 +102,28 @@ const renderWithProviders = (
   };
 };
 
+// Render and wait for the time entries fetch to settle
+const renderPage = async () => {
+  const result = renderWithProviders(<TimeEntries />);
+  await waitFor(() => {
+    expect(result.store.getState().timeEntries.loading).toBe(false);
+  });
+  return result;
+};
+
 describe("TimeEntries Component", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Mock console.log to avoid cluttering test output
     vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(projectsAPI.getProjects).mockResolvedValue([testProject]);
+    vi.mocked(tasksAPI.getTasks).mockResolvedValue([]);
+    respondWith({ entries: [], pagination: pagination(0) });
   });
 
   describe("Component Rendering", () => {
-    it("shows the main interface when rendered", () => {
-      renderWithProviders(<TimeEntries />);
+    it("shows the main interface when rendered", async () => {
+      await renderPage();
 
       expect(
         screen.getByRole("heading", { name: "Time Entries" })
@@ -143,36 +133,32 @@ describe("TimeEntries Component", () => {
       ).toBeInTheDocument();
       expect(screen.getByTestId("timer-component")).toBeInTheDocument();
     });
+
+    it("loads entries, projects and tasks on mount", async () => {
+      await renderPage();
+
+      expect(timeEntriesAPI.getTimeEntries).toHaveBeenCalledWith({});
+      expect(projectsAPI.getProjects).toHaveBeenCalled();
+      expect(tasksAPI.getTasks).toHaveBeenCalled();
+    });
   });
 
   describe("API Response Format Handling", () => {
-    it("handles backend response format mismatch gracefully", () => {
-      // Simulate the old API response format that returns undefined or wrong structure
-      renderWithProviders(<TimeEntries />, {
-        timeEntries: {
-          entries: [], // This would be undefined in real API mismatch scenario
-          currentEntry: null,
-          pagination: undefined, // API doesn't return pagination in old format
-          loading: false,
-          error: null,
-        },
-      });
+    it("handles backend response format mismatch gracefully", async () => {
+      // An old-style bare array instead of { entries, pagination }
+      respondWith([completedEntry()]);
+
+      await renderPage();
 
       // Should not crash and show empty state
       expect(screen.getByText("Time Entries (0)")).toBeInTheDocument();
       expect(screen.getByText("No time entries found")).toBeInTheDocument();
     });
 
-    it("handles empty API response gracefully", () => {
-      renderWithProviders(<TimeEntries />, {
-        timeEntries: {
-          entries: null, // Simulate API returning null
-          currentEntry: null,
-          pagination: null,
-          loading: false,
-          error: null,
-        },
-      });
+    it("handles empty API response gracefully", async () => {
+      respondWith(null);
+
+      await renderPage();
 
       expect(screen.getByText("Time Entries (0)")).toBeInTheDocument();
       expect(screen.getByText("No time entries found")).toBeInTheDocument();
@@ -180,45 +166,29 @@ describe("TimeEntries Component", () => {
   });
 
   describe("Pagination Handling", () => {
-    it("handles undefined pagination gracefully", () => {
-      renderWithProviders(<TimeEntries />, {
-        timeEntries: {
-          entries: [],
-          currentEntry: null,
-          pagination: undefined, // Simulate undefined pagination
-          loading: false,
-          error: null,
-        },
-      });
+    it("handles undefined pagination gracefully", async () => {
+      respondWith({ entries: [completedEntry()] });
 
-      // Should show "Time Entries (0)" instead of crashing
+      await renderPage();
+
+      // Falls back to empty pagination instead of crashing
+      expect(screen.getByText("Working on feature X")).toBeInTheDocument();
       expect(screen.getByText("Time Entries (0)")).toBeInTheDocument();
-      expect(screen.getByText("No time entries found")).toBeInTheDocument();
+      expect(screen.queryByText("Load More")).not.toBeInTheDocument();
     });
 
-    it("displays correct total count when pagination is available", () => {
-      renderWithProviders(<TimeEntries />, {
-        timeEntries: {
-          entries: [],
-          currentEntry: null,
-          pagination: {
-            page: 1,
-            limit: 50,
-            total: 42,
-            pages: 1,
-          },
-          loading: false,
-          error: null,
-        },
-      });
+    it("displays correct total count when pagination is available", async () => {
+      respondWith({ entries: [], pagination: pagination(42) });
+
+      await renderPage();
 
       expect(screen.getByText("Time Entries (42)")).toBeInTheDocument();
     });
   });
 
   describe("Time Entries Display", () => {
-    it("shows empty state when no entries are available", () => {
-      renderWithProviders(<TimeEntries />);
+    it("shows empty state when no entries are available", async () => {
+      await renderPage();
 
       expect(screen.getByText("No time entries found")).toBeInTheDocument();
       expect(
@@ -226,144 +196,62 @@ describe("TimeEntries Component", () => {
       ).toBeInTheDocument();
     });
 
-    it("displays time entries when available", () => {
-      const mockEntries = [
-        {
-          id: "1",
-          description: "Working on feature X",
-          startTime: "2023-01-01T10:00:00Z",
-          endTime: "2023-01-01T11:00:00Z",
-          duration: 3600,
-          projectId: "1",
-          userId: "1",
-          project: {
-            id: "1",
-            name: "Test Project",
-            color: "#3B82F6",
-          },
-          createdAt: "2023-01-01T10:00:00Z",
-          updatedAt: "2023-01-01T11:00:00Z",
-        },
-      ];
+    it("displays time entries when available", async () => {
+      respondWith({ entries: [completedEntry()], pagination: pagination(1) });
 
-      renderWithProviders(<TimeEntries />, {
-        timeEntries: {
-          entries: mockEntries,
-          currentEntry: null,
-          pagination: {
-            page: 1,
-            limit: 50,
-            total: 1,
-            pages: 1,
-          },
-          loading: false,
-          error: null,
-        },
-      });
+      await renderPage();
 
       expect(screen.getByText("Working on feature X")).toBeInTheDocument();
       expect(screen.getByText("Test Project")).toBeInTheDocument();
       expect(screen.getByText("1h 0m")).toBeInTheDocument();
+      expect(screen.getByText("Time Entries (1)")).toBeInTheDocument();
     });
 
-    it("displays earnings when project has hourly rate", () => {
-      const mockEntries = [
-        {
-          id: "1",
-          description: "Working on feature X",
-          startTime: "2023-01-01T10:00:00Z",
-          endTime: "2023-01-01T11:00:00Z",
-          duration: 3600, // 1 hour
-          projectId: "1",
-          userId: "1",
-          project: {
-            id: "1",
-            name: "Test Project",
-            color: "#3B82F6",
-          },
-          createdAt: "2023-01-01T10:00:00Z",
-          updatedAt: "2023-01-01T11:00:00Z",
-        },
-      ];
-
-      renderWithProviders(<TimeEntries />, {
-        timeEntries: {
-          entries: mockEntries,
-          currentEntry: null,
-          pagination: {
-            page: 1,
-            limit: 50,
-            total: 1,
-            pages: 1,
-          },
-          loading: false,
-          error: null,
-        },
+    it("displays earnings from the entry's hourly rate snapshot", async () => {
+      respondWith({
+        entries: [
+          // 1 hour at the $50/hour captured when the entry was created
+          completedEntry({ hourlyRateSnapshot: 50 }),
+          // No snapshot: earnings aren't recomputed from the project's rate
+          completedEntry({ id: "2", description: "Unbilled", hourlyRateSnapshot: null }),
+        ],
+        pagination: pagination(2),
       });
 
-      // Should show $50.00 (1 hour * $50/hour)
+      await renderPage();
+
       expect(screen.getByText("$50.00")).toBeInTheDocument();
+      expect(screen.getByText("$0.00")).toBeInTheDocument();
     });
 
-    it("shows delete button only for completed entries", () => {
-      const mockEntries = [
-        {
-          id: "1",
-          description: "Completed entry",
-          startTime: "2023-01-01T10:00:00Z",
-          endTime: "2023-01-01T11:00:00Z",
-          duration: 3600,
-          projectId: "1",
-          userId: "1",
-          project: {
-            id: "1",
-            name: "Test Project",
-            color: "#3B82F6",
-          },
-          createdAt: "2023-01-01T10:00:00Z",
-          updatedAt: "2023-01-01T11:00:00Z",
-        },
-        {
-          id: "2",
-          description: "Running entry",
-          startTime: "2023-01-01T12:00:00Z",
-          endTime: null, // No end time - still running
-          duration: 1800,
-          projectId: "1",
-          userId: "1",
-          project: {
-            id: "1",
-            name: "Test Project",
-            color: "#3B82F6",
-          },
-          createdAt: "2023-01-01T12:00:00Z",
-          updatedAt: "2023-01-01T12:30:00Z",
-        },
-      ];
-
-      renderWithProviders(<TimeEntries />, {
-        timeEntries: {
-          entries: mockEntries,
-          currentEntry: null,
-          pagination: {
-            page: 1,
-            limit: 50,
-            total: 2,
-            pages: 1,
-          },
-          loading: false,
-          error: null,
-        },
+    it("shows delete button only for completed entries", async () => {
+      respondWith({
+        entries: [
+          completedEntry({ description: "Completed entry" }),
+          completedEntry({
+            id: "2",
+            description: "Running entry",
+            startTime: "2023-01-01T12:00:00Z",
+            endTime: undefined, // No end time - still running
+            duration: 1800,
+          }),
+        ],
+        pagination: pagination(2),
       });
 
-      const deleteButtons = screen.getAllByTitle("Delete entry");
-      expect(deleteButtons).toHaveLength(1); // Only one delete button for completed entry
+      await renderPage();
+
+      // Completed entries can be edited/deleted; running ones can only be stopped
+      expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(1);
+      expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
+      expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+      expect(screen.getByText("Running")).toBeInTheDocument();
     });
   });
 
   describe("Filtering", () => {
-    it("shows and hides filters when toggle button is clicked", () => {
-      renderWithProviders(<TimeEntries />);
+    it("shows and hides filters when toggle button is clicked", async () => {
+      await renderPage();
 
       const toggleButton = screen.getByText("Show Filters");
       expect(screen.queryByText("Filters")).not.toBeInTheDocument();
@@ -372,155 +260,103 @@ describe("TimeEntries Component", () => {
 
       expect(screen.getByText("Filters")).toBeInTheDocument();
       expect(screen.getByText("Hide Filters")).toBeInTheDocument();
-      expect(screen.getByDisplayValue("")).toBeInTheDocument(); // Check for select element instead of label
+      expect(screen.getByRole("option", { name: "All Projects" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Test Project" })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText("Hide Filters"));
+
+      expect(screen.queryByText("Filters")).not.toBeInTheDocument();
+    });
+
+    it("refetches entries for the selected project when filters are applied", async () => {
+      await renderPage();
+
+      fireEvent.click(screen.getByText("Show Filters"));
+      fireEvent.change(screen.getByDisplayValue("All Projects"), {
+        target: { value: "1" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Apply Filters" }));
+
+      await waitFor(() => {
+        expect(timeEntriesAPI.getTimeEntries).toHaveBeenLastCalledWith({
+          projectId: "1",
+        });
+      });
     });
   });
 
   describe("Loading States", () => {
     it("shows loading spinner when loading and no entries", () => {
-      renderWithProviders(<TimeEntries />, {
-        timeEntries: {
-          entries: [],
-          currentEntry: null,
-          pagination: {
-            page: 1,
-            limit: 50,
-            total: 0,
-            pages: 0,
-          },
-          loading: true,
-          error: null,
-        },
-      });
+      vi.mocked(timeEntriesAPI.getTimeEntries).mockReturnValue(
+        new Promise(() => {}) // still loading
+      );
+
+      renderWithProviders(<TimeEntries />);
 
       expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
     });
 
-    it("shows load more button with entries and more pages", () => {
-      renderWithProviders(<TimeEntries />, {
-        timeEntries: {
-          entries: [
-            {
-              id: "1",
-              description: "Test entry",
-              startTime: "2023-01-01T10:00:00Z",
-              endTime: "2023-01-01T11:00:00Z",
-              duration: 3600,
-              projectId: "1",
-              userId: "1",
-              createdAt: "2023-01-01T10:00:00Z",
-              updatedAt: "2023-01-01T11:00:00Z",
-            },
-          ],
-          currentEntry: null,
-          pagination: {
-            page: 1,
-            limit: 50,
-            total: 100,
-            pages: 2,
-          },
-          loading: false,
-          error: null,
-        },
+    it("shows load more button with entries and more pages", async () => {
+      respondWith({
+        entries: [completedEntry({ description: "Test entry" })],
+        pagination: pagination(100, 2),
       });
 
-      expect(screen.getByText("Load More")).toBeInTheDocument();
+      await renderPage();
+
+      fireEvent.click(screen.getByText("Load More"));
+
+      await waitFor(() => {
+        expect(timeEntriesAPI.getTimeEntries).toHaveBeenLastCalledWith({ page: 2 });
+      });
     });
   });
 
   describe("Error Handling", () => {
-    it("displays error message when API call fails", () => {
-      renderWithProviders(<TimeEntries />, {
-        timeEntries: {
-          entries: [],
-          currentEntry: null,
-          pagination: {
-            page: 1,
-            limit: 50,
-            total: 0,
-            pages: 0,
-          },
-          loading: false,
-          error: "Failed to fetch time entries",
-        },
-      });
+    it("displays error message when API call fails", async () => {
+      vi.mocked(timeEntriesAPI.getTimeEntries).mockRejectedValue(
+        new Error("Network Error")
+      );
 
-      expect(
-        screen.getByText("Failed to fetch time entries")
-      ).toBeInTheDocument();
+      await renderPage();
+
+      expect(screen.getByText("Network Error")).toBeInTheDocument();
+      expect(screen.getByText("No time entries found")).toBeInTheDocument();
     });
   });
 
   describe("Edge Cases", () => {
-    it("handles entry with no project gracefully", () => {
-      const mockEntries = [
-        {
-          id: "1",
-          description: "Entry without project",
-          startTime: "2023-01-01T10:00:00Z",
-          endTime: "2023-01-01T11:00:00Z",
-          duration: 3600,
-          projectId: undefined,
-          userId: "1",
-          project: undefined,
-          createdAt: "2023-01-01T10:00:00Z",
-          updatedAt: "2023-01-01T11:00:00Z",
-        },
-      ];
-
-      renderWithProviders(<TimeEntries />, {
-        timeEntries: {
-          entries: mockEntries,
-          currentEntry: null,
-          pagination: {
-            page: 1,
-            limit: 50,
-            total: 1,
-            pages: 1,
-          },
-          loading: false,
-          error: null,
-        },
+    it("handles entry with no project gracefully", async () => {
+      respondWith({
+        entries: [
+          completedEntry({
+            description: "Entry without project",
+            projectId: undefined,
+            project: undefined,
+          }),
+        ],
+        pagination: pagination(1),
       });
+
+      await renderPage();
 
       expect(screen.getByText("No Project")).toBeInTheDocument();
       expect(screen.getByText("Entry without project")).toBeInTheDocument();
     });
 
-    it("handles very long duration formatting correctly", () => {
-      const mockEntries = [
-        {
-          id: "1",
-          description: "Long entry",
-          startTime: "2023-01-01T10:00:00Z",
-          endTime: "2023-01-01T18:00:00Z",
-          duration: 28800, // 8 hours
-          projectId: "1",
-          userId: "1",
-          project: {
-            id: "1",
-            name: "Test Project",
-            color: "#3B82F6",
-          },
-          createdAt: "2023-01-01T10:00:00Z",
-          updatedAt: "2023-01-01T18:00:00Z",
-        },
-      ];
-
-      renderWithProviders(<TimeEntries />, {
-        timeEntries: {
-          entries: mockEntries,
-          currentEntry: null,
-          pagination: {
-            page: 1,
-            limit: 50,
-            total: 1,
-            pages: 1,
-          },
-          loading: false,
-          error: null,
-        },
+    it("handles very long duration formatting correctly", async () => {
+      respondWith({
+        entries: [
+          completedEntry({
+            description: "Long entry",
+            endTime: "2023-01-01T18:00:00Z",
+            duration: 28800, // 8 hours
+          }),
+        ],
+        pagination: pagination(1),
       });
+
+      await renderPage();
 
       expect(screen.getByText("8h 0m")).toBeInTheDocument();
     });

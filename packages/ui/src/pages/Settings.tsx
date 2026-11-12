@@ -4,6 +4,7 @@ import { RootState, AppDispatch } from "../store";
 import { updateProfile } from "../store/slices/authSlice";
 import { toast } from "react-hot-toast";
 import ApiKeysSection from "../components/ApiKeysSection";
+import AgentBillingSettings from "../components/AgentBillingSettings";
 
 const Settings: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -300,9 +301,9 @@ const Settings: React.FC = () => {
                 required
               />
               <p className="mt-1 text-xs text-gray-500">
-                Reports can apply this multiplier to time entries created by AI
-                agents (so 1 AI hour shows as {parseFloat(formData.aiMultiplier || "3").toFixed(1)} billable hours).
-                Pick what represents equivalent senior-dev time for the work.
+                AI-agent time is billed at this multiple of your rate (1 = same rate). It applies after
+                overlapping parallel agent time on a project is counted once, so 1 AI hour bills as{" "}
+                {parseFloat(formData.aiMultiplier || "1").toFixed(1)} hours. Projects can override it.
               </p>
             </div>
 
@@ -379,6 +380,8 @@ const Settings: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <AgentBillingSettings />
 
       <ApiKeysSection />
     </div>

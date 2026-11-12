@@ -19,7 +19,25 @@ model User {
   updatedAt         DateTime    @updatedAt
   defaultHourlyRate Float?
   idleTimeoutSeconds Int? @default(600) @map("idle_timeout_seconds")
-  aiMultiplier Float? @default(3.0) @map("ai_multiplier")
+  // New users bill AI time at their normal rate; existing users keep theirs.
+  aiMultiplier Float? @default(1.0) @map("ai_multiplier")
+  // How parallel timers on one project are billed: dedupe | sum
+  overlapMode  String @default("dedupe") @map("overlap_mode")
+  currency     String @default("USD")
+
+  // Subscription (Stripe). Billing is enforced only when Stripe is configured.
+  stripeCustomerId              String?   @unique @map("stripe_customer_id")
+  stripeSubscriptionId          String?   @unique @map("stripe_subscription_id")
+  subscriptionStatus            String?   @map("subscription_status")
+  subscriptionPriceId           String?   @map("subscription_price_id")
+  subscriptionInterval          String?   @map("subscription_interval")
+  subscriptionCurrentPeriodEnd  DateTime? @map("subscription_current_period_end")
+  subscriptionCancelAtPeriodEnd Boolean   @default(false) @map("subscription_cancel_at_period_end")
+  // Users from before paid plans keep Pro for free.
+  isSubscriptionExempt          Boolean   @default(false) @map("is_subscription_exempt")
+  trialEndsAt                   DateTime? @map("trial_ends_at")
+  // Agent timers fed by heartbeats (hooks) pause after this much silence.
+  agentIdleTimeoutSeconds Int @default(900) @map("agent_idle_timeout_seconds")
   passwordResetToken    String?
   passwordResetExpiresAt DateTime?
 
@@ -29,6 +47,10 @@ model User {
   tasks        Task[]
   apiKeys      ApiKey[]
   favorites    Favorite[]
+  auditEvents  AuditEvent[]
+  timers       Timer[]
+  timerNotes   TimerNote[]
+  shareLinks   ShareLink[]
 
   @@map("users")
   @@index([email])
@@ -44,6 +66,18 @@ model Project {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   hourlyRate  Float?
+  // Repositories that belong to this project: normalized git remotes
+  // (github.com/acme/web) or absolute path prefixes. Agent timers started in
+  // a matching repo are assigned to this project automatically.
+  repoPatterns String[] @default([]) @map("repo_patterns")
+  // Billing policy overrides (null = inherit the user's setting).
+  overlapMode         String? @map("overlap_mode")
+  aiMultiplier        Float?  @map("ai_multiplier")
+  // Flat hourly rate for AI-assisted time; overrides rate x multiplier.
+  agentHourlyRate     Float?  @map("agent_hourly_rate")
+  // Pass agents' API-equivalent token cost through to the client.
+  includeAiCosts      Boolean @default(false) @map("include_ai_costs")
+  aiCostMarkupPercent Float   @default(0) @map("ai_cost_markup_percent")
 
   // Relations
   userId      String
@@ -51,6 +85,8 @@ model Project {
   tasks       Task[]
   timeEntries TimeEntry[]
   favorites   Favorite[]
+  timers      Timer[]
+  shareLinks  ShareLink[]
 
   @@map("projects")
   @@index([userId])
@@ -73,6 +109,7 @@ model Task {
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   timeEntries TimeEntry[]
   favorites   Favorite[]
+  timers      Timer[]
 
   @@map("tasks")
   @@index([projectId])
@@ -92,6 +129,8 @@ model TimeEntry {
   hourlyRateSnapshot  Float?    // Snapshot of hourly rate at time of creation
   createdVia          String    @default("web") @map("created_via")
   isAiGenerated       Boolean   @default(false) @map("is_ai_generated")
+  // Why the segment ended: manual | paused | idle | stopped | session_end | import
+  stopReason          String?   @map("stop_reason")
 
   // Relations
   userId    String
@@ -100,6 +139,10 @@ model TimeEntry {
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   taskId    String?
   task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  // The pausable timer this entry is a segment of (null for pre-timer entries).
+  timerId   String?  @map("timer_id")
+  timer     Timer?   @relation(fields: [timerId], references: [id], onDelete: SetNull)
+  notes     TimerNote[]
 
   @@map("time_entries")
   @@index([userId])
@@ -108,6 +151,81 @@ model TimeEntry {
   @@index([userId, isAiGenerated])
   @@index([projectId])
   @@index([taskId])
+  @@index([timerId])
+  @@index([timerId, startTime])
+}
+
+// A unit of work that can be paused and resumed — typically one AI agent
+// session (keyed by its sessionKey) or one human task. Each running stretch is
+// a TimeEntry segment; a running timer has exactly one running entry.
+model Timer {
+  id                 String    @id @default(cuid())
+  status             String    @default("running") // running | paused | stopped
+  description        String?
+  // Client-supplied idempotency key, e.g. a Claude Code session_id.
+  sessionKey         String?   @map("session_key")
+  agent              String? // claude_code | cursor | codex | human | ...
+  createdVia         String    @default("web") @map("created_via")
+  // How the timer was created: agent_hook | import | the client (web, api,
+  // mcp, claude_code, ...). Unlike createdVia (a resume rewrites it), never
+  // changes: imports use it to tell the plugin's own sessions apart.
+  origin             String?
+  isAiGenerated      Boolean   @default(false) @map("is_ai_generated")
+  cwd                String?
+  gitRemote          String?   @map("git_remote") // normalized, credential-free
+  gitBranch          String?   @map("git_branch")
+  // null = never auto-pause (no reliable heartbeats for this timer)
+  idleTimeoutSeconds Int?      @map("idle_timeout_seconds")
+  lastActivityAt     DateTime  @default(now()) @map("last_activity_at")
+  pauseReason        String?   @map("pause_reason") // manual | idle
+  startedAt          DateTime  @default(now()) @map("started_at")
+  stoppedAt          DateTime? @map("stopped_at")
+  usage              Json? // per-model token counts reported by the agent
+  costUsd            Float?    @map("cost_usd")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String?  @map("project_id")
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  taskId    String?  @map("task_id")
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  entries   TimeEntry[]
+  notes     TimerNote[]
+
+  @@unique([userId, sessionKey])
+  @@index([userId, status])
+  @@index([status, lastActivityAt])
+  @@map("timers")
+}
+
+// Work-log lines attached to a timer ("refactored auth middleware").
+model TimerNote {
+  id        String   @id @default(cuid())
+  body      String
+  via       String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  timerId String @map("timer_id")
+  timer   Timer  @relation(fields: [timerId], references: [id], onDelete: Cascade)
+  userId  String @map("user_id")
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The segment the note was written on: the running one, else the latest
+  /// on the timer's own client. Timesheets show the note wherever that
+  /// segment is billed; a deleted segment's notes show on no timesheet.
+  timeEntryId     String?    @map("time_entry_id")
+  timeEntry       TimeEntry? @relation(fields: [timeEntryId], references: [id], onDelete: SetNull)
+  /// Written when the timer had no segment on its own client (or its segment
+  /// there was discarded as empty and none was left): settleAwaitingNotes
+  /// places it on the next one the timer gets there (opened, backfilled,
+  /// moved back, or by reassignment).
+  awaitingSegment Boolean    @default(false) @map("awaiting_segment")
+
+  @@index([timerId, createdAt])
+  @@index([userId, createdAt])
+  @@index([timeEntryId])
+  @@map("timer_notes")
 }
 
 model ApiKey {
@@ -150,4 +268,67 @@ model Favorite {
   @@map("favorites")
   @@index([userId])
   @@index([userId, displayOrder])
+}
+// Append-only record of changes to billable data: who (user, API key, or the
+// system), through which client, and what changed. Lets a developer show a
+// client exactly how AI agents touched their timesheet.
+model AuditEvent {
+  id         String   @id @default(cuid())
+  entityType String   @map("entity_type") // time_entry | timer | project | ...
+  entityId   String   @map("entity_id")
+  action     String // create | update | delete | start | pause | resume | stop | ...
+  actorType  String   @map("actor_type") // user | api_key | system
+  actorId    String?  @map("actor_id")
+  actorLabel String?  @map("actor_label")
+  via        String?
+  changes    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("audit_events")
+  @@index([userId, entityType, entityId])
+  @@index([userId, createdAt])
+}
+
+// Read-only timesheet link a developer sends to a client. The token is
+// shown once; only its SHA-256 hash is stored.
+model ShareLink {
+  id           String    @id @default(cuid())
+  name         String?
+  tokenHash    String    @unique @map("token_hash")
+  tokenPrefix  String    @map("token_prefix")
+  // Fixed range, or a rolling window ending now (e.g. last 30 days).
+  startDate    DateTime? @map("start_date")
+  endDate      DateTime? @map("end_date")
+  rollingDays  Int?      @map("rolling_days")
+  timezone     String    @default("UTC")
+  showAmounts  Boolean   @default(true) @map("show_amounts")
+  showNotes    Boolean   @default(true) @map("show_notes")
+  expiresAt    DateTime? @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  lastViewedAt DateTime? @map("last_viewed_at")
+  viewCount    Int       @default(0) @map("view_count")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String?  @map("project_id")
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // Set when an agent created the link with an API key: the link dies with the key.
+  apiKeyId  String?  @map("api_key_id")
+
+  @@index([userId])
+  @@map("share_links")
+}
+
+// Stripe webhook events already processed (idempotency: Stripe retries and
+// may deliver an event more than once).
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@map("stripe_events")
 }

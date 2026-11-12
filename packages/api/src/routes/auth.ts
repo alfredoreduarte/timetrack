@@ -6,6 +6,7 @@ import { z } from "zod";
 import svgCaptcha from "svg-captcha";
 import crypto from "crypto";
 import { prisma } from "../utils/database";
+import { billingEnabled, TRIAL_DAYS } from "../services/entitlements";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, requireJwt, AuthenticatedRequest } from "../middleware/auth";
 import { emailService } from "../utils/email";
@@ -58,7 +59,8 @@ const passwordResetLimiter = rateLimit({
 // Store captcha sessions in memory (in production, use Redis or database)
 const captchaSessions = new Map<string, { text: string; expiresAt: number }>();
 
-// Clean up expired captcha sessions every 5 minutes
+// Clean up expired captcha sessions every 5 minutes. unref() so this timer
+// alone never keeps the process alive (tests, graceful shutdown).
 setInterval(() => {
   const now = Date.now();
   for (const [sessionId, session] of captchaSessions.entries()) {
@@ -66,7 +68,7 @@ setInterval(() => {
       captchaSessions.delete(sessionId);
     }
   }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 // Validation schemas
 const registerSchema = z.object({
@@ -288,6 +290,9 @@ router.post(
         password: hashedPassword,
         defaultHourlyRate,
         idleTimeoutSeconds,
+        // Every new account starts with a Pro trial — from the day billing is
+        // on (see startPendingTrial), so signups before that don't lose it.
+        trialEndsAt: billingEnabled() ? new Date(Date.now() + TRIAL_DAYS * 86400 * 1000) : null,
       },
       select: {
         id: true,
@@ -296,6 +301,9 @@ router.post(
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
         aiMultiplier: true,
+        agentIdleTimeoutSeconds: true,
+        overlapMode: true,
+        currency: true,
         createdAt: true,
       },
     });
@@ -399,12 +407,18 @@ router.post(
 
     res.json({
       message: "Login successful",
+      // Same profile fields as /auth/me: clients render settings forms from
+      // this, and a missing field would be saved back as its default.
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
         defaultHourlyRate: user.defaultHourlyRate,
         idleTimeoutSeconds: user.idleTimeoutSeconds,
+        aiMultiplier: user.aiMultiplier,
+        agentIdleTimeoutSeconds: user.agentIdleTimeoutSeconds,
+        overlapMode: user.overlapMode,
+        currency: user.currency,
       },
       token,
     });
@@ -456,6 +470,9 @@ router.get(
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
         aiMultiplier: true,
+        agentIdleTimeoutSeconds: true,
+        overlapMode: true,
+        currency: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -670,6 +687,9 @@ router.post(
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
         aiMultiplier: true,
+        agentIdleTimeoutSeconds: true,
+        overlapMode: true,
+        currency: true,
       },
     });
 

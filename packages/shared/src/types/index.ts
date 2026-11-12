@@ -53,6 +53,75 @@ export interface TimeEntry {
   userId: string;
   createdAt: string;
   updatedAt: string;
+  isRunning?: boolean;
+  hourlyRateSnapshot?: number | null;
+  createdVia?: string;
+  isAiGenerated?: boolean;
+  /** The pausable timer this entry is a segment of (null for pre-timer entries). */
+  timerId?: string | null;
+  /** manual | paused | idle | stopped | session_end | import */
+  stopReason?: string | null;
+}
+
+// Timers: a pausable unit of work (typically one AI agent session) made of
+// TimeEntry segments. A running timer has exactly one running segment.
+export type TimerStatus = "running" | "paused" | "stopped";
+/** manual: paused on request (sticks until resumed); idle: the idle sweeper (resumes on activity). */
+export type TimerPauseReason = "manual" | "idle";
+
+export interface Timer {
+  id: string;
+  status: TimerStatus;
+  description: string | null;
+  sessionKey: string | null;
+  agent: string | null;
+  createdVia: string;
+  isAiGenerated: boolean;
+  cwd: string | null;
+  gitRemote: string | null;
+  gitBranch: string | null;
+  idleTimeoutSeconds: number | null;
+  lastActivityAt: string;
+  pauseReason: TimerPauseReason | null;
+  startedAt: string;
+  stoppedAt: string | null;
+  costUsd: number | null;
+  projectId: string | null;
+  taskId: string | null;
+  project: { id: string; name: string; color: string } | null;
+  task: { id: string; name: string } | null;
+  currentEntry: TimeEntry | null;
+  segmentCount: number;
+  noteCount: number;
+  trackedSeconds: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TimerNote {
+  id: string;
+  body: string;
+  via: string | null;
+  createdAt: string;
+}
+
+export interface TimerActionResult {
+  timer: Timer;
+  entry: TimeEntry | null;
+  changed: boolean;
+  created?: boolean;
+}
+
+export interface AuditEvent {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  actorType: "user" | "api_key" | "system";
+  actorLabel: string | null;
+  via: string | null;
+  changes: Record<string, { from: unknown; to: unknown }> | null;
+  createdAt: string;
 }
 
 export interface StartTimerRequest {

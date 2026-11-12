@@ -11,6 +11,14 @@ export interface Project {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Repositories linked to this project (git remotes or path prefixes). */
+  repoPatterns?: string[];
+  // Billing policy overrides (null = use the account default)
+  overlapMode?: "dedupe" | "sum" | null;
+  aiMultiplier?: number | null;
+  agentHourlyRate?: number | null;
+  includeAiCosts?: boolean;
+  aiCostMarkupPercent?: number;
 }
 
 export interface Task {
@@ -185,7 +193,8 @@ const projectsSlice = createSlice({
       })
       .addCase(fetchProjects.fulfilled, (state, action) => {
         state.loading = false;
-        state.projects = action.payload;
+        // Components map over this; a malformed response must not blank the page.
+        state.projects = Array.isArray(action.payload) ? action.payload : [];
       })
       .addCase(fetchProjects.rejected, (state, action) => {
         state.loading = false;

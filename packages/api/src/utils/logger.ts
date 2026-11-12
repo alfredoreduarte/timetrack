@@ -4,6 +4,8 @@ const logLevel = process.env.LOG_LEVEL || "info";
 
 const logger = winston.createLogger({
   level: logLevel,
+  // Keep jest output readable; set TEST_LOGS=1 to see API logs in tests.
+  silent: process.env.NODE_ENV === "test" && !process.env.TEST_LOGS,
   format: winston.format.combine(
     winston.format.timestamp({
       format: "YYYY-MM-DD HH:mm:ss",
