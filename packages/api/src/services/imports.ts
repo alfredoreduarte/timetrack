@@ -300,7 +300,12 @@ async function importOne(
         costUsd: s.usage ? estimateCost(s.usage).costUsd : undefined,
       };
       let timerId: string;
+      let notesToReattach: string[] = [];
       if (existing) {
+        // The stored copy is replaced; its notes move to the new segments.
+        notesToReattach = (
+          await tx.timerNote.findMany({ where: { timerId: existing.id, timeEntryId: { not: null } }, select: { id: true } })
+        ).map((n) => n.id);
         await tx.timeEntry.deleteMany({ where: { timerId: existing.id } });
         await tx.timer.update({ where: { id: existing.id }, data });
         timerId = existing.id;
@@ -324,6 +329,19 @@ async function importOne(
           stopReason: "import",
         })),
       });
+      if (notesToReattach.length > 0) {
+        // Each to the segment it was written during or after, else the first
+        // (all of a session's segments are in one project).
+        await tx.$executeRaw`
+          UPDATE timer_notes n SET time_entry_id = COALESCE(
+            (SELECT e.id FROM time_entries e
+              WHERE e.timer_id = n.timer_id AND e."startTime" <= n.created_at
+              ORDER BY e."startTime" DESC, e.id DESC LIMIT 1),
+            (SELECT e.id FROM time_entries e
+              WHERE e.timer_id = n.timer_id
+              ORDER BY e."startTime" ASC, e.id ASC LIMIT 1))
+          WHERE n.id = ANY(${notesToReattach})`;
+      }
       await recordAudit(tx, ctx, {
         entityType: "timer",
         entityId: timerId,

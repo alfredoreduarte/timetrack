@@ -36,7 +36,9 @@ async function seed() {
   await mk("Code review", D(11), D(11, 30), acme.id, false);
   await mk("Globex agent 1", D(14), D(15), globex.id, true);
   await mk("Globex agent 2", D(14, 30), D(15, 30), globex.id, true);
-  await prisma.timerNote.create({ data: { timerId: a, userId: user.id, body: "Added cursor pagination", createdAt: new Date(D(10)) } });
+  // Written by the agent (on its latest segment), dated in the window.
+  const note = await api().post(`/timers/${a}/notes`).set(key.auth).send({ body: "Added cursor pagination" });
+  await prisma.timerNote.update({ where: { id: note.body.note.id }, data: { createdAt: new Date(D(10)) } });
   return { user, auth, key, acme, globex, timerA: a };
 }
 

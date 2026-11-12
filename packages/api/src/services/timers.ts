@@ -255,7 +255,7 @@ async function closeSegment(
 ): Promise<EntryView | null> {
   const running = await tx.timeEntry.findFirst({
     where: { timerId, isRunning: true },
-    select: { id: true, startTime: true },
+    select: { id: true, startTime: true, projectId: true },
   });
   if (!running) return null;
 
@@ -263,6 +263,16 @@ async function closeSegment(
   const duration = Math.floor((end.getTime() - running.startTime.getTime()) / 1000);
 
   if (duration === 0 && !keepEmpty) {
+    // A note written in that instant goes with the segment before it, if
+    // that one is the same client's.
+    await tx.$executeRaw`
+      UPDATE timer_notes SET time_entry_id = (
+        SELECT e.id FROM time_entries e
+        WHERE e.timer_id = ${timerId} AND e.id <> ${running.id}
+          AND e."projectId" IS NOT DISTINCT FROM ${running.projectId}::text
+          AND e."startTime" <= ${running.startTime}
+        ORDER BY e."startTime" DESC, e.id DESC LIMIT 1)
+      WHERE time_entry_id = ${running.id}`;
     await tx.timeEntry.delete({ where: { id: running.id } });
     await recordAudit(tx, ctx, {
       entityType: "time_entry",
@@ -861,15 +871,21 @@ export async function updateTimer(
 export async function addTimerNote(ctx: ServiceContext, timerId: string, body: string) {
   const text = cleanText(body, "note", 2000);
   if (!text) throw createError("note cannot be empty", 400);
-  const timer = await prisma.timer.findFirst({
-    where: { id: timerId, userId: ctx.userId },
-    select: { id: true, status: true },
-  });
-  if (!timer) throw createError("Timer not found", 404);
-
-  const note = await prisma.timerNote.create({
-    data: { timerId, userId: ctx.userId, body: text, via: ctx.via, createdAt: ctx.now() },
-    select: { id: true, body: true, via: true, createdAt: true, timerId: true },
+  const { timer, note } = await prisma.$transaction(async (tx) => {
+    const timer = await lockTimer(tx, ctx, timerId);
+    // The note is about the work in progress, or the work just done: the
+    // running segment, else the latest. Timesheets show it with that
+    // segment, wherever it is billed.
+    const segment = await tx.timeEntry.findFirst({
+      where: { timerId },
+      select: { id: true },
+      orderBy: [{ isRunning: "desc" }, { startTime: "desc" }, { id: "desc" }],
+    });
+    const note = await tx.timerNote.create({
+      data: { timerId, userId: ctx.userId, body: text, via: ctx.via, createdAt: ctx.now(), timeEntryId: segment?.id ?? null },
+      select: { id: true, body: true, via: true, createdAt: true, timerId: true },
+    });
+    return { timer, note };
   });
   // A note from an agent is a sign of life.
   if (timer.status === "running") await touchTimer(ctx, timerId, {});

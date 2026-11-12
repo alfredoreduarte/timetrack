@@ -142,6 +142,7 @@ model TimeEntry {
   // The pausable timer this entry is a segment of (null for pre-timer entries).
   timerId   String?  @map("timer_id")
   timer     Timer?   @relation(fields: [timerId], references: [id], onDelete: SetNull)
+  notes     TimerNote[]
 
   @@map("time_entries")
   @@index([userId])
@@ -210,9 +211,15 @@ model TimerNote {
   timer   Timer  @relation(fields: [timerId], references: [id], onDelete: Cascade)
   userId  String @map("user_id")
   user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The segment the note was written on (the running one, else the latest).
+  /// Timesheets show the note wherever that segment is billed; a deleted
+  /// segment's notes show on no timesheet.
+  timeEntryId String?    @map("time_entry_id")
+  timeEntry   TimeEntry? @relation(fields: [timeEntryId], references: [id], onDelete: SetNull)
 
   @@index([timerId, createdAt])
   @@index([userId, createdAt])
+  @@index([timeEntryId])
   @@map("timer_notes")
 }
 
