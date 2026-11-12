@@ -9,6 +9,7 @@ import { diffFields, recordAudit, listAuditEvents } from "./audit";
 import { getHourlyRate } from "./rates";
 import { resolveProjectAndTask } from "./ownership";
 import { cleanText, DESCRIPTION_MAX } from "./text";
+import { settleAwaitingNotes } from "./timerNotes";
 import {
   entrySelect,
   EntryView,
@@ -286,6 +287,8 @@ export async function createEntry(ctx: ServiceContext, input: CreateEntryInput):
       action: "create",
       changes: diffFields(null, created, AUDITED_ENTRY_FIELDS),
     });
+    // A backfill on the timer's client is a segment its waiting notes can go on.
+    if (timer) await settleAwaitingNotes(tx, timer.id);
     return created;
   });
 
@@ -495,6 +498,9 @@ async function applyEntryUpdate(
       events.push({ event: "timer-updated", payload: { timerId: timer.id } });
     }
   }
+  // A segment moved onto its timer's client (or a running one the timer
+  // followed) is one the timer's waiting notes can go on.
+  if (existing.timerId && changes?.projectId) await settleAwaitingNotes(tx, existing.timerId);
   return updated;
 }
 
