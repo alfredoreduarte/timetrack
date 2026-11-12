@@ -5,6 +5,7 @@ import { logger } from "../utils/logger";
 import { ServiceContext } from "./context";
 import { recordAudit } from "./audit";
 import { loadTimerViews } from "./timers";
+import { settleAwaitingNotes } from "./timerNotes";
 import { withTxRetry } from "./txRetry";
 
 /*
@@ -111,6 +112,9 @@ export async function deleteProject(ctx: ServiceContext, projectId: string): Pro
 
       const removed = await tx.timeEntry.deleteMany({ where: { userId: ctx.userId, projectId } });
       await tx.project.delete({ where: { id: projectId } });
+      // The project's timers are now on "No project", where some may already
+      // have segments for their waiting notes (all of them are locked).
+      for (const timerId of timerIds) await settleAwaitingNotes(tx, timerId);
       await recordAudit(tx, ctx, {
         entityType: "project",
         entityId: projectId,

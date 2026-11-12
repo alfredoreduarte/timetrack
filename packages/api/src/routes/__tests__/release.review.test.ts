@@ -742,3 +742,41 @@ describe("release review round 6", () => {
     }
   });
 });
+
+describe("release review round 7", () => {
+  it("deleting a project places its timers' waiting notes on their No project segments", async () => {
+    const { user, auth } = await createUser();
+    const p = await createProject(user.id, { name: "Doomed", hourlyRate: 100 });
+    const { timer, entries } = await agentTimer(user.id, p.id, "work", [["09:00", "10:00"]]);
+    // Its only segment was moved off the project, so a note has to wait.
+    expect((await api().put(`/time-entries/${entries[0].id}`).set(auth).send({ projectId: null })).status).toBe(200);
+    const id = await writeNote(auth, timer.id, "Kept after the delete", at("10:30"));
+    expect(await prisma.timerNote.findUniqueOrThrow({ where: { id } })).toMatchObject({ awaitingSegment: true });
+    expect((await api().delete(`/projects/${p.id}`).set(auth)).status).toBe(200);
+    expect(await prisma.timerNote.findUniqueOrThrow({ where: { id } })).toMatchObject({ timeEntryId: entries[0].id, awaitingSegment: false });
+    const sheet = (await api().get(`/reports/timesheet?${RANGE}&format=json`).set(auth)).body.timesheet;
+    expect(sheet.projects.flatMap((x: { lines: Array<{ notes: string[] }> }) => x.lines.flatMap((l) => l.notes))).toEqual(["Kept after the delete"]);
+  });
+
+  it("a bulk move back onto the timer's client puts waiting notes on its latest segment", async () => {
+    const { user, auth } = await createUser();
+    const a = await createProject(user.id, { name: "Client A", hourlyRate: 100 });
+    const b = await createProject(user.id, { name: "Client B", hourlyRate: 100 });
+    const { timer, entries } = await agentTimer(user.id, a.id, "work", [["09:00", "10:00"]]);
+    const feb = entries[0];
+    await prisma.timeEntry.update({ where: { id: feb.id }, data: { startTime: new Date("2026-02-10T09:00:00Z"), endTime: new Date("2026-02-10T10:00:00Z") } });
+    const mar = await prisma.timeEntry.create({
+      data: { userId: user.id, projectId: a.id, timerId: timer.id, startTime: at("09:00"), endTime: at("10:00"), duration: 3600, isRunning: false, isAiGenerated: true, hourlyRateSnapshot: 100 },
+    });
+    await prisma.timeEntry.updateMany({ where: { timerId: timer.id }, data: { projectId: b.id } });
+    const id = await writeNote(auth, timer.id, "Wrapped up", at("10:30"));
+    expect(await prisma.timerNote.findUniqueOrThrow({ where: { id } })).toMatchObject({ awaitingSegment: true });
+    for (const order of [[feb.id, mar.id], [mar.id, feb.id]]) {
+      await prisma.timeEntry.updateMany({ where: { timerId: timer.id }, data: { projectId: b.id } });
+      await prisma.timerNote.update({ where: { id }, data: { timeEntryId: null, awaitingSegment: true } });
+      const res = await api().post("/time-entries/bulk-update").set(auth).send({ ids: order, set: { projectId: a.id } });
+      expect(res.status).toBe(200);
+      expect((await prisma.timerNote.findUniqueOrThrow({ where: { id } })).timeEntryId).toBe(mar.id);
+    }
+  });
+});
