@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { configureStore } from "@reduxjs/toolkit";
 import { reducers } from "../../store/reducers";
 import { renderWithProviders } from "../../test/utils";
@@ -54,5 +54,35 @@ describe("Reports", () => {
     await waitFor(() => expect(screen.getAllByText(money(1143.6, "EUR")).length).toBeGreaterThan(0));
     expect(document.body.textContent).not.toMatch(/multiplier|×/i);
     expect(document.body.textContent).not.toContain("$");
+  });
+
+  it("names the week the AI figures are from, and shows nothing without AI work", async () => {
+    vi.spyOn(reportsAPI, "getSummaryReport").mockResolvedValue({ summary: { dailyBreakdown: [] } } as never);
+    vi.spyOn(reportsAPI, "getDetailedReport")
+      .mockResolvedValueOnce({ timeEntries: [entry("this week", true, 3600, 100)] } as never)
+      .mockResolvedValueOnce({ timeEntries: [entry("last week", true, 7200, 200)] } as never)
+      .mockResolvedValueOnce({ timeEntries: [entry("human only", false, 3600, 80)] } as never);
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    const store = configureStore({ reducer: reducers });
+    store.dispatch({
+      type: "auth/setCredentials",
+      payload: { user: { id: "u1", name: "Ada", email: "ada@dev.test", currency: "USD" }, token: "t" },
+    });
+    renderWithProviders(<Reports />, { store });
+    const line = (text: string) => screen.findByText((_, el) => el?.tagName === "P" && el.textContent?.trim() === text);
+
+    expect(await line(`AI work this week: 1.00 h · ${money(100, "USD")}`)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    expect(await line(`AI work last week: 2.00 h · ${money(200, "USD")}`)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    await waitFor(() => expect(store.getState().reports.detailedWeekOffset).toBe(-2));
+    expect(document.body.textContent).not.toContain("AI work");
   });
 });

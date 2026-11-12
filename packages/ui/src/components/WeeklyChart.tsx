@@ -115,6 +115,7 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
           <button
             onClick={onPreviousWeek}
             disabled={loading}
+            aria-label="Previous week"
             className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-50"
           >
             <ChevronLeftIcon className="h-5 w-5" />
@@ -130,6 +131,7 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
           <button
             onClick={onNextWeek}
             disabled={loading}
+            aria-label="Next week"
             className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-50"
           >
             <ChevronRightIcon className="h-5 w-5" />

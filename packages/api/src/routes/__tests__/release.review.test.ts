@@ -810,14 +810,15 @@ describe("retired AI multiplier", () => {
   });
 
   it("profiles and projects no longer carry it, and clients that still send it are ignored", async () => {
-    const { user, auth } = await createUser();
+    // The column stays for rollbacks (the previous release reads it): untouched.
+    const { user, auth } = await createUser({ aiMultiplier: 3 });
     const me = await api().get("/auth/me").set(auth);
     expect(me.status).toBe(200);
     expect(JSON.stringify(me.body)).not.toContain("aiMultiplier");
     const profile = await api().put("/users/profile").set(auth).send({ aiMultiplier: 5, name: "Renamed" });
     expect(profile.status).toBe(200);
     expect(JSON.stringify(profile.body)).not.toContain("aiMultiplier");
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).name).toBe("Renamed");
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({ name: "Renamed", aiMultiplier: 3 });
     const p = await createProject(user.id, { name: "Acme" });
     const put = await api().put(`/projects/${p.id}`).set(auth).send({ aiMultiplier: 2, agentHourlyRate: 30 });
     expect(put.status).toBe(200);

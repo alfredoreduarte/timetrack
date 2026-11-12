@@ -43,6 +43,8 @@ interface ReportsState {
   detailedLoading: boolean;
   error: string | null;
   currentWeekOffset: number; // 0 = current week, -1 = previous week, etc.
+  /** The week detailedEntries are from (they load separately from the chart). */
+  detailedWeekOffset: number;
 }
 
 const initialState: ReportsState = {
@@ -52,6 +54,7 @@ const initialState: ReportsState = {
   detailedLoading: false,
   error: null,
   currentWeekOffset: 0,
+  detailedWeekOffset: 0,
 };
 
 // Helper function to get start and end of week (Monday to Sunday)
@@ -173,6 +176,7 @@ const reportsSlice = createSlice({
       .addCase(fetchDetailedTimeEntries.fulfilled, (state, action) => {
         state.detailedLoading = false;
         state.detailedEntries = action.payload;
+        state.detailedWeekOffset = action.meta.arg ?? 0;
       })
       .addCase(fetchDetailedTimeEntries.rejected, (state, action) => {
         state.detailedLoading = false;
