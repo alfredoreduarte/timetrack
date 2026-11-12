@@ -17,6 +17,8 @@ const usage = z.object({
 
 const importSchema = z.object({
   dryRun: z.boolean().optional(),
+  // Import only activity after the last AI work tracked some other way.
+  afterTrackedWork: z.boolean().optional(),
   sessions: z
     .array(
       z.object({
@@ -51,9 +53,9 @@ const importSchema = z.object({
 router.post(
   "/import",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { dryRun, sessions } = importSchema.parse(req.body);
+    const { dryRun, afterTrackedWork, sessions } = importSchema.parse(req.body);
     const ctx = contextFromRequest(req);
-    res.json(await importAgentSessions(ctx, sessions, { dryRun }));
+    res.json(await importAgentSessions(ctx, sessions, { dryRun, afterTrackedWork }));
   })
 );
 

@@ -9,7 +9,7 @@ import { getHourlyRate } from "./rates";
 import { resolveProjectAndTask } from "./ownership";
 import { resolveProjectForRepo, repoLabel } from "./repos";
 import { cleanText } from "./text";
-import { cleanAgent, cleanSessionKey, cleanToken, FUTURE_SKEW_MS } from "./timers";
+import { cleanAgent, cleanSessionKey, cleanToken, FUTURE_SKEW_MS, validateUsage } from "./timers";
 import { agentLabel } from "./agentEvents";
 import { estimateCost } from "../billing/pricing";
 import { getEntitlements, historyFloor } from "./entitlements";
@@ -71,6 +71,7 @@ export type ImportStatus =
   | "skipped_edited"
   | "skipped_plan"
   | "skipped_partial"
+  | "skipped_tracked"
   | "empty"
   | "invalid";
 
@@ -89,7 +90,10 @@ export interface ImportSessionResult {
 const sumSeconds = (segments: Span[]) =>
   segments.reduce((s, [a, b]) => s + Math.floor((b.getTime() - a.getTime()) / 1000), 0);
 
-type Skip = { status: "skipped_live" | "skipped_edited" | "skipped_plan" | "skipped_partial"; reason: string };
+type Skip = {
+  status: "skipped_live" | "skipped_edited" | "skipped_plan" | "skipped_partial" | "skipped_tracked";
+  reason: string;
+};
 
 /** What an import brings, for comparing it with a stored copy. */
 interface Incoming {
@@ -169,6 +173,27 @@ async function storedCopyBlocker(db: TxClient, userId: string, timerId: string, 
     return { status: "skipped_partial", reason: "already imported with more of this session than this import has" };
   }
   return null;
+}
+
+/**
+ * When the user's AI work tracked some other way ends: entries from older
+ * MCP or API-key timers carry no session id (hook-tracked and imported
+ * sessions do). Now, if such work is running.
+ */
+async function otherAiWorkUntil(userId: string, now: Date): Promise<Date | null> {
+  const where: Prisma.TimeEntryWhereInput = {
+    userId,
+    isAiGenerated: true,
+    OR: [{ timerId: null }, { timer: { sessionKey: null } }],
+  };
+  const running = await prisma.timeEntry.findFirst({ where: { ...where, isRunning: true }, select: { id: true } });
+  if (running) return now;
+  const last = await prisma.timeEntry.findFirst({
+    where: { ...where, endTime: { not: null } },
+    orderBy: { endTime: "desc" },
+    select: { endTime: true },
+  });
+  return last?.endTime ?? null;
 }
 
 const isUniqueViolation = (e: unknown) =>
@@ -322,7 +347,7 @@ async function importOne(
 export async function importAgentSessions(
   ctx: ServiceContext,
   sessions: ImportSessionInput[],
-  opts: { dryRun?: boolean; gapSeconds?: number } = {}
+  opts: { dryRun?: boolean; gapSeconds?: number; afterTrackedWork?: boolean } = {}
 ) {
   if (sessions.length === 0) throw createError("sessions cannot be empty", 400);
   if (sessions.length > MAX_IMPORT_SESSIONS) {
@@ -336,7 +361,12 @@ export async function importAgentSessions(
   const now = ctx.now();
   // Free plan: only the most recent days are imported.
   const entitlements = await getEntitlements(ctx.userId, prisma, now);
-  const floor = historyFloor(entitlements, now);
+  const planFloor = historyFloor(entitlements, now);
+  // Opt-in (the plugin's importer sends it): start after the last AI work
+  // tracked some other way, so that time isn't billed a second time.
+  const trackedUntil = opts.afterTrackedWork ? await otherAiWorkUntil(ctx.userId, now) : null;
+  const floor = trackedUntil && (!planFloor || trackedUntil > planFloor) ? trackedUntil : planFloor;
+  const byTracked = Boolean(trackedUntil && floor === trackedUntil);
   const results: ImportSessionResult[] = [];
 
   for (const s of sessions) {
@@ -377,21 +407,32 @@ export async function importAgentSessions(
     }
     const segments = segmentSpans(spans, gapSeconds);
     if (segments.length === 0) {
-      results.push({ ...base, sessionKey, status: "empty" });
+      results.push(
+        clipped && byTracked
+          ? { ...base, sessionKey, status: "skipped_tracked", reason: `before ${floor!.toISOString()}, already tracked in TimeTrack` }
+          : { ...base, sessionKey, status: "empty" }
+      );
       continue;
     }
 
     try {
-      const clippedSkip: Skip | undefined = clipped
-        ? {
-            status: "skipped_plan" as const,
-            // A clipped import can't replace a session that has stored history
-            // from before the window without deleting it, so the stored copy
-            // stays as is (new work in a resumed session is tracked live by
-            // the plugin's hooks).
-            reason: `began more than ${entitlements.limits.historyDays} days ago; left as stored so its earlier history is kept (upgrade to re-import it in full)`,
-          }
-        : undefined;
+      // The same bounds as live usage (a timer keeps at most 20 models).
+      if (s.usage) validateUsage(s.usage);
+      const clippedSkip: Skip | undefined = !clipped
+        ? undefined
+        : byTracked
+          ? {
+              status: "skipped_tracked",
+              reason: `AI work until ${floor!.toISOString()} was already tracked in TimeTrack; left as stored`,
+            }
+          : {
+              status: "skipped_plan" as const,
+              // A clipped import can't replace a session that has stored history
+              // from before the window without deleting it, so the stored copy
+              // stays as is (new work in a resumed session is tracked live by
+              // the plugin's hooks).
+              reason: `began more than ${entitlements.limits.historyDays} days ago; left as stored so its earlier history is kept (upgrade to re-import it in full)`,
+            };
       results.push(
         await importOne(
           ctx,
@@ -438,7 +479,8 @@ export async function importAgentSessions(
   return {
     dryRun: Boolean(opts.dryRun),
     gapSeconds,
-    limitedByPlan: floor ? { historyDays: entitlements.limits.historyDays, since: floor.toISOString() } : null,
+    limitedByPlan: planFloor ? { historyDays: entitlements.limits.historyDays, since: planFloor.toISOString() } : null,
+    trackedUntil: byTracked ? floor!.toISOString() : null,
     totals,
     sessions: results,
   };

@@ -8,7 +8,11 @@
 // contents.
 //
 //   TIMETRACK_API_URL=https://api.track.alfredo.re TIMETRACK_API_KEY=tt_... \
-//     node import-transcripts.mjs [--days 30] [--dry-run]
+//     node import-transcripts.mjs [--days 30] [--dry-run] [--include-tracked]
+//
+// By default it imports only activity after the last AI work already tracked
+// in TimeTrack some other way (e.g. an older MCP setup), so that time isn't
+// billed twice; --include-tracked imports everything in the window.
 //
 // Zero dependencies (Node 18+). Safe to re-run: sessions are keyed by id and
 // sent whole; earlier imports are replaced only by ones that cover at least
@@ -32,6 +36,7 @@ const API = (process.env.TIMETRACK_API_URL || opt("api-url", "")).replace(/\/$/,
 const KEY = process.env.TIMETRACK_API_KEY;
 const DAYS = Number(opt("days", "30"));
 const DRY_RUN = flag("dry-run");
+const INCLUDE_TRACKED = flag("include-tracked");
 // Claude Code keeps history under $CLAUDE_CONFIG_DIR when it's set (one per account).
 const ROOT = opt("dir", join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects"));
 const SPAN_GAP_MS = 60_000; // compress activity closer than this into one span
@@ -236,6 +241,7 @@ let skipped = 0;
 let updated = 0;
 const byProject = new Map();
 let limited = null;
+let trackedUntil = null;
 
 // Batches of at most BATCH sessions and MAX_BODY_BYTES of JSON.
 const batches = [];
@@ -260,7 +266,7 @@ for (const batch of batches) {
     res = await fetch(`${API}/agent-sessions/import`, {
       method: "POST",
       headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json", "X-Client": "import" },
-      body: JSON.stringify({ dryRun: DRY_RUN, sessions: batch }),
+      body: JSON.stringify({ dryRun: DRY_RUN, afterTrackedWork: !INCLUDE_TRACKED, sessions: batch }),
       signal: AbortSignal.timeout(60_000),
     });
   } catch (e) {
@@ -281,6 +287,7 @@ for (const batch of batches) {
     else if (r.status !== "imported") skippedBy.set(r.status, (skippedBy.get(r.status) || 0) + 1);
   }
   limited ||= body.limitedByPlan;
+  trackedUntil ||= body.trackedUntil;
   for (const row of body.totals.byProject) {
     const name = row.project?.name ?? "No project yet";
     byProject.set(name, (byProject.get(name) || 0) + row.seconds);
@@ -296,6 +303,7 @@ const SKIP_LABELS = {
   skipped_edited: "edited in TimeTrack since the last import",
   skipped_plan: "older than your plan's history window",
   skipped_partial: "already imported with more history than these transcripts have",
+  skipped_tracked: "already tracked in TimeTrack another way",
   empty: "too short to bill",
   invalid: "unreadable",
 };
@@ -304,6 +312,11 @@ if (skipped) {
   console.log(`  (${skipped} skipped: ${parts.join(", ")})`);
 }
 if (limited) console.log(`  Free plan: only the last ${limited.historyDays} days were included.`);
+if (trackedUntil) {
+  console.log(
+    `  Started after ${new Date(trackedUntil).toLocaleString()}: your AI work until then was already tracked in TimeTrack (--include-tracked imports it anyway).`
+  );
+}
 if (byProject.has("No project yet")) {
   console.log("  Tip: link a repo to a project in TimeTrack and re-run to assign those sessions.");
 }

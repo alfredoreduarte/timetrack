@@ -106,7 +106,9 @@ describe("GET /reports/timesheet", () => {
 
   it("renders Markdown and CSV, neutralizing spreadsheet formulas", async () => {
     const { auth, acme } = await seed();
+    // As a rename does: the timer and the segments that carried its text.
     await prisma.timer.updateMany({ where: { description: "Code review" }, data: { description: "=HYPERLINK(\"http://evil\")" } });
+    await prisma.timeEntry.updateMany({ where: { description: "Code review" }, data: { description: "=HYPERLINK(\"http://evil\")" } });
     const md = await api().get(`/reports/timesheet?${RANGE}&format=markdown`).set(auth);
     expect(md.headers["content-type"]).toMatch(/markdown/);
     expect(md.text).toContain("# Timesheet — Ada Dev");

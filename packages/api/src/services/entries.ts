@@ -354,7 +354,10 @@ async function applyEntryUpdate(
     const task = await tx.task.findUnique({ where: { id: taskId }, select: { projectId: true } });
     if (!projectId || task?.projectId !== projectId) taskId = null;
   }
-  if (!projectId) taskId = null;
+  // A task needs a project, but only an edit of the assignment enforces it:
+  // older entries may carry a task alone, and editing their text or times
+  // must not drop the task or re-rate them.
+  if (!projectId && (ref.projectId !== undefined || ref.taskId !== undefined)) taskId = null;
 
   const data: Prisma.TimeEntryUncheckedUpdateInput = {};
   const now = ctx.now();
