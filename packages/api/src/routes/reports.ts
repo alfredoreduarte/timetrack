@@ -165,7 +165,7 @@ router.get(
       return sum + rate * hours;
     }, 0);
 
-    // AI subtotals so the client can apply a billing multiplier on display.
+    // AI subtotals, so clients can show how much of the time was AI work.
     const aiDuration = timeEntries.reduce(
       (sum: number, entry: any) => sum + (entry.isAiGenerated ? entry.duration || 0 : 0),
       0
@@ -685,7 +685,7 @@ const timesheetQuerySchema = z.object({
  *     description: |
  *       Entries are clipped to the range and billed per project under that
  *       project's policy (dedupe overlapping parallel timers or sum them,
- *       AI multiplier or flat agent rate, optional AI cost pass-through).
+ *       optional flat agent rate, optional AI cost pass-through).
  *       Lines are grouped per day and timer, with agent notes and an
  *       auto-generated disclosure. Defaults to the current month.
  *     tags: [Reports]

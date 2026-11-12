@@ -216,10 +216,6 @@ function disclosureFor(p: ProjectTimesheet, policy: BillingPolicy, currency: str
   }
   if (policy.agentHourlyRate !== null) {
     lines.push(`AI-assisted time is billed at a flat agent rate of ${formatMoney(policy.agentHourlyRate, currency)}/h.`);
-  } else if (policy.aiMultiplier === 0) {
-    lines.push("AI-assisted time is not billed.");
-  } else if (policy.aiMultiplier !== 1) {
-    lines.push(`AI-assisted time is billed at ${policy.aiMultiplier}× the standard rate.`);
   } else {
     lines.push("AI-assisted time is billed at the standard rate.");
   }
@@ -285,7 +281,7 @@ export async function buildTimesheet(
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
-    select: { name: true, aiMultiplier: true, overlapMode: true, currency: true },
+    select: { name: true, overlapMode: true, currency: true },
   });
 
   const entryWhere = {
@@ -328,7 +324,6 @@ export async function buildTimesheet(
       color: true,
       hourlyRate: true,
       overlapMode: true,
-      aiMultiplier: true,
       agentHourlyRate: true,
       includeAiCosts: true,
       aiCostMarkupPercent: true,
@@ -413,7 +408,6 @@ export async function buildTimesheet(
     const project = key === "none" ? null : projectById.get(key) ?? null;
     const policy: BillingPolicy = {
       overlapMode: ((project?.overlapMode ?? user.overlapMode) as OverlapMode) === "sum" ? "sum" : "dedupe",
-      aiMultiplier: project?.aiMultiplier ?? user.aiMultiplier ?? 1,
       agentHourlyRate: project?.agentHourlyRate ?? null,
       includeAiCosts: (project?.includeAiCosts ?? false) && entitlements.limits.aiCostLines,
       aiCostMarkupPercent: project?.aiCostMarkupPercent ?? 0,

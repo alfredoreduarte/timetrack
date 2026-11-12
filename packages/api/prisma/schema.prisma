@@ -19,7 +19,9 @@ model User {
   updatedAt         DateTime    @updatedAt
   defaultHourlyRate Float?
   idleTimeoutSeconds Int? @default(600) @map("idle_timeout_seconds")
-  // New users bill AI time at their normal rate; existing users keep theirs.
+  // Retired: AI time is no longer multiplied (parallel timers show the real
+  // work). Unused; kept only so the previous release can still run against
+  // this database. Drop in a later release.
   aiMultiplier Float? @default(1.0) @map("ai_multiplier")
   // How parallel timers on one project are billed: dedupe | sum
   overlapMode  String @default("dedupe") @map("overlap_mode")
@@ -72,8 +74,7 @@ model Project {
   repoPatterns String[] @default([]) @map("repo_patterns")
   // Billing policy overrides (null = inherit the user's setting).
   overlapMode         String? @map("overlap_mode")
-  aiMultiplier        Float?  @map("ai_multiplier")
-  // Flat hourly rate for AI-assisted time; overrides rate x multiplier.
+  // Flat hourly rate for AI-assisted time (null = the entry's own rate).
   agentHourlyRate     Float?  @map("agent_hourly_rate")
   // Pass agents' API-equivalent token cost through to the client.
   includeAiCosts      Boolean @default(false) @map("include_ai_costs")

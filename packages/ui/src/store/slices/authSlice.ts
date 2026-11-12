@@ -7,7 +7,6 @@ export interface User {
   name: string;
   defaultHourlyRate?: number;
   idleTimeoutSeconds?: number;
-  aiMultiplier?: number | null;
   /** Agent timers fed by hooks pause after this much silence. */
   agentIdleTimeoutSeconds?: number;
   /** Default for projects: bill overlapping parallel timers once or per timer. */
@@ -23,7 +22,6 @@ export interface ProfileUpdate {
   email?: string;
   defaultHourlyRate?: number;
   idleTimeoutSeconds?: number;
-  aiMultiplier?: number;
   agentIdleTimeoutSeconds?: number;
   overlapMode?: "dedupe" | "sum";
   currency?: string;

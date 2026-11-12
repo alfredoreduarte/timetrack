@@ -10,9 +10,7 @@ export type OverlapMode = "dedupe" | "sum";
 
 export interface BillingPolicy {
   overlapMode: OverlapMode;
-  /** Multiplier on the rate for AI-assisted time (1 = same rate, 0 = not billed). */
-  aiMultiplier: number;
-  /** Flat hourly rate for AI-assisted time; overrides rate × multiplier. */
+  /** Flat hourly rate for AI-assisted time; null = the entry's own rate. */
   agentHourlyRate: number | null;
   includeAiCosts: boolean;
   aiCostMarkupPercent: number;
@@ -54,7 +52,7 @@ export function effectiveRate(e: Pick<BillableEntry, "rate" | "isAi">, policy: B
   if (policy.agentHourlyRate !== null && policy.agentHourlyRate !== undefined) {
     return policy.agentHourlyRate;
   }
-  return base * policy.aiMultiplier;
+  return base;
 }
 
 const HOUR_MS = 3_600_000;

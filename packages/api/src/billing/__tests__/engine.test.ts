@@ -13,7 +13,6 @@ const entry = (id: string, from: number, to: number, rate: number | null, isAi =
 });
 const policy = (p: Partial<BillingPolicy> = {}): BillingPolicy => ({
   overlapMode: "dedupe",
-  aiMultiplier: 1,
   agentHourlyRate: null,
   includeAiCosts: false,
   aiCostMarkupPercent: 0,
@@ -39,14 +38,6 @@ describe("billing engine — the plan's worked example", () => {
     expect(r.billedMs).toBe(2.75 * H);
     expect(r.amount).toBeCloseTo(275);
   });
-
-  it("a 3x multiplier with sum is the 8h15 the research warned about; dedupe keeps it at 2h of time", () => {
-    const summed = billProject(agents, policy({ overlapMode: "sum", aiMultiplier: 3 }), "UTC");
-    expect(summed.amount).toBeCloseTo(825); // 8.25h × $100
-    const deduped = billProject(agents, policy({ aiMultiplier: 3 }), "UTC");
-    expect(deduped.billedMs).toBe(2 * H);
-    expect(deduped.amount).toBeCloseTo(600);
-  });
 });
 
 describe("billing engine — rates and attribution", () => {
@@ -67,12 +58,13 @@ describe("billing engine — rates and attribution", () => {
     expect(s.allocations.get("late")!.get("2026-03-02")!.billedMs).toBe(0);
   });
 
-  it("applies flat agent rates and multipliers only to AI time", () => {
-    const p = policy({ agentHourlyRate: 40, aiMultiplier: 5 });
+  it("applies a flat agent rate only to AI time; otherwise AI time bills at its own rate", () => {
+    const p = policy({ agentHourlyRate: 40 });
     expect(effectiveRate({ rate: 100, isAi: true }, p)).toBe(40);
     expect(effectiveRate({ rate: 100, isAi: false }, p)).toBe(100);
-    expect(effectiveRate({ rate: 100, isAi: true }, policy({ aiMultiplier: 0 }))).toBe(0);
-    expect(effectiveRate({ rate: null, isAi: true }, policy({ aiMultiplier: 3 }))).toBe(0);
+    expect(effectiveRate({ rate: 100, isAi: true }, policy())).toBe(100);
+    expect(effectiveRate({ rate: 100, isAi: true }, policy({ agentHourlyRate: 0 }))).toBe(0);
+    expect(effectiveRate({ rate: null, isAi: true }, policy())).toBe(0);
   });
 
   it("splits entries at local midnight in the requested timezone", () => {
@@ -96,7 +88,7 @@ describe("billing engine — rates and attribution", () => {
         const s = Math.floor(rand() * 600);
         return entry(`e${i}`, s, s + 1 + Math.floor(rand() * 240), [50, 100, 150][Math.floor(rand() * 3)], rand() < 0.7);
       });
-      const p = policy({ aiMultiplier: [1, 2, 0.5][trial % 3] });
+      const p = policy({ agentHourlyRate: [null, 80, 0][trial % 3] });
       const r = billProject(es, p, "Europe/Madrid");
       let wall = 0;
       let amount = 0;

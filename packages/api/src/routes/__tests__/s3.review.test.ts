@@ -59,7 +59,6 @@ describe("S3 review: client views", () => {
     const p = await createProject(user.id, {
       name: "Acme",
       hourlyRate: 100,
-      aiMultiplier: 2.5,
       agentHourlyRate: 175,
       includeAiCosts: true,
       aiCostMarkupPercent: 35,
@@ -76,7 +75,7 @@ describe("S3 review: client views", () => {
     // generatedAt is the clock (it could contain "35" or "175" by chance).
     const { generatedAt: _clock, ...sheet } = res.body.timesheet;
     const json = JSON.stringify({ ...res.body, timesheet: sheet });
-    for (const leak of ["175", "2.5", "35", "12.34", "agentHourlyRate", "aiMultiplier", "aiCostMarkupPercent", user.id, p.id]) {
+    for (const leak of ["175", "35", "12.34", "agentHourlyRate", "aiMultiplier", "aiCostMarkupPercent", user.id, p.id]) {
       expect([leak, json.includes(leak)]).toEqual([leak, false]);
     }
     expect(res.body.timesheet.projects[0].policy).toEqual({ overlapMode: "dedupe" });
@@ -192,7 +191,7 @@ describe("S3 review: time and dates", () => {
   it("splits a Havana entry across the skipped midnight correctly", () => {
     const bill = billProject(
       [{ id: "e", start: new Date("2026-03-08T03:00:00Z"), end: new Date("2026-03-08T07:00:00Z"), rate: 100, isAi: false }],
-      { overlapMode: "dedupe", aiMultiplier: 1, agentHourlyRate: null, includeAiCosts: false, aiCostMarkupPercent: 0 },
+      { overlapMode: "dedupe", agentHourlyRate: null, includeAiCosts: false, aiCostMarkupPercent: 0 },
       "America/Havana"
     );
     const byDay = Object.fromEntries(Array.from(bill.allocations.get("e")!).map(([d, a]) => [d, a.trackedMs / 3600_000]));

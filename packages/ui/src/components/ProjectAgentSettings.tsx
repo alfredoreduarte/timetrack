@@ -16,7 +16,6 @@ const lines = (text: string) =>
 const valuesFrom = (p: Project) => ({
   repos: (p.repoPatterns ?? []).join("\n"),
   overlap: (p.overlapMode ?? "") as "" | "dedupe" | "sum",
-  multiplier: p.aiMultiplier != null ? String(p.aiMultiplier) : "",
   agentRate: p.agentHourlyRate != null ? String(p.agentHourlyRate) : "",
   includeCosts: Boolean(p.includeAiCosts),
   markup: String(p.aiCostMarkupPercent ?? 0),
@@ -26,7 +25,6 @@ const valuesFrom = (p: Project) => ({
 const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) => void }> = ({ project, onSaved }) => {
   const [repos, setRepos] = useState("");
   const [overlap, setOverlap] = useState<"" | "dedupe" | "sum">("");
-  const [multiplier, setMultiplier] = useState("");
   const [agentRate, setAgentRate] = useState("");
   const [includeCosts, setIncludeCosts] = useState(false);
   const [markup, setMarkup] = useState("0");
@@ -43,7 +41,6 @@ const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) 
     loaded.current = v;
     setRepos(v.repos);
     setOverlap(v.overlap);
-    setMultiplier(v.multiplier);
     setAgentRate(v.agentRate);
     setIncludeCosts(v.includeCosts);
     setMarkup(v.markup);
@@ -72,7 +69,6 @@ const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) 
     if (!was) return;
     const changes: Partial<Project> = {};
     if (overlap !== was.overlap) changes.overlapMode = overlap || null;
-    if (multiplier !== was.multiplier) changes.aiMultiplier = multiplier === "" ? null : parseFloat(multiplier);
     if (agentRate !== was.agentRate) changes.agentHourlyRate = agentRate === "" ? null : parseFloat(agentRate);
     if (includeCosts !== was.includeCosts) changes.includeAiCosts = includeCosts;
     if (markup !== was.markup) changes.aiCostMarkupPercent = parseFloat(markup || "0");
@@ -144,13 +140,9 @@ const ProjectAgentSettings: React.FC<{ project: Project; onSaved?: (p: Project) 
             </select>
           </label>
           <label className="block">
-            <span className="block text-sm font-medium text-gray-700">AI time multiplier</span>
-            <input className="input-field mt-1" type="number" step="0.1" min={0} max={20} value={multiplier} onChange={(e) => setMultiplier(e.target.value)} placeholder="Account default" />
-          </label>
-          <label className="block">
             <span className="block text-sm font-medium text-gray-700">Flat agent rate (per hour)</span>
             <input className="input-field mt-1" type="number" step="0.01" min={0} value={agentRate} onChange={(e) => setAgentRate(e.target.value)} placeholder="Off" />
-            <span className="mt-1 block text-xs text-gray-500">Overrides rate × multiplier for AI time.</span>
+            <span className="mt-1 block text-xs text-gray-500">Bills AI time at this rate instead of the entry's own.</span>
           </label>
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
