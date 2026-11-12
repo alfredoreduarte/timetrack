@@ -450,11 +450,17 @@ async function applyEntryUpdate(
     if (Object.keys(timerData).length > 0) {
       await tx.timer.update({ where: { id: timer.id }, data: timerData });
       if (changes.description) {
-        // As a timer rename does: its other segments that still carry the
-        // old text take the new one (the timer's lock is held, see
+        // As a timer rename does: its other segments on this segment's
+        // client that still carry the old text take the new one. Segments
+        // on other clients keep theirs (the timer's lock is held, see
         // lockAndLoadEntry).
         const stale = await tx.timeEntry.findMany({
-          where: { timerId: timer.id, id: { notIn: [updated.id, ...batchIds] }, description: timer.description },
+          where: {
+            timerId: timer.id,
+            id: { notIn: [updated.id, ...batchIds] },
+            projectId: updated.projectId,
+            description: timer.description,
+          },
           select: entrySelect,
           orderBy: { id: "asc" },
         });
