@@ -559,14 +559,14 @@ export async function bulkUpdateEntries(ctx: ServiceContext, input: BulkUpdateIn
         const found = await tx.timeEntry.findMany({
           where: { id: { in: ids }, userId: ctx.userId },
           select: entrySelect,
+          orderBy: { id: "asc" },
         });
         const out: EntryView[] = [];
         for (const existing of found) {
           out.push(await applyEntryUpdate(tx, ctx, existing, input.set, events, new Set(ids), false));
         }
-        if (input.set.projectId !== undefined) {
-          for (const t of timerIds) await settleAwaitingNotes(tx, t);
-        }
+        // On the batch's final state (a task alone moves entries too).
+        await settleAwaitingNotes(tx, timerIds);
         return out;
       },
       { timeout: 30_000 }
