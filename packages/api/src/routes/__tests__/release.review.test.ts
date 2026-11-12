@@ -19,6 +19,7 @@ async function agentTimer(userId: string, projectId: string, description: string
       agent: "claude_code",
       isAiGenerated: true,
       createdVia: "claude_code",
+      origin: "agent_hook",
       sessionKey: `s-${description}`,
       startedAt: at(segments[0][0]),
       stoppedAt: at(segments[segments.length - 1][1]),
@@ -174,7 +175,7 @@ describe("release review: imports", () => {
 describe("release review round 2", () => {
   const atDay = (day: string, hhmm: string) => new Date(`2026-03-${day}T${hhmm}:00Z`);
 
-  it("a cost is split by the timer's time in the sheet's range, so none falls between periods", async () => {
+  it("a cost is spread over the timer's tracked time, so each client and period pays its own part", async () => {
     const { user, auth } = await createUser();
     const a = await createProject(user.id, { name: "Client A", hourlyRate: 100, includeAiCosts: true });
     const b = await createProject(user.id, { name: "Client B", hourlyRate: 100, includeAiCosts: true });
@@ -187,13 +188,16 @@ describe("release review round 2", () => {
         data: { userId: user.id, projectId: pid, timerId: timer.id, description: "late", startTime: from, endTime: to, duration: (to.getTime() - from.getTime()) / 1000, isRunning: false, isAiGenerated: true, hourlyRateSnapshot: 100 },
       });
     }
-    const week1 = (await api().get(`/reports/timesheet?${RANGE}&format=json`).set(auth)).body.timesheet;
-    expect(week1.projects.map((p: { project: { name: string }; costs: Array<{ costUsd: number }> }) => [p.project.name, p.costs.map((c) => c.costUsd)])).toEqual([
-      ["Client A", [30]],
-    ]);
+    const costsIn = async (range: string) =>
+      (await api().get(`/reports/timesheet?${range}&format=json`).set(auth)).body.timesheet.projects.map(
+        (p: { project: { name: string }; costs: Array<{ costUsd: number }> }) => [p.project.name, p.costs.map((c) => c.costUsd)]
+      );
+    // 30 of the timer's 90 minutes are A's (this week), 60 are B's (next week).
+    expect(await costsIn(RANGE)).toEqual([["Client A", [10]]]);
+    expect(await costsIn("startDate=2026-03-08T00:00:00Z&endDate=2026-03-15T00:00:00Z")).toEqual([["Client B", [20]]]);
   });
 
-  it("a note written in a pause that spans the range start shows on the timer's first segment of the same client", async () => {
+  it("a note written in a pause goes with the segment before it, on that segment's sheet", async () => {
     const { user, auth } = await createUser();
     const p = await createProject(user.id, { name: "Acme", hourlyRate: 100 });
     const { timer } = await agentTimer(user.id, p.id, "spans", [["09:00", "10:00"]]);
@@ -202,8 +206,13 @@ describe("release review round 2", () => {
       data: { userId: user.id, projectId: p.id, timerId: timer.id, description: "spans", startTime: new Date("2026-02-28T22:00:00Z"), endTime: new Date("2026-02-28T23:00:00Z"), duration: 3600, isRunning: false, isAiGenerated: true, hourlyRateSnapshot: 100 },
     });
     await prisma.timerNote.create({ data: { userId: user.id, timerId: timer.id, body: "Picked up after the weekend", createdAt: new Date("2026-03-02T08:30:00Z") } });
-    const sheet = (await api().get(`/reports/timesheet?${RANGE}&format=json`).set(auth)).body.timesheet;
-    expect(sheet.projects[0].lines[0].notes).toEqual(["Picked up after the weekend"]);
+    const notesIn = async (range: string) =>
+      (await api().get(`/reports/timesheet?${range}&format=json`).set(auth)).body.timesheet.projects.flatMap(
+        (p: { lines: Array<{ date: string; notes: string[] }> }) => p.lines.map((l) => [l.date, l.notes])
+      );
+    // Shown once: with Saturday's segment (written after it), not on Monday's.
+    expect(await notesIn("startDate=2026-02-22T00:00:00Z&endDate=2026-03-01T00:00:00Z")).toEqual([["2026-02-28", ["Picked up after the weekend"]]]);
+    expect(await notesIn(RANGE)).toEqual([["2026-03-02", []]]);
   });
 
   it("a note whose segment was deleted never moves to another client's segment", async () => {
@@ -250,6 +259,96 @@ describe("release review round 2", () => {
     expect((await api().put(`/time-entries/${running.id}`).set(auth).send({ description: "Kickoff meeting" })).status).toBe(200);
     const segs = await prisma.timeEntry.findMany({ where: { timerId }, select: { description: true } });
     expect(segs.map((x) => x.description)).toEqual(["Kickoff meeting", "Kickoff meeting"]);
+  });
+});
+
+describe("release review round 3", () => {
+  const notesOf = async (auth: Record<string, string>, range = RANGE) =>
+    (await api().get(`/reports/timesheet?${range}&format=json`).set(auth)).body.timesheet.projects.flatMap(
+      (p: { lines: Array<{ notes: string[] }> }) => p.lines.flatMap((l) => l.notes)
+    );
+
+  it("trimming a segment's start past a note keeps the note (same client)", async () => {
+    const { user, auth } = await createUser();
+    const p = await createProject(user.id, { name: "Acme", hourlyRate: 100 });
+    const { timer, entries } = await agentTimer(user.id, p.id, "trim", [["09:00", "10:00"]]);
+    await prisma.timerNote.create({ data: { userId: user.id, timerId: timer.id, body: "Set up the repo", createdAt: at("09:05") } });
+    expect((await api().put(`/time-entries/${entries[0].id}`).set(auth).send({ startTime: at("09:10").toISOString() })).status).toBe(200);
+    expect(await notesOf(auth)).toEqual(["Set up the repo"]);
+  });
+
+  it("a note added to a stopped timer in a later period shows with its last segment", async () => {
+    const { user, auth } = await createUser();
+    const p = await createProject(user.id, { name: "Acme", hourlyRate: 100 });
+    const { timer } = await agentTimer(user.id, p.id, "late note", [["09:00", "10:00"]]);
+    await prisma.timerNote.create({ data: { userId: user.id, timerId: timer.id, body: "Shipped on Monday", createdAt: new Date("2026-03-09T09:00:00Z") } });
+    expect(await notesOf(auth)).toEqual(["Shipped on Monday"]);
+  });
+
+  it("a timer started through the plugin's own MCP counts as tracked another way", async () => {
+    const { user } = await createUser();
+    const key = await createApiKey(user.id, { name: "Claude Code" });
+    const mcp = (id: number, name: string, args: Record<string, unknown>) =>
+      api()
+        .post("/mcp")
+        .set(key.auth)
+        .set("X-Client", "claude_code")
+        .set("Accept", "application/json, text/event-stream")
+        .send({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
+    const started = await mcp(1, "start_timer", { sessionKey: "claude-fix-pagination", description: "pagination" });
+    expect(started.body.result.isError).toBeFalsy();
+    const timer = await prisma.timer.findFirstOrThrow({ where: { userId: user.id, sessionKey: "claude-fix-pagination" } });
+    expect(timer.origin).toBe("claude_code");
+    // An hour of work, then stopped.
+    await prisma.timeEntry.updateMany({ where: { timerId: timer.id }, data: { startTime: new Date(Date.now() - 3600_000) } });
+    await mcp(2, "stop_timer", { timerId: timer.id });
+    expect(await prisma.timeEntry.count({ where: { timerId: timer.id, isAiGenerated: true } })).toBe(1);
+    const res = await api()
+      .post("/agent-sessions/import")
+      .set(key.auth)
+      .send({ afterTrackedWork: true, sessions: [{ sessionKey: "transcript-x", spans: [[new Date(Date.now() - 3600_000).toISOString(), new Date(Date.now() - 1800_000).toISOString()]] }] });
+    expect(res.body.trackedUntil).not.toBeNull();
+    expect(res.body.sessions[0].status).toBe("skipped_tracked");
+  });
+
+  it("an imported session resumed from the web, or another agent's hook session, is not 'other' tracking", async () => {
+    const { user, auth } = await createUser();
+    const key = await createApiKey(user.id, { name: "Claude Code" });
+    const day = 86400_000;
+    const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
+    await api().post("/agent-sessions/import").set(key.auth).send({ sessions: [{ sessionKey: "sess-a", spans: [[iso(3 * day), iso(3 * day - 1800_000)]] }] });
+    const imported = await prisma.timer.findFirstOrThrow({ where: { sessionKey: "sess-a" } });
+    expect((await api().post(`/timers/${imported.id}/resume`).set(auth).send({})).status).toBe(200);
+    await api().post(`/timers/${imported.id}/stop`).set(auth).send({});
+    // A generic agent's hook session (not claude_code/cursor/codex).
+    const hook = await api().post("/agent-events").set(key.auth).send({ event: "session_start", sessionKey: "gemini-1", agent: "gemini", cwd: "/tmp/g" });
+    expect(hook.status).toBe(200);
+    const res = await api()
+      .post("/agent-sessions/import")
+      .set(key.auth)
+      .send({ afterTrackedWork: true, dryRun: true, sessions: [{ sessionKey: "sess-b", spans: [[iso(5 * day), iso(5 * day - 1800_000)]] }] });
+    expect(res.body.trackedUntil).toBeNull();
+    expect(res.body.sessions[0].status).toBe("imported");
+  });
+
+  it("a bulk rename that includes the running segment audits each segment once", async () => {
+    const { user, auth } = await createUser();
+    const p = await createProject(user.id, { name: "Acme", hourlyRate: 100 });
+    const started = await api().post("/timers").set(auth).send({ projectId: p.id, description: "Old" });
+    const timerId = started.body.timer?.id ?? started.body.id;
+    const running = await prisma.timeEntry.findFirstOrThrow({ where: { timerId, isRunning: true } });
+    // Earlier work backfilled onto the same timer after it started (so the
+    // running segment comes first in the batch).
+    const backfill = await api()
+      .post("/time-entries")
+      .set(auth)
+      .send({ timerId, projectId: p.id, description: "Old", startTime: new Date(Date.now() - 7200_000).toISOString(), endTime: new Date(Date.now() - 5400_000).toISOString() });
+    expect(backfill.status).toBe(201);
+    const earlierId = backfill.body.timeEntry.id;
+    const bulk = await api().post("/time-entries/bulk-update").set(auth).send({ ids: [running.id, earlierId], set: { description: "New" } });
+    expect(bulk.status).toBe(200);
+    const audits = await prisma.auditEvent.findMany({ where: { entityType: "time_entry", entityId: earlierId, action: "update" } });
+    expect(audits).toHaveLength(1);
   });
 });
 

@@ -175,19 +175,20 @@ async function storedCopyBlocker(db: TxClient, userId: string, timerId: string, 
   return null;
 }
 
-/** Timers that agent hooks or imports created: their own sessions, not "other" tracking. */
-const AGENT_SESSION_SOURCES = ["claude_code", "cursor", "codex", "import"];
+/** Timers that agent hooks or imports created: sessions an import itself tracks. */
+const SESSION_ORIGINS = ["agent_hook", "import"];
 
 /**
  * When the user's AI work tracked some other way ends: AI entries outside
- * any hook-tracked or imported session (e.g. from an MCP or API-key setup,
- * session id or not). Now, if such work is running.
+ * any hook-created or imported timer (e.g. from an MCP or API-key setup,
+ * session id or not), by the timer's origin, which a resume never changes.
+ * Now, if such work is running.
  */
 async function otherAiWorkUntil(userId: string, now: Date): Promise<Date | null> {
   const where: Prisma.TimeEntryWhereInput = {
     userId,
     isAiGenerated: true,
-    OR: [{ timerId: null }, { timer: { createdVia: { notIn: AGENT_SESSION_SOURCES } } }],
+    OR: [{ timerId: null }, { timer: { OR: [{ origin: null }, { origin: { notIn: SESSION_ORIGINS } }] } }],
   };
   const running = await prisma.timeEntry.findFirst({ where: { ...where, isRunning: true }, select: { id: true } });
   if (running) return now;
@@ -304,7 +305,7 @@ async function importOne(
         await tx.timer.update({ where: { id: existing.id }, data });
         timerId = existing.id;
       } else {
-        const created = await tx.timer.create({ data: { ...data, userId: ctx.userId, sessionKey } });
+        const created = await tx.timer.create({ data: { ...data, userId: ctx.userId, sessionKey, origin: "import" } });
         timerId = created.id;
       }
       await tx.timeEntry.createMany({

@@ -176,6 +176,7 @@ export async function handleAgentEvent(
     const branch = input.gitBranch ? ` (${input.gitBranch})` : "";
     const res = await startTimer(ctx, {
       sessionKey,
+      origin: "agent_hook",
       agent: input.agent,
       cwd: input.cwd,
       gitRemote: input.gitRemote,

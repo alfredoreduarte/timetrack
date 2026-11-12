@@ -151,6 +151,7 @@ model TimeEntry {
   @@index([projectId])
   @@index([taskId])
   @@index([timerId])
+  @@index([timerId, startTime])
 }
 
 // A unit of work that can be paused and resumed — typically one AI agent
@@ -164,6 +165,10 @@ model Timer {
   sessionKey         String?   @map("session_key")
   agent              String? // claude_code | cursor | codex | human | ...
   createdVia         String    @default("web") @map("created_via")
+  // How the timer was created: agent_hook | import | the client (web, api,
+  // mcp, claude_code, ...). Unlike createdVia (a resume rewrites it), never
+  // changes: imports use it to tell the plugin's own sessions apart.
+  origin             String?
   isAiGenerated      Boolean   @default(false) @map("is_ai_generated")
   cwd                String?
   gitRemote          String?   @map("git_remote") // normalized, credential-free

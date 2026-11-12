@@ -371,6 +371,8 @@ export interface StartTimerInput {
   idleTimeoutSeconds?: number | null;
   isAiGenerated?: boolean;
   startedAt?: Date | string | null;
+  /** Set by the server only (e.g. "agent_hook"); defaults to the client. */
+  origin?: string;
 }
 
 /**
@@ -460,6 +462,7 @@ export async function startTimer(
           sessionKey,
           agent,
           createdVia: ctx.via,
+          origin: input.origin ?? ctx.via,
           isAiGenerated,
           cwd,
           gitRemote,

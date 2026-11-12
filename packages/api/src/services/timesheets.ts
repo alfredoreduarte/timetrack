@@ -330,153 +330,53 @@ export async function buildTimesheet(
 
   const timerIds = Array.from(new Set(entries.map((e) => e.timerId).filter((x): x is string => !!x)));
   // Notes and AI costs belong to a timer, but a timer's segments can sit in
-  // different projects (a segment reassigned to another client). Both follow
-  // the segments, so a sheet never shows another project's notes or costs.
+  // different projects and periods. Both follow the segments, so each note
+  // and each cent shows once: with the client and period of its time.
   const showNotes = opts.showNotes !== false && timerIds.length > 0;
-  const anyCosts = entitlements.limits.aiCostLines && projects.some((p) => p.includeAiCosts);
-  const costTimers = anyCosts
-    ? await prisma.timer.findMany({
-        where: { userId, costUsd: { gt: 0 }, startedAt: { gte: start, lt: end } },
-        select: { id: true, agent: true, description: true, projectId: true, costUsd: true, startedAt: true },
-      })
-    : [];
-  type NoteRow = { timerId: string; body: string; createdAt: Date };
-  type SegmentRow = {
-    id: string;
-    timerId: string | null;
-    projectId: string | null;
-    description: string | null;
-    startTime: Date;
-    endTime: Date | null;
-    isRunning: boolean;
-  };
-  const segmentSelect = {
-    id: true,
-    timerId: true,
-    projectId: true,
-    description: true,
-    startTime: true,
-    endTime: true,
-    isRunning: true,
-  } as const;
-  const segmentTimerIds = Array.from(new Set([...(showNotes ? timerIds : []), ...costTimers.map((t) => t.id)]));
-  const [notes, rangeSegments] = await Promise.all([
+  const anyCosts = entitlements.limits.aiCostLines && projects.some((p) => p.includeAiCosts) && timerIds.length > 0;
+  const entryIds = entries.map((e) => e.id);
+  const [notes, costTimers] = await Promise.all([
+    // A note goes with the segment it was written during or after; one
+    // written before all of them (say the start was trimmed) goes with the
+    // timer's first segment in the timer's own project, or nowhere. Only
+    // notes whose segment is on this sheet are kept.
     showNotes
-      ? prisma.timerNote.findMany({
-          where: { userId, timerId: { in: timerIds }, createdAt: { gte: start, lt: end } },
-          select: { timerId: true, body: true, createdAt: true },
-          orderBy: { createdAt: "asc" },
-        })
-      : Promise.resolve([] as NoteRow[]),
-    // Only these timers' segments in this range, in every project.
-    segmentTimerIds.length === 0
-      ? Promise.resolve([] as SegmentRow[])
-      : prisma.timeEntry.findMany({
-          where: {
-            userId,
-            timerId: { in: segmentTimerIds },
-            startTime: { lt: end },
-            OR: [{ isRunning: true }, { endTime: { gt: start } }],
-          },
-          select: segmentSelect,
-          orderBy: { startTime: "asc" },
-        }),
+      ? prisma.$queryRaw<Array<{ entryId: string; body: string; createdAt: Date }>>`
+          SELECT s.id AS "entryId", n.body, n.created_at AS "createdAt"
+          FROM timer_notes n
+          JOIN timers t ON t.id = n.timer_id
+          CROSS JOIN LATERAL (
+            SELECT COALESCE(
+              (SELECT e.id FROM time_entries e
+                WHERE e.timer_id = n.timer_id AND e."startTime" <= n.created_at
+                ORDER BY e."startTime" DESC LIMIT 1),
+              (SELECT e.id FROM time_entries e
+                WHERE e.timer_id = n.timer_id AND e."projectId" IS NOT DISTINCT FROM t.project_id
+                ORDER BY e."startTime" ASC LIMIT 1)
+            ) AS id
+          ) s
+          WHERE n.user_id = ${userId} AND n.timer_id = ANY(${timerIds}) AND s.id = ANY(${entryIds})
+          ORDER BY n.created_at ASC`
+      : Promise.resolve([] as Array<{ entryId: string; body: string; createdAt: Date }>),
+    // A timer's cost is spread over all its tracked time; each sheet bills
+    // the part that falls on its projects and range.
+    anyCosts
+      ? prisma.$queryRaw<Array<{ id: string; agent: string | null; description: string | null; costUsd: number; totalMs: number }>>`
+          SELECT t.id, t.agent, t.description, t.cost_usd AS "costUsd",
+            SUM(EXTRACT(EPOCH FROM (COALESCE(e."endTime", ${now}) - e."startTime")) * 1000)::float8 AS "totalMs"
+          FROM timers t
+          JOIN time_entries e ON e.timer_id = t.id
+          WHERE t.user_id = ${userId} AND t.id = ANY(${timerIds}) AND t.cost_usd > 0
+          GROUP BY t.id`
+      : Promise.resolve([] as Array<{ id: string; agent: string | null; description: string | null; costUsd: number; totalMs: number }>),
   ]);
-  const segmentsByTimer = new Map<string, SegmentRow[]>();
-  for (const seg of rangeSegments) {
-    let list = segmentsByTimer.get(seg.timerId!);
-    if (!list) segmentsByTimer.set(seg.timerId!, (list = []));
-    list.push(seg);
-  }
-  /** Index of the last segment (sorted by start) starting at or before `at`, or -1. */
-  const lastStartingBy = (segs: SegmentRow[], at: Date) => {
-    let lo = 0;
-    let hi = segs.length - 1;
-    let found = -1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if (segs[mid].startTime <= at) {
-        found = mid;
-        lo = mid + 1;
-      } else hi = mid - 1;
-    }
-    return found;
-  };
-
-  // A note belongs to the project of the segment it was written during or
-  // after, and shows on that timer's in-range segment of the same project
-  // (never on another project's). A note written before the timer's first
-  // segment in range (a pause spanning the range start) goes by the segment
-  // before the range; a note no segment precedes at all is left out.
-  const earlyTimers = Array.from(
-    new Set(notes.filter((n) => lastStartingBy(segmentsByTimer.get(n.timerId) ?? [], n.createdAt) < 0).map((n) => n.timerId))
-  );
-  const beforeRange = new Map(
-    await Promise.all(
-      earlyTimers.map(
-        async (timerId) =>
-          [
-            timerId,
-            await prisma.timeEntry.findFirst({
-              where: { userId, timerId, startTime: { lt: start } },
-              orderBy: { startTime: "desc" },
-              select: segmentSelect,
-            }),
-          ] as const
-      )
-    )
-  );
   const notesByEntry = new Map<string, Array<{ day: string; body: string }>>();
   for (const n of notes) {
-    const segs = segmentsByTimer.get(n.timerId) ?? [];
-    const i = lastStartingBy(segs, n.createdAt);
-    let target: SegmentRow | undefined;
-    if (i >= 0) target = segs[i];
-    else {
-      const prev = beforeRange.get(n.timerId);
-      if (prev) target = segs.find((seg) => seg.projectId === prev.projectId);
-    }
-    if (!target) continue;
-    let list = notesByEntry.get(target.id);
-    if (!list) notesByEntry.set(target.id, (list = []));
+    let list = notesByEntry.get(n.entryId);
+    if (!list) notesByEntry.set(n.entryId, (list = []));
     list.push({ day: localDateKey(n.createdAt, timezone), body: n.body });
   }
-
-  // A timer's cost is split across projects by its tracked time in this
-  // range (the cost appears in the range where the timer started), described
-  // by that project's own segment text.
-  const costsByProject = new Map<string, Array<{ timerId: string; date: string; description: string; costUsd: number }>>();
-  for (const t of costTimers) {
-    const shares = new Map<string, { ms: number; description: string | null }>();
-    let totalMs = 0;
-    for (const seg of segmentsByTimer.get(t.id) ?? []) {
-      const from = Math.max(seg.startTime.getTime(), start.getTime());
-      const to = Math.min((seg.isRunning || !seg.endTime ? now : seg.endTime).getTime(), end.getTime());
-      const ms = Math.max(0, to - from);
-      const key = seg.projectId ?? "none";
-      const share = shares.get(key) ?? { ms: 0, description: null };
-      share.ms += ms;
-      share.description ??= seg.description;
-      shares.set(key, share);
-      totalMs += ms;
-    }
-    // No tracked time in range to go by: the cost stays with the timer's project.
-    if (totalMs === 0) {
-      shares.clear();
-      shares.set(t.projectId ?? "none", { ms: (totalMs = 1), description: t.description });
-    }
-    for (const [key, share] of shares) {
-      if (share.ms === 0) continue;
-      let list = costsByProject.get(key);
-      if (!list) costsByProject.set(key, (list = []));
-      list.push({
-        timerId: t.id,
-        date: localDateKey(t.startedAt, timezone),
-        description: share.description || `${agentLabel(t.agent)} session`,
-        costUsd: ((t.costUsd ?? 0) * share.ms) / totalMs,
-      });
-    }
-  }
+  const costTimerById = new Map(costTimers.map((t) => [t.id, t]));
 
   const groups = new Map<string, typeof entries>();
   for (const e of entries) {
@@ -566,15 +466,36 @@ export async function buildTimesheet(
       }))
       .sort((a, b) => a.date.localeCompare(b.date) || b.trackedSeconds - a.trackedSeconds);
 
-    const costs: CostLine[] = policy.includeAiCosts
-      ? (costsByProject.get(key) ?? []).map((c) => ({
-          timerId: c.timerId,
-          date: c.date,
-          description: c.description,
-          costUsd: round2(c.costUsd),
-          billedUsd: round2(c.costUsd * (1 + policy.aiCostMarkupPercent / 100)),
-        }))
-      : [];
+    // This project's part of each timer's cost: the timer's cost times the
+    // share of its tracked time that is this project's, in this range.
+    const costParts = new Map<string, { ms: number; first: Date; description: string | null }>();
+    if (policy.includeAiCosts) {
+      for (const e of group) {
+        if (!e.timerId || !costTimerById.has(e.timerId)) continue;
+        const from = e.startTime < start ? start : e.startTime;
+        const rawTo = e.isRunning || !e.endTime ? now : e.endTime;
+        const to = rawTo > end ? end : rawTo;
+        const part = costParts.get(e.timerId) ?? { ms: 0, first: from, description: null };
+        part.ms += Math.max(0, to.getTime() - from.getTime());
+        if (from < part.first) part.first = from;
+        part.description ??= e.description;
+        costParts.set(e.timerId, part);
+      }
+    }
+    const costs: CostLine[] = Array.from(costParts)
+      .map(([timerId, part]) => {
+        const t = costTimerById.get(timerId)!;
+        const costUsd = t.totalMs > 0 ? (t.costUsd * part.ms) / t.totalMs : 0;
+        return {
+          timerId,
+          date: localDateKey(part.first, timezone),
+          description: part.description || t.description || `${agentLabel(t.agent)} session`,
+          costUsd: round2(costUsd),
+          billedUsd: round2(costUsd * (1 + policy.aiCostMarkupPercent / 100)),
+        };
+      })
+      .filter((c) => c.costUsd > 0)
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     // Totals are the sum of the rows the client sees, so they always add up.
     const timeAmount = cents.reduce((s, c) => s + c, 0) / unit;
