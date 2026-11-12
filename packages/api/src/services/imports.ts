@@ -175,16 +175,19 @@ async function storedCopyBlocker(db: TxClient, userId: string, timerId: string, 
   return null;
 }
 
+/** Timers that agent hooks or imports created: their own sessions, not "other" tracking. */
+const AGENT_SESSION_SOURCES = ["claude_code", "cursor", "codex", "import"];
+
 /**
- * When the user's AI work tracked some other way ends: entries from older
- * MCP or API-key timers carry no session id (hook-tracked and imported
- * sessions do). Now, if such work is running.
+ * When the user's AI work tracked some other way ends: AI entries outside
+ * any hook-tracked or imported session (e.g. from an MCP or API-key setup,
+ * session id or not). Now, if such work is running.
  */
 async function otherAiWorkUntil(userId: string, now: Date): Promise<Date | null> {
   const where: Prisma.TimeEntryWhereInput = {
     userId,
     isAiGenerated: true,
-    OR: [{ timerId: null }, { timer: { sessionKey: null } }],
+    OR: [{ timerId: null }, { timer: { createdVia: { notIn: AGENT_SESSION_SOURCES } } }],
   };
   const running = await prisma.timeEntry.findFirst({ where: { ...where, isRunning: true }, select: { id: true } });
   if (running) return now;

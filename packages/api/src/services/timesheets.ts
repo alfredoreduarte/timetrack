@@ -332,11 +332,14 @@ export async function buildTimesheet(
   // Notes and AI costs belong to a timer, but a timer's segments can sit in
   // different projects (a segment reassigned to another client). Both follow
   // the segments, so a sheet never shows another project's notes or costs.
-  const costTimers = await prisma.timer.findMany({
-    where: { userId, costUsd: { gt: 0 }, startedAt: { gte: start, lt: end } },
-    select: { id: true, agent: true, description: true, projectId: true, costUsd: true, startedAt: true },
-  });
-  const segmentTimerIds = Array.from(new Set([...timerIds, ...costTimers.map((t) => t.id)]));
+  const showNotes = opts.showNotes !== false && timerIds.length > 0;
+  const anyCosts = entitlements.limits.aiCostLines && projects.some((p) => p.includeAiCosts);
+  const costTimers = anyCosts
+    ? await prisma.timer.findMany({
+        where: { userId, costUsd: { gt: 0 }, startedAt: { gte: start, lt: end } },
+        select: { id: true, agent: true, description: true, projectId: true, costUsd: true, startedAt: true },
+      })
+    : [];
   type NoteRow = { timerId: string; body: string; createdAt: Date };
   type SegmentRow = {
     id: string;
@@ -347,53 +350,109 @@ export async function buildTimesheet(
     endTime: Date | null;
     isRunning: boolean;
   };
-  const [notes, timerSegments] = await Promise.all([
-    opts.showNotes === false || timerIds.length === 0
-      ? Promise.resolve([] as NoteRow[])
-      : prisma.timerNote.findMany({
+  const segmentSelect = {
+    id: true,
+    timerId: true,
+    projectId: true,
+    description: true,
+    startTime: true,
+    endTime: true,
+    isRunning: true,
+  } as const;
+  const segmentTimerIds = Array.from(new Set([...(showNotes ? timerIds : []), ...costTimers.map((t) => t.id)]));
+  const [notes, rangeSegments] = await Promise.all([
+    showNotes
+      ? prisma.timerNote.findMany({
           where: { userId, timerId: { in: timerIds }, createdAt: { gte: start, lt: end } },
           select: { timerId: true, body: true, createdAt: true },
           orderBy: { createdAt: "asc" },
-        }),
+        })
+      : Promise.resolve([] as NoteRow[]),
+    // Only these timers' segments in this range, in every project.
     segmentTimerIds.length === 0
       ? Promise.resolve([] as SegmentRow[])
       : prisma.timeEntry.findMany({
-          where: { userId, timerId: { in: segmentTimerIds } },
-          select: { id: true, timerId: true, projectId: true, description: true, startTime: true, endTime: true, isRunning: true },
+          where: {
+            userId,
+            timerId: { in: segmentTimerIds },
+            startTime: { lt: end },
+            OR: [{ isRunning: true }, { endTime: { gt: start } }],
+          },
+          select: segmentSelect,
           orderBy: { startTime: "asc" },
         }),
   ]);
   const segmentsByTimer = new Map<string, SegmentRow[]>();
-  for (const seg of timerSegments) {
+  for (const seg of rangeSegments) {
     let list = segmentsByTimer.get(seg.timerId!);
     if (!list) segmentsByTimer.set(seg.timerId!, (list = []));
     list.push(seg);
   }
+  /** Index of the last segment (sorted by start) starting at or before `at`, or -1. */
+  const lastStartingBy = (segs: SegmentRow[], at: Date) => {
+    let lo = 0;
+    let hi = segs.length - 1;
+    let found = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (segs[mid].startTime <= at) {
+        found = mid;
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    return found;
+  };
 
-  // A note goes with the segment it was written during, or the last one
-  // before it (the first one if it predates them all).
+  // A note belongs to the project of the segment it was written during or
+  // after, and shows on that timer's in-range segment of the same project
+  // (never on another project's). A note written before the timer's first
+  // segment in range (a pause spanning the range start) goes by the segment
+  // before the range; a note no segment precedes at all is left out.
+  const earlyTimers = Array.from(
+    new Set(notes.filter((n) => lastStartingBy(segmentsByTimer.get(n.timerId) ?? [], n.createdAt) < 0).map((n) => n.timerId))
+  );
+  const beforeRange = new Map(
+    await Promise.all(
+      earlyTimers.map(
+        async (timerId) =>
+          [
+            timerId,
+            await prisma.timeEntry.findFirst({
+              where: { userId, timerId, startTime: { lt: start } },
+              orderBy: { startTime: "desc" },
+              select: segmentSelect,
+            }),
+          ] as const
+      )
+    )
+  );
   const notesByEntry = new Map<string, Array<{ day: string; body: string }>>();
   for (const n of notes) {
     const segs = segmentsByTimer.get(n.timerId) ?? [];
-    let seg = segs[0];
-    for (const candidate of segs) {
-      if (candidate.startTime <= n.createdAt) seg = candidate;
-      else break;
+    const i = lastStartingBy(segs, n.createdAt);
+    let target: SegmentRow | undefined;
+    if (i >= 0) target = segs[i];
+    else {
+      const prev = beforeRange.get(n.timerId);
+      if (prev) target = segs.find((seg) => seg.projectId === prev.projectId);
     }
-    if (!seg) continue;
-    let list = notesByEntry.get(seg.id);
-    if (!list) notesByEntry.set(seg.id, (list = []));
+    if (!target) continue;
+    let list = notesByEntry.get(target.id);
+    if (!list) notesByEntry.set(target.id, (list = []));
     list.push({ day: localDateKey(n.createdAt, timezone), body: n.body });
   }
 
-  // A timer's cost is split across projects by its tracked time in each,
-  // described by that project's own segment text.
+  // A timer's cost is split across projects by its tracked time in this
+  // range (the cost appears in the range where the timer started), described
+  // by that project's own segment text.
   const costsByProject = new Map<string, Array<{ timerId: string; date: string; description: string; costUsd: number }>>();
   for (const t of costTimers) {
     const shares = new Map<string, { ms: number; description: string | null }>();
     let totalMs = 0;
     for (const seg of segmentsByTimer.get(t.id) ?? []) {
-      const ms = Math.max(0, (seg.isRunning || !seg.endTime ? now : seg.endTime).getTime() - seg.startTime.getTime());
+      const from = Math.max(seg.startTime.getTime(), start.getTime());
+      const to = Math.min((seg.isRunning || !seg.endTime ? now : seg.endTime).getTime(), end.getTime());
+      const ms = Math.max(0, to - from);
       const key = seg.projectId ?? "none";
       const share = shares.get(key) ?? { ms: 0, description: null };
       share.ms += ms;
@@ -401,8 +460,11 @@ export async function buildTimesheet(
       shares.set(key, share);
       totalMs += ms;
     }
-    // No tracked time to go by: the cost stays with the timer's project.
-    if (totalMs === 0) shares.set(t.projectId ?? "none", { ms: (totalMs = 1), description: t.description });
+    // No tracked time in range to go by: the cost stays with the timer's project.
+    if (totalMs === 0) {
+      shares.clear();
+      shares.set(t.projectId ?? "none", { ms: (totalMs = 1), description: t.description });
+    }
     for (const [key, share] of shares) {
       if (share.ms === 0) continue;
       let list = costsByProject.get(key);
@@ -482,11 +544,12 @@ export async function buildTimesheet(
         line.billedSeconds += a.billedMs / 1000;
         line.amount += a.amount;
       }
-      // This segment's notes, on their own day's line (or its last day's,
-      // for a note written after it ended).
+      // This segment's notes, on their own day's line (or the segment's
+      // nearest day, for a note written before it began or after it ended).
       const days = Array.from(alloc.keys()).sort();
       for (const note of notesByEntry.get(e.id) ?? []) {
-        lineMap.get(keyFor(alloc.has(note.day) ? note.day : days[days.length - 1]))?.notes.push(note.body);
+        const day = alloc.has(note.day) ? note.day : note.day < days[0] ? days[0] : days[days.length - 1];
+        lineMap.get(keyFor(day))?.notes.push(note.body);
       }
     }
     const shown = Array.from(lineMap.values()).filter((l) => Math.round(l.trackedSeconds) > 0);
