@@ -187,8 +187,8 @@ const ApiKeysSection: React.FC = () => {
                 Used by an AI agent
               </span>
               <span className="block text-xs text-gray-500">
-                Time entries from this key are flagged for the AI billing
-                multiplier. Uncheck for non-AI automation (CLI scripts, Zapier, etc.).
+                Time entries from this key are marked as AI work on timesheets.
+                Uncheck for non-AI automation (CLI scripts, Zapier, etc.).
               </span>
             </span>
           </label>

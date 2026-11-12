@@ -122,19 +122,18 @@ describe("S6 review round 2", () => {
       name: "Acme",
       repoPatterns: ["github.com/acme/web"],
       overlapMode: null,
-      aiMultiplier: null,
       agentHourlyRate: null,
       includeAiCosts: false,
       aiCostMarkupPercent: 0,
     } as unknown as Project;
     vi.spyOn(api.projects, "getProject").mockResolvedValue(project);
-    const put = vi.spyOn(api.projects, "updateProject").mockResolvedValue({ ...project, aiMultiplier: 2 } as Project);
+    const put = vi.spyOn(api.projects, "updateProject").mockResolvedValue({ ...project, agentHourlyRate: 55 } as Project);
     renderWithProviders(<ProjectAgentSettings project={project} />);
-    const multiplier = await screen.findByPlaceholderText("Account default");
+    const agentRate = await screen.findByPlaceholderText("Off");
     await waitFor(() => expect(screen.getByRole("button", { name: /^save$/i }).hasAttribute("disabled")).toBe(false));
-    fireEvent.change(multiplier, { target: { value: "2" } });
+    fireEvent.change(agentRate, { target: { value: "55" } });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
-    await waitFor(() => expect(put).toHaveBeenCalledWith("p1", { aiMultiplier: 2 }));
+    await waitFor(() => expect(put).toHaveBeenCalledWith("p1", { agentHourlyRate: 55 }));
   });
 });
 
@@ -164,7 +163,6 @@ describe("S6 review round 3", () => {
       name: "Acme",
       repoPatterns: ["github.com/acme/web", "github.com/acme/old"],
       overlapMode: null,
-      aiMultiplier: null,
       agentHourlyRate: null,
       includeAiCosts: false,
       aiCostMarkupPercent: 0,

@@ -78,11 +78,6 @@ const updateProfileSchema = z.object({
     .min(60, "Idle timeout must be at least 60 seconds (1 minute)")
     .max(7200, "Idle timeout cannot exceed 7200 seconds (120 minutes)")
     .optional(),
-  aiMultiplier: z
-    .number()
-    .min(1, "AI multiplier must be at least 1")
-    .max(20, "AI multiplier cannot exceed 20")
-    .optional(),
   // How long an agent timer fed by heartbeats may stay silent before it
   // auto-pauses (at its last activity).
   agentIdleTimeoutSeconds: z
@@ -165,7 +160,6 @@ router.put(
         email: true,
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
-        aiMultiplier: true,
         agentIdleTimeoutSeconds: true,
         overlapMode: true,
         currency: true,

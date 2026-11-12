@@ -795,3 +795,34 @@ describe("release review round 7", () => {
     expect(await prisma.timerNote.findUniqueOrThrow({ where: { id } })).toMatchObject({ timeEntryId: entries[1].id, awaitingSegment: false });
   });
 });
+
+describe("retired AI multiplier", () => {
+  it("AI time bills at the normal rate even for an account that had a multiplier of 3", async () => {
+    // Production's existing account carries the old default of 3.
+    const { user, auth } = await createUser({ defaultHourlyRate: 40, aiMultiplier: 3 });
+    const p = await createProject(user.id, { name: "Acme", hourlyRate: 40 });
+    await agentTimer(user.id, p.id, "agent work", [["09:00", "10:00"]]);
+    await prisma.timeEntry.updateMany({ where: { userId: user.id }, data: { hourlyRateSnapshot: 40 } });
+    const sheet = (await api().get(`/reports/timesheet?${RANGE}&format=json`).set(auth)).body.timesheet;
+    expect(sheet.projects[0].totals.amount).toBe(40);
+    expect(sheet.projects[0].disclosure.join(" ")).toContain("AI-assisted time is billed at the standard rate.");
+    expect(JSON.stringify(sheet)).not.toMatch(/multiplier|×/i);
+  });
+
+  it("profiles and projects no longer carry it, and clients that still send it are ignored", async () => {
+    // The column stays for rollbacks (the previous release reads it): untouched.
+    const { user, auth } = await createUser({ aiMultiplier: 3 });
+    const me = await api().get("/auth/me").set(auth);
+    expect(me.status).toBe(200);
+    expect(JSON.stringify(me.body)).not.toContain("aiMultiplier");
+    const profile = await api().put("/users/profile").set(auth).send({ aiMultiplier: 5, name: "Renamed" });
+    expect(profile.status).toBe(200);
+    expect(JSON.stringify(profile.body)).not.toContain("aiMultiplier");
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({ name: "Renamed", aiMultiplier: 3 });
+    const p = await createProject(user.id, { name: "Acme" });
+    const put = await api().put(`/projects/${p.id}`).set(auth).send({ aiMultiplier: 2, agentHourlyRate: 30 });
+    expect(put.status).toBe(200);
+    expect(put.body.project).toMatchObject({ agentHourlyRate: 30 });
+    expect(put.body.project).not.toHaveProperty("aiMultiplier");
+  });
+});

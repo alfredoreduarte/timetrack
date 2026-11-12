@@ -43,6 +43,11 @@ interface ReportsState {
   detailedLoading: boolean;
   error: string | null;
   currentWeekOffset: number; // 0 = current week, -1 = previous week, etc.
+  /** The week detailedEntries are from (they load separately from the chart). */
+  detailedWeekOffset: number;
+  /** The latest request of each kind; a slower, older response is ignored. */
+  weeklyRequestId: string | null;
+  detailedRequestId: string | null;
 }
 
 const initialState: ReportsState = {
@@ -52,6 +57,9 @@ const initialState: ReportsState = {
   detailedLoading: false,
   error: null,
   currentWeekOffset: 0,
+  detailedWeekOffset: 0,
+  weeklyRequestId: null,
+  detailedRequestId: null,
 };
 
 // Helper function to get start and end of week (Monday to Sunday)
@@ -153,28 +161,35 @@ const reportsSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchWeeklyData.pending, (state) => {
+      .addCase(fetchWeeklyData.pending, (state, action) => {
         state.loading = true;
         state.error = null;
+        state.weeklyRequestId = action.meta.requestId;
       })
       .addCase(fetchWeeklyData.fulfilled, (state, action) => {
+        if (action.meta.requestId !== state.weeklyRequestId) return;
         state.loading = false;
         state.weeklyData = action.payload;
         state.currentWeekOffset = action.payload.weekOffset;
       })
       .addCase(fetchWeeklyData.rejected, (state, action) => {
+        if (action.meta.requestId !== state.weeklyRequestId) return;
         state.loading = false;
         state.error = action.error.message || "Failed to fetch weekly data";
       })
-      .addCase(fetchDetailedTimeEntries.pending, (state) => {
+      .addCase(fetchDetailedTimeEntries.pending, (state, action) => {
         state.detailedLoading = true;
         state.error = null;
+        state.detailedRequestId = action.meta.requestId;
       })
       .addCase(fetchDetailedTimeEntries.fulfilled, (state, action) => {
+        if (action.meta.requestId !== state.detailedRequestId) return;
         state.detailedLoading = false;
         state.detailedEntries = action.payload;
+        state.detailedWeekOffset = action.meta.arg ?? 0;
       })
       .addCase(fetchDetailedTimeEntries.rejected, (state, action) => {
+        if (action.meta.requestId !== state.detailedRequestId) return;
         state.detailedLoading = false;
         state.error =
           action.error.message || "Failed to fetch detailed entries";
