@@ -771,12 +771,27 @@ describe("release review round 7", () => {
     await prisma.timeEntry.updateMany({ where: { timerId: timer.id }, data: { projectId: b.id } });
     const id = await writeNote(auth, timer.id, "Wrapped up", at("10:30"));
     expect(await prisma.timerNote.findUniqueOrThrow({ where: { id } })).toMatchObject({ awaitingSegment: true });
-    for (const order of [[feb.id, mar.id], [mar.id, feb.id]]) {
-      await prisma.timeEntry.updateMany({ where: { timerId: timer.id }, data: { projectId: b.id } });
-      await prisma.timerNote.update({ where: { id }, data: { timeEntryId: null, awaitingSegment: true } });
-      const res = await api().post("/time-entries/bulk-update").set(auth).send({ ids: order, set: { projectId: a.id } });
-      expect(res.status).toBe(200);
-      expect((await prisma.timerNote.findUniqueOrThrow({ where: { id } })).timeEntryId).toBe(mar.id);
-    }
+    // A batch runs in id order, so the earlier (February) segment goes first:
+    // settling after each entry would put the note there.
+    expect(feb.id < mar.id).toBe(true);
+    const res = await api().post("/time-entries/bulk-update").set(auth).send({ ids: [mar.id, feb.id], set: { projectId: a.id } });
+    expect(res.status).toBe(200);
+    expect((await prisma.timerNote.findUniqueOrThrow({ where: { id } })).timeEntryId).toBe(mar.id);
+  });
+
+  it("a bulk move by task alone also places waiting notes", async () => {
+    const { user, auth } = await createUser();
+    const a = await createProject(user.id, { name: "Client A", hourlyRate: 100 });
+    const b = await createProject(user.id, { name: "Client B", hourlyRate: 100 });
+    const task = await createTask(user.id, a.id, { name: "Onboarding" });
+    const { timer, entries } = await agentTimer(user.id, a.id, "work", [["09:00", "10:00"], ["11:00", "12:00"]]);
+    await prisma.timeEntry.updateMany({ where: { timerId: timer.id }, data: { projectId: b.id } });
+    const id = await writeNote(auth, timer.id, "Kickoff notes", at("12:30"));
+    expect(await prisma.timerNote.findUniqueOrThrow({ where: { id } })).toMatchObject({ awaitingSegment: true });
+    // A task alone implies its project: both segments land on A.
+    const res = await api().post("/time-entries/bulk-update").set(auth).send({ ids: entries.map((e) => e.id), set: { taskId: task.id } });
+    expect(res.status).toBe(200);
+    expect(await prisma.timeEntry.count({ where: { timerId: timer.id, projectId: a.id } })).toBe(2);
+    expect(await prisma.timerNote.findUniqueOrThrow({ where: { id } })).toMatchObject({ timeEntryId: entries[1].id, awaitingSegment: false });
   });
 });

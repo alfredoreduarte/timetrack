@@ -114,7 +114,7 @@ export async function deleteProject(ctx: ServiceContext, projectId: string): Pro
       await tx.project.delete({ where: { id: projectId } });
       // The project's timers are now on "No project", where some may already
       // have segments for their waiting notes (all of them are locked).
-      for (const timerId of timerIds) await settleAwaitingNotes(tx, timerId);
+      await settleAwaitingNotes(tx, timerIds);
       await recordAudit(tx, ctx, {
         entityType: "project",
         entityId: projectId,
@@ -122,7 +122,7 @@ export async function deleteProject(ctx: ServiceContext, projectId: string): Pro
         changes: { name: { from: project.name, to: null }, entriesDeleted: { from: removed.count, to: null } },
       });
       return { result: { entriesDeleted: removed.count }, pausedTimers: paused, touchedTimers: timerIds };
-    })
+    }, { timeout: 30_000 })
   );
 
   emitToUser(ctx.userId, "project-deleted", { id: projectId });
