@@ -329,7 +329,9 @@ async function applyEntryUpdate(
   patch: UpdateEntryInput,
   events: PendingEvent[],
   /** Entries this same batch updates itself (left out of the sibling rename). */
-  batchIds: ReadonlySet<string> = new Set()
+  batchIds: ReadonlySet<string> = new Set(),
+  /** A batch places waiting notes once, on its final state. */
+  settleNotes = true
 ): Promise<EntryView> {
   const startChanged = patch.startTime !== undefined && !sameInstant(patch.startTime, existing.startTime);
   const endChanged = patch.endTime !== undefined && !sameInstant(patch.endTime, existing.endTime);
@@ -500,7 +502,7 @@ async function applyEntryUpdate(
   }
   // A segment moved onto its timer's client (or a running one the timer
   // followed) is one the timer's waiting notes can go on.
-  if (existing.timerId && changes?.projectId) await settleAwaitingNotes(tx, existing.timerId);
+  if (settleNotes && existing.timerId && changes?.projectId) await settleAwaitingNotes(tx, existing.timerId);
   return updated;
 }
 
@@ -560,7 +562,10 @@ export async function bulkUpdateEntries(ctx: ServiceContext, input: BulkUpdateIn
         });
         const out: EntryView[] = [];
         for (const existing of found) {
-          out.push(await applyEntryUpdate(tx, ctx, existing, input.set, events, new Set(ids)));
+          out.push(await applyEntryUpdate(tx, ctx, existing, input.set, events, new Set(ids), false));
+        }
+        if (input.set.projectId !== undefined) {
+          for (const t of timerIds) await settleAwaitingNotes(tx, t);
         }
         return out;
       },

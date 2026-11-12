@@ -216,8 +216,10 @@ model TimerNote {
   /// segment is billed; a deleted segment's notes show on no timesheet.
   timeEntryId     String?    @map("time_entry_id")
   timeEntry       TimeEntry? @relation(fields: [timeEntryId], references: [id], onDelete: SetNull)
-  /// Written when the timer had no such segment yet (or its only one was
-  /// discarded as empty): goes with the next segment the timer opens.
+  /// Written when the timer had no segment on its own client (or its segment
+  /// there was discarded as empty and none was left): settleAwaitingNotes
+  /// places it on the next one the timer gets there (opened, backfilled,
+  /// moved back, or by reassignment).
   awaitingSegment Boolean    @default(false) @map("awaiting_segment")
 
   @@index([timerId, createdAt])
