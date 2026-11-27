@@ -80,8 +80,6 @@ export const loginUser = createAsyncThunk(
   ) => {
     try {
       const response = await authAPI.login(credentials);
-      localStorage.setItem("token", response.token);
-      saveUserToStorage(response.user);
       return response;
     } catch (error: any) {
       const errorMessage =
@@ -108,8 +106,6 @@ export const registerUser = createAsyncThunk(
   ) => {
     try {
       const response = await authAPI.register(userData);
-      localStorage.setItem("token", response.token);
-      saveUserToStorage(response.user);
       return response;
     } catch (error: any) {
       const errorMessage =
@@ -127,7 +123,6 @@ export const getCurrentUser = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       const response = await authAPI.getCurrentUser();
-      saveUserToStorage(response);
       return response;
     } catch (error: any) {
       const status = error.response?.status;
@@ -149,7 +144,6 @@ export const updateProfile = createAsyncThunk(
   ) => {
     try {
       const response = await authAPI.updateProfile(profileData);
-      saveUserToStorage(response);
       return response;
     } catch (error: any) {
       const errorMessage =
@@ -197,7 +191,11 @@ const authSlice = createSlice({
         state.isLoading = true;
         state.error = null;
       })
+      // Storage is written here, not in the thunks: sessionGuard drops a
+      // stale answer before it reaches a reducer, and its write with it.
       .addCase(loginUser.fulfilled, (state, action) => {
+        localStorage.setItem("token", action.payload.token);
+        saveUserToStorage(action.payload.user);
         state.isLoading = false;
         state.user = action.payload.user;
         state.token = action.payload.token;
@@ -216,6 +214,8 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(registerUser.fulfilled, (state, action) => {
+        localStorage.setItem("token", action.payload.token);
+        saveUserToStorage(action.payload.user);
         state.isLoading = false;
         state.user = action.payload.user;
         state.token = action.payload.token;
@@ -233,6 +233,7 @@ const authSlice = createSlice({
         state.isLoading = true;
       })
       .addCase(getCurrentUser.fulfilled, (state, action) => {
+        saveUserToStorage(action.payload);
         state.isLoading = false;
         state.user = action.payload;
         state.isAuthenticated = true;
@@ -261,6 +262,7 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(updateProfile.fulfilled, (state, action) => {
+        saveUserToStorage(action.payload);
         state.isLoading = false;
         state.user = action.payload;
         state.error = null;

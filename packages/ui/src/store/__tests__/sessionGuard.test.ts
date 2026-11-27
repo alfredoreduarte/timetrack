@@ -1,16 +1,18 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
 import { http, HttpResponse, delay } from "msw";
 import { server, apiPath } from "../../test/mocks/server";
 import { reducers } from "../reducers";
 import { sessionGuard } from "../sessionGuard";
 import { fetchProjects } from "../slices/projectsSlice";
-import { logout } from "../slices/authSlice";
+import { logout, getCurrentUser, updateProfile } from "../slices/authSlice";
 
 const storeWithGuard = () =>
   configureStore({ reducer: reducers, middleware: (getDefault) => getDefault().concat(sessionGuard) });
 
 const A_PROJECTS = [{ id: "pA", name: "A's client" }] as never;
+
+beforeEach(() => localStorage.clear());
 
 describe("sessionGuard", () => {
   it("drops the answer to a request sent before signing out", () => {
@@ -52,5 +54,52 @@ describe("sessionGuard", () => {
     store.dispatch(logout());
     await inFlight;
     expect(store.getState().projects).toMatchObject({ projects: [], loaded: false });
+  });
+
+  const ALICE = { id: "uA", name: "Alice", email: "alice@dev.test" };
+  const BOB = { id: "uB", name: "Bob", email: "bob@dev.test" };
+  const slowProfile = () =>
+    server.use(
+      http.get(apiPath("/auth/me"), async () => {
+        await delay(50);
+        return HttpResponse.json({ user: ALICE });
+      }),
+      http.put(apiPath("/users/profile"), async () => {
+        await delay(50);
+        return HttpResponse.json({ message: "ok", user: ALICE });
+      })
+    );
+
+  it("a late profile answer doesn't put the last account back in browser storage", async () => {
+    slowProfile();
+    const store = storeWithGuard();
+    store.dispatch({ type: "auth/setCredentials", payload: { user: ALICE, token: "tA" } });
+    const pending = [store.dispatch(getCurrentUser()), store.dispatch(updateProfile({ name: "Alice" }))];
+    store.dispatch(logout());
+    await Promise.all(pending);
+    expect(store.getState().auth.user).toBeNull();
+    expect(localStorage.getItem("user")).toBeNull();
+    expect(localStorage.getItem("token")).toBeNull();
+  });
+
+  it("...nor pair the next account's token with the last one's profile", async () => {
+    slowProfile();
+    const store = storeWithGuard();
+    store.dispatch({ type: "auth/setCredentials", payload: { user: ALICE, token: "tA" } });
+    const late = store.dispatch(getCurrentUser());
+    store.dispatch(logout());
+    store.dispatch({ type: "auth/setCredentials", payload: { user: BOB, token: "tB" } });
+    await late;
+    expect(store.getState().auth.user).toMatchObject({ id: "uB" });
+    expect(JSON.parse(localStorage.getItem("user") ?? "null")).toMatchObject({ id: "uB" });
+    expect(localStorage.getItem("token")).toBe("tB");
+  });
+
+  it("a current answer still saves the profile", async () => {
+    slowProfile();
+    const store = storeWithGuard();
+    store.dispatch({ type: "auth/setCredentials", payload: { user: { ...ALICE, name: "Old" }, token: "tA" } });
+    await store.dispatch(getCurrentUser());
+    expect(JSON.parse(localStorage.getItem("user") ?? "null")).toMatchObject({ id: "uA", name: "Alice" });
   });
 });
