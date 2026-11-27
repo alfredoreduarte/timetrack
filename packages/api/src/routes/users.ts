@@ -4,6 +4,8 @@ import { z } from "zod";
 import { prisma } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, requireJwt, AuthenticatedRequest } from "../middleware/auth";
+import { contextFromRequest } from "../services/context";
+import { deleteAccount } from "../services/account";
 
 const router = express.Router();
 
@@ -522,6 +524,46 @@ router.get(
         },
       },
     });
+  })
+);
+
+/**
+ * @swagger
+ * /users/me:
+ *   delete:
+ *     summary: Delete the account and all of its data
+ *     description: >
+ *       Cancels any subscription (the Stripe customer is deleted) and removes
+ *       every project, entry, timer, note, API key and share link. Needs the
+ *       account password, and a signed-in session (not an API key).
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [password]
+ *             properties:
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Account deleted
+ *       400:
+ *         description: Password is incorrect
+ *       502:
+ *         description: The subscription couldn't be cancelled; nothing was deleted
+ */
+router.delete(
+  "/me",
+  requireJwt,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { password } = z.object({ password: z.string().min(1).max(200) }).parse(req.body ?? {});
+    await deleteAccount(contextFromRequest(req), password);
+    res.json({ deleted: true });
   })
 );
 

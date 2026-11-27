@@ -1,5 +1,6 @@
 import React from "react";
 import matter from "gray-matter";
+import ReactMarkdown from "react-markdown";
 import pricingMd from "../../content/pricing.md?raw";
 import { appUrl } from "./Hero";
 
@@ -54,7 +55,22 @@ const Pricing: React.FC = () => (
         </div>
       ))}
     </div>
-    {footnote && <p className="mt-8 text-sm text-gray-300 max-w-2xl">{footnote}</p>}
+    {footnote && (
+      <div className="mt-8 text-sm text-gray-300 max-w-2xl">
+        <ReactMarkdown
+          components={{
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            a: ({ children, href }: any) => (
+              <a href={href} className="underline underline-offset-4 hover:text-white">
+                {children}
+              </a>
+            ),
+          }}
+        >
+          {footnote}
+        </ReactMarkdown>
+      </div>
+    )}
   </section>
 );
 

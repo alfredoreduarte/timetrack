@@ -273,7 +273,7 @@ function AppContent() {
           <Route path="timesheet" element={<Timesheet />} />
           <Route path="billing" element={<Billing />} />
           <Route path="integrations" element={<Integrations />} />
-          <Route path="api-test" element={<ApiTest />} />
+          {(import.meta as any).env.DEV && <Route path="api-test" element={<ApiTest />} />}
         </Route>
 
         {/* Catch all route */}

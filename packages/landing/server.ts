@@ -46,7 +46,7 @@ async function start() {
     }
     try {
       let template: string;
-      let render: () => Promise<string> | string;
+      let render: (url: string) => { html: string; head: string; status: number };
 
       if (!isProd && vite) {
         template = fs.readFileSync(path.resolve(root, "index.html"), "utf-8");
@@ -63,11 +63,10 @@ async function start() {
         render = (await import("./dist/server/entry-server.js")).render;
       }
 
-      const appHtml = await render();
-      console.log("SSR html generated length:", appHtml.length);
-      const html = template.replace(`<!--app-html-->`, appHtml);
+      const page = render(url);
+      const html = template.replace(`<!--app-head-->`, page.head).replace(`<!--app-html-->`, page.html);
 
-      res.status(200).set({ "Content-Type": "text/html" }).end(html);
+      res.status(page.status).set({ "Content-Type": "text/html" }).end(html);
     } catch (err) {
       if (!isProd && vite) {
         vite.ssrFixStacktrace(err as Error);

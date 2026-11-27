@@ -10,6 +10,7 @@ import { fetchTimeEntries, TimeEntry } from "../store/slices/timeEntriesSlice";
 import { fetchProjects } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
 import TimersBoard from "../components/TimersBoard";
+import GettingStarted from "../components/GettingStarted";
 import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import { PlayIcon } from "@heroicons/react/24/solid";
@@ -82,6 +83,9 @@ const Dashboard: React.FC = () => {
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="text-gray-600">Track your time and monitor earnings</p>
       </div>
+
+      {/* First steps for a new account (hidden once done or dismissed) */}
+      <GettingStarted />
 
       {/* Running timers (zero or more) */}
       <TimersBoard />
