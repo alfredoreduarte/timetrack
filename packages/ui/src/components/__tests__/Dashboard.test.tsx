@@ -86,6 +86,23 @@ describe("Dashboard Component", () => {
       expect(screen.getByText(usd(400), exact)).toBeInTheDocument();
       expect(screen.queryByText("Earning Now")).not.toBeInTheDocument();
     });
+
+    it("shows earnings in the user's currency", async () => {
+      setMockEarnings({
+        today: { earnings: 125.5, duration: 9000 },
+        thisWeek: { earnings: 400, duration: 28800 },
+      });
+      const store = createMockStore();
+      store.dispatch({
+        type: "auth/setCredentials",
+        payload: { user: { id: "user-1", email: "test@example.com", name: "Test User", currency: "EUR" }, token: "mock-jwt-token" },
+      });
+
+      await renderDashboard(store);
+
+      expect(await screen.findByText(money(125.5, "EUR"), exact)).toBeInTheDocument();
+      expect(screen.getByText(money(400, "EUR"), exact)).toBeInTheDocument();
+    });
   });
 
   describe("Timers Board", () => {

@@ -52,13 +52,12 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
     totalDuration: day.totalDuration,
   }));
 
-  // Format week range for display
+  // Format week range for display: the bounds are local Monday 00:00 and
+  // Sunday 23:59:59.999 as instants, so read them in local time (their UTC
+  // date can be a day off).
   const formatWeekRange = () => {
-    // Extract just the date part and add time to avoid timezone issues
-    const startDateStr = weekStartDate.split('T')[0] + 'T12:00:00';
-    const endDateStr = weekEndDate.split('T')[0] + 'T12:00:00';
-    const startDate = new Date(startDateStr);
-    const endDate = new Date(endDateStr);
+    const startDate = new Date(weekStartDate);
+    const endDate = new Date(weekEndDate);
     return `${startDate.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
