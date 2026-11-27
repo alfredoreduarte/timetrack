@@ -89,7 +89,7 @@ describe("Reports", () => {
     expect(document.body.textContent).not.toContain("$");
   });
 
-  it("names the week the AI figures are from, even while the next week loads", async () => {
+  it("names the week the AI figures are from (this week, last week, or its dates), even while the next week loads", async () => {
     vi.spyOn(reportsAPI, "getSummaryReport").mockResolvedValue({ summary: { dailyBreakdown: [] } } as never);
     const lastWeek = deferred<unknown>();
     vi.spyOn(reportsAPI, "getDetailedReport")
@@ -108,7 +108,7 @@ describe("Reports", () => {
     expect(await findParagraph(aiLine("last week", 2, 200, "USD"))).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
-    expect(await findParagraph(aiLine("that week", 0.5, 40, "USD"))).toBeTruthy();
+    expect(await findParagraph(aiLine("Oct 26 – Nov 1", 0.5, 40, "USD"))).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
     await waitFor(() => expect(store.getState().reports.detailedWeekOffset).toBe(-3));
     expect(document.body.textContent).not.toContain("AI work");
@@ -133,7 +133,7 @@ describe("Reports", () => {
     fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
     weekly[2].resolve({ summary: { dailyBreakdown: [] } });
     detailed[2].resolve({ timeEntries: [entry("week -2", true, 3600, 50)] });
-    expect(await findParagraph(aiLine("that week", 1, 50, "USD"))).toBeTruthy();
+    expect(await findParagraph(aiLine("Oct 26 – Nov 1", 1, 50, "USD"))).toBeTruthy();
     detailed[1].resolve({ timeEntries: [entry("week -1", true, 7200, 999)] });
     await new Promise((r) => setTimeout(r, 20));
 
@@ -141,6 +141,33 @@ describe("Reports", () => {
     expect(state.currentWeekOffset).toBe(-2);
     expect(state.detailedWeekOffset).toBe(-2);
     expect(state.detailedLoading).toBe(false);
-    expect(queryParagraph(aiLine("that week", 1, 50, "USD"))).toBeTruthy();
+    expect(queryParagraph(aiLine("Oct 26 – Nov 1", 1, 50, "USD"))).toBeTruthy();
+  });
+
+  it("an older week's figures keep their dates while the next week loads, or if it fails", async () => {
+    vi.spyOn(reportsAPI, "getSummaryReport").mockResolvedValue({ summary: { dailyBreakdown: [] } } as never);
+    let rejectThreeBack!: (e: unknown) => void;
+    const failing = new Promise((_, rej) => (rejectThreeBack = rej));
+    vi.spyOn(reportsAPI, "getDetailedReport")
+      .mockResolvedValueOnce({ timeEntries: [] } as never) // this week
+      .mockResolvedValueOnce({ timeEntries: [] } as never) // last week
+      .mockResolvedValueOnce({ timeEntries: [entry("two back", true, 7200, 222)] } as never) // Oct 26 – Nov 1
+      .mockReturnValueOnce(failing as never); // Oct 19 – 25
+    const store = renderAs("USD");
+    await waitFor(() => expect(store.getState().reports.loading).toBe(false));
+    for (let i = 0; i < 2; i++) {
+      fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+      await waitFor(() => expect(store.getState().reports.loading).toBe(false));
+    }
+    const twoBack = aiLine("Oct 26 – Nov 1", 2, 222, "USD");
+    expect(await findParagraph(twoBack)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    await waitFor(() => expect(store.getState().reports.currentWeekOffset).toBe(-3));
+    // The chart shows Oct 19 – 25; the line still says whose figures it has.
+    expect(queryParagraph(twoBack)).toBeTruthy();
+    rejectThreeBack(new Error("timeout"));
+    await waitFor(() => expect(store.getState().reports.detailedLoading).toBe(false));
+    expect(queryParagraph(twoBack)).toBeTruthy();
   });
 });

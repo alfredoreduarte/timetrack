@@ -67,7 +67,7 @@ const localDayKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 // Helper function to get start and end of week (Monday to Sunday)
-const getWeekDates = (weekOffset: number = 0) => {
+export const getWeekDates = (weekOffset: number = 0) => {
   const now = new Date();
   const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
   

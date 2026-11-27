@@ -113,7 +113,8 @@ const AgentBillingSettings: React.FC = () => {
       </fieldset>
 
       <label className="block">
-        <span className="block text-sm font-medium text-gray-700">Currency on timesheets</span>
+        <span className="block text-sm font-medium text-gray-700">Currency</span>
+        <span className="block text-xs text-gray-500">Rates, earnings and timesheets are shown in this currency.</span>
         <select className="input-field mt-1 w-32" value={currency} onChange={(e) => setCurrency(e.target.value)}>
           {(CURRENCIES.includes(currency) ? CURRENCIES : [currency, ...CURRENCIES]).map((c) => (
             <option key={c}>{c}</option>
