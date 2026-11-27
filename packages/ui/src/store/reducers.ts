@@ -1,4 +1,5 @@
-import authSlice from "./slices/authSlice";
+import { combineReducers } from "@reduxjs/toolkit";
+import authSlice, { logout } from "./slices/authSlice";
 import timerSlice from "./slices/timerSlice";
 import projectsSlice from "./slices/projectsSlice";
 import timeEntriesSlice from "./slices/timeEntriesSlice";
@@ -8,8 +9,7 @@ import favoritesSlice from "./slices/favoritesSlice";
 import apiKeysSlice from "./slices/apiKeysSlice";
 import timersSlice from "./slices/timersSlice";
 
-/** The one reducer map — used by the app store and by tests, so they can't drift. */
-export const reducers = {
+const sliceReducers = {
   auth: authSlice,
   timer: timerSlice,
   projects: projectsSlice,
@@ -20,3 +20,13 @@ export const reducers = {
   apiKeys: apiKeysSlice,
   timers: timersSlice,
 };
+
+const appReducer = combineReducers(sliceReducers);
+
+/**
+ * The one root reducer, used by the app store and by tests so they can't
+ * drift. Signing out starts every slice over, so the next account in this
+ * tab never sees the last one's timers, projects or reports.
+ */
+export const reducers: typeof appReducer = (state, action) =>
+  appReducer(action.type === logout.type ? undefined : state, action);
