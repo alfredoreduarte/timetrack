@@ -4,7 +4,7 @@ description: "The terms for using Trackr: accounts, plans and payment, your data
 updated: "November 27, 2026"
 ---
 
-These terms cover your use of Trackr: the web app, its API, the Claude Code plugin, the MCP server and the native apps (together, "the service"). By creating an account or using the service you agree to them. If you use Trackr for a company, you agree on its behalf.
+These terms cover your use of Trackr: the web app, its API, the Claude Code plugin, the MCP server and the macOS app (together, "the service"). By creating an account or using the service you agree to them. If you use Trackr for a company, you agree on its behalf.
 
 ## 1. Your account
 
@@ -29,7 +29,7 @@ You can cancel at any time from **Billing** in the app. Our [Refund & Cancellati
 - Your projects, time entries, timers, notes and timesheets are yours. We use them only to run the service for you, as described in our [Privacy Policy](/privacy).
 - Trackr calculates time and amounts from the data you and your agents send it. Review a timesheet before you send it to a client: you're responsible for what you bill.
 - Share links you create can be opened by anyone who has the link. Revoke a link to stop access.
-- You can export your timesheets (CSV and Markdown) and delete your account, with all of its data, from **Settings** at any time.
+- You can export your timesheets (CSV and Markdown) from **Timesheet**; the Free plan covers the last 14 days, and you can ask us for a full copy. You can delete your account, with all of its data, from **Settings** at any time.
 
 ## 5. Acceptable use
 
@@ -65,7 +65,7 @@ If we make a material change, we'll tell you by email or in the app before it ta
 
 ## 10. General
 
-These terms are governed by the laws of the place where the operator of Trackr is established, without affecting any mandatory rights you have under the law of the country you live in. If part of these terms can't be enforced, the rest still applies.
+These terms are governed by the laws of the country where the operator of Trackr, named at the top of this page, is established, without affecting any mandatory rights you have under the law of the country you live in. If part of these terms can't be enforced, the rest still applies.
 
 ## Contact
 

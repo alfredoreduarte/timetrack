@@ -8,6 +8,7 @@ import { fetchProjects } from "../store/slices/projectsSlice";
 import TimesheetView from "../components/TimesheetView";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { browserTimezone } from "../utils/agentFormat";
+import { markTimesheetSent } from "../utils/onboarding";
 import type { ShareLink, Timesheet as TimesheetData } from "../types/agent";
 
 type Preset = "this-week" | "last-week" | "this-month" | "last-month";
@@ -148,6 +149,7 @@ const ShareDialog: React.FC<{
 
 const Timesheet: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
+  const userId = useSelector((state: RootState) => state.auth.user?.id);
   const projects = useSelector((s: RootState) => s.projects.projects);
   const [preset, setPreset] = useState<Preset>("this-month");
   const [projectId, setProjectId] = useState("");
@@ -205,6 +207,7 @@ const Timesheet: React.FC = () => {
       a.download = `timesheet-${preset}.csv`;
       a.click();
       URL.revokeObjectURL(url);
+      markTimesheetSent(userId);
     } catch (e) {
       setError(errorText(e));
     }
@@ -213,6 +216,7 @@ const Timesheet: React.FC = () => {
   const copyMarkdown = async () => {
     try {
       copyToClipboard(await api.timesheets.markdown(params));
+      markTimesheetSent(userId);
     } catch (e) {
       setError(errorText(e));
     }

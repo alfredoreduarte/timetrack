@@ -28,6 +28,8 @@ async function start() {
     });
   } else {
     app.use(compression());
+    // The raw template has no page in it: send the real home page instead.
+    app.get("/index.html", (_req, res) => res.redirect(301, "/"));
     app.use(
       serveStatic(path.resolve(root, "dist/client"), {
         index: false,
@@ -40,9 +42,19 @@ async function start() {
   // -------------------------------------------------------------------
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
-    // Skip SSR for static assets (includes dots or vite client path)
-    if (url.includes(".") || url.startsWith("/@")) {
+    const [pathname, ...rest] = url.split("?");
+    const query = rest.length ? `?${rest.join("?")}` : "";
+    // Skip SSR for static assets (a file extension in the path, not the
+    // query: links like ?utm_source=news.example still render) and Vite's
+    // own paths.
+    if (path.extname(pathname) || pathname.startsWith("/@")) {
       return next();
+    }
+    // One URL per page: /terms/ → /terms.
+    if (pathname.length > 1 && pathname.endsWith("/")) {
+      let canonical = pathname;
+      while (canonical.length > 1 && canonical.endsWith("/")) canonical = canonical.slice(0, -1);
+      return res.redirect(301, `${canonical}${query}`);
     }
     try {
       let template: string;
@@ -64,7 +76,8 @@ async function start() {
       }
 
       const page = render(url);
-      const html = template.replace(`<!--app-head-->`, page.head).replace(`<!--app-html-->`, page.html);
+      // Replacer functions, so "$&" or "$$" in page text stays literal.
+      const html = template.replace(`<!--app-head-->`, () => page.head).replace(`<!--app-html-->`, () => page.html);
 
       res.status(page.status).set({ "Content-Type": "text/html" }).end(html);
     } catch (err) {

@@ -18,14 +18,14 @@ Trackr is a time tracker for developers who work with AI agents. This policy exp
 
 **Technical data.** Our servers record IP addresses and request details in their logs, to keep the service secure and to fix problems.
 
-## How we use it
+## How we use it, and why we're allowed to
 
-- To run the service: track time, build timesheets and share links, and show you reports.
-- To bill you for a paid plan and manage your subscription.
-- To keep the service secure, prevent abuse and fix problems.
-- To answer you when you contact us, and to tell you about important changes to the service or these policies.
+- **To run the service** you signed up for: track time, build timesheets and share links, and show you reports. This is needed to perform our contract with you.
+- **To bill you** for a paid plan and manage your subscription: contract, and our legal obligation to keep accounting records.
+- **To keep the service secure,** prevent abuse and fix problems: our legitimate interest in a safe, working service.
+- **To answer you** when you contact us, and to tell you about important changes to the service or these policies: contract and legitimate interest.
 
-We don't sell your data, we don't use it for advertising, and we don't use third-party analytics or ad trackers.
+We don't sell your data, we don't use it for advertising, and we don't use third-party analytics, ad trackers or third-party fonts.
 
 ## Cookies and local storage
 
@@ -45,13 +45,13 @@ We share data otherwise only when the law requires it, or to protect the rights 
 
 ## How long we keep it
 
-We keep your data while your account exists. When you delete your account from **Settings**, your projects, entries, timers, notes, API keys, share links and account details are deleted right away, and your Stripe customer record is deleted, which cancels any subscription. Copies of the database made before software updates can still contain deleted data until those copies are removed. Server logs are rotated, so older entries are deleted as new ones are written.
+We keep your data while your account exists. When you delete your account from **Settings**, your projects, entries, timers, notes, API keys, share links and account details are deleted right away, and your Stripe customer record is deleted, which cancels any subscription. Copies of the database made before software updates can still contain deleted data for up to 90 days, after which they're deleted. Server logs, which include IP addresses, are rotated, so older entries are deleted as new ones are written.
 
 ## Your rights
 
 You can:
 
-- **See and export** your data: timesheets export as CSV or Markdown, and you can ask us for a copy of everything.
+- **See and export** your data: the **Timesheet** page exports CSV and Markdown (the Free plan covers the last 14 days), and you can ask us for a full copy of everything.
 - **Correct** it in the app, or ask us to.
 - **Delete** your account and all of its data from **Settings → Account → Delete account**.
 - **Object** to how we use your data, or ask us to restrict it.
@@ -60,7 +60,7 @@ If you live in the EU, the UK or a similar jurisdiction, you can also complain t
 
 ## Security
 
-Passwords are hashed with bcrypt. API keys and share link tokens are stored only as hashes, so even we can't read them. All traffic uses HTTPS. No system is perfectly secure, but we take care to keep your data safe, and we'll tell you without undue delay if a breach affects you.
+Passwords are hashed with bcrypt. API keys and share link tokens are stored in the database only as hashes; a share link's address can still show up in our rotated request logs, like any web address. All traffic uses HTTPS. No system is perfectly secure, but we take care to keep your data safe, and we'll tell you without undue delay if a breach affects you.
 
 ## Children
 

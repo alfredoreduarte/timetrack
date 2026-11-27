@@ -2,6 +2,15 @@
 
 name: timetrack-production
 
+# Container logs (they include client IPs) are capped and rotated, as the
+# privacy policy says. Postgres and Redis keep theirs, so a deploy never
+# recreates the database containers for this.
+x-logging: &rotated-logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   # PostgreSQL Database
   postgres:
@@ -34,6 +43,7 @@ services:
       dockerfile: ./packages/api/Dockerfile
       target: production
     container_name: timetrack-api-prod
+    logging: *rotated-logs
     restart: unless-stopped
     env_file: docker.env
     environment:
@@ -76,6 +86,7 @@ services:
       args:
         VITE_API_URL: ${VITE_API_URL}
     container_name: timetrack-web-prod
+    logging: *rotated-logs
     restart: unless-stopped
     env_file: docker.env
     # Environment variables handled at build time for production
@@ -121,6 +132,7 @@ services:
         PUBLIC_URL: "/"
         VITE_APP_URL: "${VITE_APP_URL:-https://app.track.alfredo.re}"
     container_name: timetrack-landing-prod
+    logging: *rotated-logs
     restart: unless-stopped
     environment:
       PUBLIC_URL: "/"

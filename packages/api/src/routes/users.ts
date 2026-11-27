@@ -1,4 +1,5 @@
 import express from "express";
+import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../utils/database";
@@ -99,7 +100,24 @@ const updateProfileSchema = z.object({
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
-  newPassword: z.string().min(6, "New password must be at least 6 characters"),
+  newPassword: z
+    .string()
+    .min(6, "New password must be at least 6 characters")
+    .max(100, "New password must be at most 100 characters"),
+});
+
+/**
+ * Endpoints that check the account password (a bcrypt compare each): a few
+ * tries per account, so a stolen session can't guess the password or tie up
+ * the CPU.
+ */
+const passwordCheckLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthenticatedRequest).user?.id ?? req.ip ?? "anon",
+  message: { error: "Too many attempts, try again in a few minutes." },
 });
 
 /**
@@ -209,6 +227,7 @@ router.put(
 router.post(
   "/change-password",
   requireJwt,
+  passwordCheckLimiter,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { currentPassword, newPassword } = changePasswordSchema.parse(
       req.body
@@ -560,8 +579,9 @@ router.get(
 router.delete(
   "/me",
   requireJwt,
+  passwordCheckLimiter,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { password } = z.object({ password: z.string().min(1).max(200) }).parse(req.body ?? {});
+    const { password } = z.object({ password: z.string().min(1).max(1000) }).parse(req.body ?? {});
     await deleteAccount(contextFromRequest(req), password);
     res.json({ deleted: true });
   })

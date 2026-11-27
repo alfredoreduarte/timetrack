@@ -38,7 +38,8 @@ const DeleteAccount: React.FC = () => {
       <h4 className="text-sm font-medium text-red-700">Delete account</h4>
       <p className="mt-1 text-sm text-gray-600">
         Removes your projects, time entries, timers, notes, API keys and share links, and cancels any
-        subscription. This can't be undone; download any timesheets you need first.
+        subscription. This can't be undone: export what you need from Timesheet first (the Free plan covers
+        the last 14 days; ask support for a full copy).
       </p>
       {!open ? (
         <button type="button" className="mt-3 btn-secondary text-red-700" onClick={() => setOpen(true)}>

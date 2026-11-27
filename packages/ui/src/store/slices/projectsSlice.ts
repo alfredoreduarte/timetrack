@@ -43,6 +43,8 @@ interface ProjectsState {
   projects: Project[];
   tasks: Task[];
   loading: boolean;
+  /** The project list has been fetched at least once (so [] means "none"). */
+  loaded: boolean;
   error: string | null;
 }
 
@@ -50,6 +52,7 @@ const initialState: ProjectsState = {
   projects: [],
   tasks: [],
   loading: false,
+  loaded: false,
   error: null,
 };
 
@@ -192,11 +195,13 @@ const projectsSlice = createSlice({
       })
       .addCase(fetchProjects.fulfilled, (state, action) => {
         state.loading = false;
+        state.loaded = true;
         // Components map over this; a malformed response must not blank the page.
         state.projects = Array.isArray(action.payload) ? action.payload : [];
       })
       .addCase(fetchProjects.rejected, (state, action) => {
         state.loading = false;
+        state.loaded = true;
         state.error = action.error.message || "Failed to fetch projects";
       })
       .addCase(createProject.fulfilled, (state, action) => {

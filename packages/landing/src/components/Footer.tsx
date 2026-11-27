@@ -4,7 +4,10 @@ import { site } from "../site";
 
 const Footer: React.FC = () => (
   <footer className="px-6 md:px-16 py-10 border-t border-white/10 text-sm text-gray-400 flex flex-wrap gap-x-6 gap-y-3">
-    <span>© {new Date().getFullYear()} {site.name}</span>
+    {/* Server (UTC) and visitor can be a year apart around New Year. */}
+    <span suppressHydrationWarning>
+      © {new Date().getFullYear()} {site.name}
+    </span>
     <a href={`${appUrl}/login`} className="hover:text-white">
       Log in
     </a>

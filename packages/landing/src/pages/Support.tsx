@@ -25,7 +25,9 @@ const Support: React.FC = () => (
       ) : null}
       <p>
         You can manage most things yourself: cancel or change your plan from <strong className="text-white">Billing</strong>,
-        and export your timesheets or delete your account from <strong className="text-white">Settings</strong>.
+        export timesheets from <strong className="text-white">Timesheet</strong> (CSV or Markdown; the Free plan covers the
+        last 14 days, and we'll send a full copy on request), and delete your account from{" "}
+        <strong className="text-white">Settings</strong>.
       </p>
       <p>
         See also our <a href="/terms" className="text-neon-purple underline underline-offset-4 hover:text-white">Terms</a>,{" "}
