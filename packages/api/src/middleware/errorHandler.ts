@@ -9,6 +9,10 @@ export interface AppError extends Error {
   code?: string;
 }
 
+/** Share link URLs carry their token; logs keep only its first characters. */
+export const redactTokens = (url: string) =>
+  url.replace(/(\/(?:share|public\/timesheets)\/)([^/?#]{6})[^/?#]*/g, "$1$2…");
+
 export const errorHandler = (
   err: AppError | ZodError,
   req: Request,
@@ -18,11 +22,11 @@ export const errorHandler = (
   let statusCode = 500;
   let message = err.message;
 
-  // Log error
+  // Log error (share link tokens are secrets; keep them out of the logs)
   logger.error("Request failed", {
     error: err.message,
     stack: err.stack,
-    url: req.url,
+    url: redactTokens(req.url),
     method: req.method,
     ip: req.ip,
     userAgent: req.get("User-Agent"),

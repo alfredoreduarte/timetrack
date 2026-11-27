@@ -11,9 +11,9 @@ questions:
   - q: "Does it work with Cursor or other agents?"
     a: "Any client that speaks MCP over HTTP can start, pause and edit timers, and Cursor's hooks are understood too. The one-command plugin is for Claude Code."
   - q: "Can I cancel any time?"
-    a: "Yes, from Billing in the app. You keep Pro until the end of the period you paid for, then move to Free with all your data. Charges you didn't mean to make are refunded."
+    a: "Yes, from Billing in the app. You keep Pro until the end of the period you paid for, then move to Free with all your data. Tell us within 14 days of a charge you didn't mean to make and we'll refund it (see the refund policy)."
   - q: "Can I delete my data?"
-    a: "Yes. Settings → Delete account removes everything, cancels any subscription and can't be undone. Export your timesheets first if you need them."
+    a: "Yes. Settings → Delete account removes everything, cancels any subscription and can't be undone. Export what you need from the Timesheet page first (Free covers the last 14 days), or ask us for a full copy."
   - q: "I already have an account. Do I have to pay?"
-    a: "No — existing accounts keep every Pro feature for free."
+    a: "No — accounts created before paid plans launched keep every Pro feature for free."
 ---

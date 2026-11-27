@@ -43,9 +43,17 @@ export interface Head {
 const HOME_DESCRIPTION =
   "Every Claude Code session gets its own timer. Quiet sessions pause at their last activity, parallel agents are billed honestly, and the timesheet is ready for your client.";
 
+const NOT_FOUND = (): { route: Route; head: Head; status: number } => ({
+  route: { kind: "notFound" },
+  head: { title: `Page not found — ${site.name}`, description: HOME_DESCRIPTION, path: null },
+  status: 404,
+});
+
 /** Which page a URL shows, and its head tags. Query strings and trailing slashes are ignored. */
 export function resolve(url: string): { route: Route; head: Head; status: number } {
-  const path = (url.split(/[?#]/)[0] || "/").replace(/\/+$/, "") || "/";
+  let path = url.split(/[?#]/)[0] || "/";
+  if (path.length > 200) return NOT_FOUND();
+  while (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
   if (path === "/") {
     return {
       route: { kind: "home" },
@@ -72,11 +80,7 @@ export function resolve(url: string): { route: Route; head: Head; status: number
       status: 200,
     };
   }
-  return {
-    route: { kind: "notFound" },
-    head: { title: `Page not found — ${site.name}`, description: HOME_DESCRIPTION, path: null },
-    status: 404,
-  };
+  return NOT_FOUND();
 }
 
 const escape = (s: string) =>

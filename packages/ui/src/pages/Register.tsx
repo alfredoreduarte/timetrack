@@ -307,11 +307,11 @@ const Register: React.FC = () => {
             </button>
             <p className="mt-3 text-center text-xs text-gray-500">
               By creating an account you agree to the{" "}
-              <a href={`${landingUrl()}/terms`} className="underline hover:text-gray-700">
+              <a href={`${landingUrl()}/terms`} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-700">
                 Terms of Service
               </a>{" "}
               and{" "}
-              <a href={`${landingUrl()}/privacy`} className="underline hover:text-gray-700">
+              <a href={`${landingUrl()}/privacy`} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-700">
                 Privacy Policy
               </a>
               .

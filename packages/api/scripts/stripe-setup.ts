@@ -16,7 +16,7 @@ if (!key) throw new Error("Set STRIPE_SECRET_KEY");
 if (!apiUrl.startsWith("https://")) throw new Error("Set API_PUBLIC_URL to the API's public https URL");
 
 const stripe = new Stripe(key);
-const PRODUCT_NAME = "TimeTrack Pro";
+const PRODUCT_NAME = "Trackr Pro";
 const PRODUCT_DESCRIPTION =
   "Billable hours for developers who ship with AI agents: up to 25 agents running at once, full history, client timesheets and share links.";
 const PRICES = [

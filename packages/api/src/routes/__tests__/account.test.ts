@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { prisma } from "../../utils/database";
 import { setStripeClient } from "../../billing/stripeClient";
 import { api, resetDb, createUser, createApiKey, createProject, disconnect } from "../../test/helpers";
+import { redactTokens } from "../../middleware/errorHandler";
 
 const fake = { customers: { del: jest.fn() } };
 
@@ -81,5 +82,29 @@ describe("DELETE /users/me", () => {
     fake.customers.del.mockRejectedValueOnce(Object.assign(new Error("No such customer"), { code: "resource_missing" }));
     expect((await api().delete("/users/me").set(auth).send({ password: PASSWORD })).status).toBe(200);
     expect(await prisma.user.count({ where: { id: user.id } })).toBe(0);
+  });
+
+  it("allows a few password tries per account, then 429", async () => {
+    const { auth } = await withPassword();
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      statuses.push((await api().delete("/users/me").set(auth).send({ password: "wrong" })).status);
+    }
+    expect(statuses.slice(0, 10).every((s) => s === 400)).toBe(true);
+    expect(statuses[10]).toBe(429);
+  });
+});
+
+describe("password limits and log redaction", () => {
+  it("change-password caps new passwords at 100 characters, like sign-up", async () => {
+    const { auth } = await withPassword();
+    const res = await api().post("/users/change-password").set(auth).send({ currentPassword: PASSWORD, newPassword: "x".repeat(101) });
+    expect(res.status).toBe(400);
+  });
+
+  it("keeps share link tokens out of logged URLs", () => {
+    expect(redactTokens("/share/abcdefSECRETSECRET?x=1")).toBe("/share/abcdef…?x=1");
+    expect(redactTokens("/public/timesheets/abcdefSECRET/csv")).toBe("/public/timesheets/abcdef…/csv");
+    expect(redactTokens("/timers/123")).toBe("/timers/123");
   });
 });

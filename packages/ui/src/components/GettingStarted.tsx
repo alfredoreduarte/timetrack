@@ -5,17 +5,7 @@ import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import api from "../services/api";
 import { RootState } from "../store";
-
-const dismissKey = (userId: string) => `gettingStarted.dismissed.${userId}`;
-
-const readDismissed = (userId: string | undefined) => {
-  if (!userId) return false;
-  try {
-    return localStorage.getItem(dismissKey(userId)) === "1";
-  } catch {
-    return false;
-  }
-};
+import { checklistDone, markChecklistDone, timesheetSent } from "../utils/onboarding";
 
 /**
  * The four steps from sign-up to a first timesheet a client can open.
@@ -23,12 +13,12 @@ const readDismissed = (userId: string | undefined) => {
  */
 const GettingStarted: React.FC = () => {
   const user = useSelector((state: RootState) => state.auth.user);
-  const projects = useSelector((state: RootState) => state.projects.projects);
+  const { projects, loaded: projectsLoaded } = useSelector((state: RootState) => state.projects);
   const [counts, setCounts] = useState<{ keys: number; links: number } | null>(null);
-  const [dismissed, setDismissed] = useState(() => readDismissed(user?.id));
+  const [dismissed, setDismissed] = useState(() => checklistDone(user?.id));
 
   useEffect(() => {
-    setDismissed(readDismissed(user?.id));
+    setDismissed(checklistDone(user?.id));
   }, [user?.id]);
 
   useEffect(() => {
@@ -45,43 +35,49 @@ const GettingStarted: React.FC = () => {
     };
   }, [user?.id, dismissed]);
 
-  if (!user || dismissed || !counts) return null;
+  const steps =
+    user && counts
+      ? [
+          {
+            done: counts.keys > 0,
+            label: "Connect Claude Code",
+            detail: "Every agent session gets its own timer, without pressing play.",
+            to: "/integrations",
+          },
+          {
+            done: projects.length > 0,
+            label: "Add a client project",
+            detail: "Link it to a git repo and sessions land on the right client.",
+            to: "/projects",
+          },
+          {
+            done: (user.defaultHourlyRate ?? 0) > 0 || projects.some((p) => (p.hourlyRate ?? 0) > 0),
+            label: "Set your rate",
+            detail: "A default in Settings, or one per client.",
+            to: "/settings",
+          },
+          {
+            // A share link, or (on Free, which has none) a CSV or Markdown export.
+            done: counts.links > 0 || timesheetSent(user.id),
+            label: "Send a timesheet",
+            detail: "A read-only link your client can open, or Markdown and CSV.",
+            to: "/timesheet",
+          },
+        ]
+      : null;
+  const doneCount = steps ? steps.filter((s) => s.done).length : 0;
+  const allDone = !!steps && projectsLoaded && doneCount === steps.length;
 
-  const steps = [
-    {
-      done: counts.keys > 0,
-      label: "Connect Claude Code",
-      detail: "Every agent session gets its own timer, without pressing play.",
-      to: "/integrations",
-    },
-    {
-      done: projects.length > 0,
-      label: "Add a client project",
-      detail: "Link it to a git repo and sessions land on the right client.",
-      to: "/projects",
-    },
-    {
-      done: (user.defaultHourlyRate ?? 0) > 0 || projects.some((p) => (p.hourlyRate ?? 0) > 0),
-      label: "Set your rate",
-      detail: "A default in Settings, or one per client.",
-      to: "/settings",
-    },
-    {
-      done: counts.links > 0,
-      label: "Send a timesheet",
-      detail: "A read-only link your client can open, or Markdown and CSV.",
-      to: "/timesheet",
-    },
-  ];
-  const doneCount = steps.filter((s) => s.done).length;
-  if (doneCount === steps.length) return null;
+  // Finished for good: don't fetch its data on every visit.
+  useEffect(() => {
+    if (allDone) markChecklistDone(user?.id);
+  }, [allDone, user?.id]);
+
+  // Wait for every source, so a finished account never sees it flash.
+  if (!user || !steps || !projectsLoaded || dismissed || allDone) return null;
 
   const dismiss = () => {
-    try {
-      localStorage.setItem(dismissKey(user.id), "1");
-    } catch {
-      // Hidden for this visit only.
-    }
+    markChecklistDone(user.id);
     setDismissed(true);
   };
 
@@ -116,10 +112,11 @@ const GettingStarted: React.FC = () => {
             >
               <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
                 {step.done ? (
-                  <CheckCircleIcon className="h-5 w-5 text-green-600" aria-label="Done" />
+                  <CheckCircleIcon className="h-5 w-5 text-green-600" aria-hidden="true" />
                 ) : (
                   <span className="h-5 w-5 rounded-full border-2 border-gray-300" aria-hidden="true" />
                 )}
+                <span className="sr-only">{step.done ? "Done: " : "To do: "}</span>
                 {step.label}
               </span>
               <span className="mt-1 block text-xs text-gray-600">{step.detail}</span>

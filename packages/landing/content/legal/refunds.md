@@ -1,6 +1,6 @@
 ---
 title: "Refund & Cancellation Policy"
-description: "Cancel Trackr Pro any time from Billing. You keep Pro until the end of the period you paid for; unexpected charges are refunded."
+description: "Cancel Trackr Pro any time from Billing. You keep Pro until the end of the period you paid for; tell us within 14 days of a charge you didn't mean to make and we'll refund it."
 updated: "November 27, 2026"
 ---
 
