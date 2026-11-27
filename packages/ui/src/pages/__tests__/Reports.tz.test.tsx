@@ -7,7 +7,8 @@ import { reportsAPI } from "../../services/api";
 import { money } from "../../utils/agentFormat";
 import Reports from "../Reports";
 
-// Runs in its own process (see poolMatchGlobs), where switching TZ works.
+// Each test file runs in its own child process (vite.config.ts test.pool =
+// "forks"), where switching TZ works.
 const previousTz = process.env.TZ;
 beforeAll(() => {
   process.env.TZ = "Europe/Berlin";
