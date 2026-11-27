@@ -20,7 +20,7 @@ const disableBilling = () => {
 const realStripe = new Stripe("sk_test_fake");
 const fake = {
   webhooks: realStripe.webhooks,
-  customers: { create: jest.fn() },
+  customers: { create: jest.fn(), del: jest.fn() },
   checkout: { sessions: { create: jest.fn() } },
   billingPortal: { sessions: { create: jest.fn() } },
   subscriptions: { retrieve: jest.fn(), list: jest.fn() },
@@ -203,6 +203,33 @@ describe("checkout, portal and webhooks", () => {
     expect((await api().post("/billing/checkout").set(key.auth).send({})).status).toBe(403);
     const exempt = await createUser({ isSubscriptionExempt: true });
     expect((await api().post("/billing/checkout").set(exempt.auth).send({})).status).toBe(400);
+  });
+
+  it("uses the customer another checkout attached first, and deletes its own unused one", async () => {
+    const { user, auth } = await freeUser();
+    fake.customers.create.mockImplementation(async () => {
+      await prisma.user.update({ where: { id: user.id }, data: { stripeCustomerId: "cus_first" } });
+      return { id: "cus_second" };
+    });
+    fake.customers.del.mockResolvedValue({ deleted: true });
+    fake.checkout.sessions.create.mockResolvedValue({ url: "https://checkout.stripe.test/s/2" });
+    const res = await api().post("/billing/checkout").set(auth).send({ interval: "month" });
+    expect(res.status).toBe(200);
+    expect(fake.checkout.sessions.create.mock.calls[0][0].customer).toBe("cus_first");
+    expect(fake.customers.del.mock.calls).toEqual([["cus_second"]]);
+  });
+
+  it("doesn't leave a Stripe customer behind when the account is deleted mid-checkout", async () => {
+    const { user, auth } = await freeUser();
+    fake.customers.create.mockImplementation(async () => {
+      await prisma.user.delete({ where: { id: user.id } });
+      return { id: "cus_orphan" };
+    });
+    fake.customers.del.mockResolvedValue({ deleted: true });
+    const res = await api().post("/billing/checkout").set(auth).send({ interval: "month" });
+    expect(res.status).toBe(404);
+    expect(fake.customers.del.mock.calls).toEqual([["cus_orphan"]]);
+    expect(fake.checkout.sessions.create).not.toHaveBeenCalled();
   });
 
   const signedPost = (event: Record<string, unknown>, secret = STRIPE_ENV.STRIPE_WEBHOOK_SECRET) => {

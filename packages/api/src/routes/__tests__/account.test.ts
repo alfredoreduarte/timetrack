@@ -84,6 +84,39 @@ describe("DELETE /users/me", () => {
     expect(await prisma.user.count({ where: { id: user.id } })).toBe(0);
   });
 
+  it("deletes a Stripe customer a checkout attached while the password was being checked", async () => {
+    const { user, auth } = await withPassword();
+    const realCompare = bcrypt.compare.bind(bcrypt);
+    // The checkout's claim lands after the account was read, before it's deleted.
+    const spy = jest.spyOn(bcrypt, "compare").mockImplementationOnce(async (pw: string, hash: string) => {
+      await prisma.user.update({ where: { id: user.id }, data: { stripeCustomerId: "cus_late" } });
+      return realCompare(pw, hash);
+    });
+    try {
+      fake.customers.del.mockResolvedValue({ deleted: true });
+      expect((await api().delete("/users/me").set(auth).send({ password: PASSWORD })).status).toBe(200);
+      expect(fake.customers.del.mock.calls).toEqual([["cus_late"]]);
+      expect(await prisma.user.count({ where: { id: user.id } })).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("two deletions at once both succeed, and the account goes once", async () => {
+    const { user, auth } = await withPassword({ stripeCustomerId: "cus_1" });
+    fake.customers.del
+      .mockResolvedValueOnce({ deleted: true })
+      .mockRejectedValueOnce(Object.assign(new Error("No such customer"), { code: "resource_missing" }));
+    const [a, b] = await Promise.all([
+      api().delete("/users/me").set(auth).send({ password: PASSWORD }),
+      api().delete("/users/me").set(auth).send({ password: PASSWORD }),
+    ]);
+    // The second may find the account already gone (401/404 from auth) or finish the job (200).
+    expect([a.status, b.status]).toContain(200);
+    for (const s of [a.status, b.status]) expect([200, 401, 404]).toContain(s);
+    expect(await prisma.user.count({ where: { id: user.id } })).toBe(0);
+  });
+
   it("allows a few password tries per account, then 429", async () => {
     const { auth } = await withPassword();
     const statuses: number[] = [];
