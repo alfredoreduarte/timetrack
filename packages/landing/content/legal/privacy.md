@@ -29,7 +29,7 @@ We don't sell your data, we don't use it for advertising, and we don't use third
 
 ## Cookies and local storage
 
-The landing site sets no cookies. The web app keeps your sign-in token and profile in your browser's local storage so you stay signed in; signing out removes them. It also remembers there whether you've finished or hidden the setup checklist, and deleting your account clears that too.
+The landing site sets no cookies. The web app keeps your sign-in token and profile in your browser's local storage so you stay signed in; signing out removes them. It also remembers there your setup-checklist progress: whether you've finished or hidden it, and whether you've exported a timesheet. Deleting your account clears that in the browser you delete it from.
 
 ## Who processes it for us
 

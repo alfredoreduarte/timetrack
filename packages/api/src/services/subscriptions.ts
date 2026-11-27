@@ -98,10 +98,18 @@ export async function createCheckoutSession(ctx: ServiceContext, interval: Billi
       where: { id: user.id, stripeCustomerId: null },
       data: { stripeCustomerId: customer.id },
     });
-    customerId = claimed.count === 1
-      ? customer.id
-      : (await prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { stripeCustomerId: true } }))
-          .stripeCustomerId!;
+    if (claimed.count === 1) {
+      customerId = customer.id;
+    } else {
+      // Another checkout attached one first, or the account was just
+      // deleted: this customer is unused, so don't leave it in Stripe.
+      await stripe.customers.del(customer.id).catch((e: Error) =>
+        logger.warn("Checkout: could not delete an unused Stripe customer", { userId: user.id, error: e.message })
+      );
+      const current = await prisma.user.findUnique({ where: { id: user.id }, select: { stripeCustomerId: true } });
+      if (!current?.stripeCustomerId) throw createError("User not found", 404);
+      customerId = current.stripeCustomerId;
+    }
   }
 
   // Subscribing during the app trial keeps the rest of the trial free:

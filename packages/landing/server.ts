@@ -4,7 +4,9 @@ import express from "express";
 import compression from "compression";
 import serveStatic from "serve-static";
 import { createServer as createViteServer } from "vite";
-import { canonicalRedirect } from "./src/canonical";
+// ".js" so ts-node's ESM loader (dev:ssr) resolves it; esbuild and tsc map
+// it to the .ts source.
+import { canonicalRedirect } from "./src/canonical.js";
 
 async function start() {
   const isProd = process.env.NODE_ENV === "production";
@@ -34,6 +36,9 @@ async function start() {
     app.use(
       serveStatic(path.resolve(root, "dist/client"), {
         index: false,
+        // No /assets → /assets/ directory redirect: the SSR handler would
+        // send it back (one URL per page), looping.
+        redirect: false,
       })
     );
   }
