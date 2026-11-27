@@ -5,8 +5,10 @@ import { updateProfile } from "../store/slices/authSlice";
 import { toast } from "react-hot-toast";
 import ApiKeysSection from "../components/ApiKeysSection";
 import AgentBillingSettings from "../components/AgentBillingSettings";
+import { useCurrency } from "../hooks/useCurrency";
 
 const Settings: React.FC = () => {
+  const currency = useCurrency();
   const dispatch = useDispatch<AppDispatch>();
   const { user, isLoading, error } = useSelector(
     (state: RootState) => state.auth
@@ -208,18 +210,15 @@ const Settings: React.FC = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Default Hourly Rate
+                Default Hourly Rate ({currency})
               </label>
-              <div className="mt-1 relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                  $
-                </span>
+              <div className="mt-1">
                 <input
                   type="number"
                   name="defaultHourlyRate"
                   value={formData.defaultHourlyRate}
                   onChange={handleInputChange}
-                  className="input-field pl-8"
+                  className="input-field"
                   placeholder="0.00"
                   min="0"
                   step="0.01"

@@ -62,6 +62,10 @@ const initialState: ReportsState = {
   detailedRequestId: null,
 };
 
+/** YYYY-MM-DD of a date in the browser's timezone (the API keys days the same way). */
+const localDayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 // Helper function to get start and end of week (Monday to Sunday)
 const getWeekDates = (weekOffset: number = 0) => {
   const now = new Date();
@@ -108,7 +112,7 @@ export const fetchWeeklyData = createAsyncThunk(
     for (let i = 0; i < 7; i++) {
       const currentDate = new Date(startOfWeek);
       currentDate.setDate(startOfWeek.getDate() + i);
-      const dateString = currentDate.toISOString().split("T")[0];
+      const dateString = localDayKey(currentDate);
 
       // Find existing data for this date
       const existingData = summaryData.dailyBreakdown.find(

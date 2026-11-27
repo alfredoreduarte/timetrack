@@ -77,12 +77,12 @@ const respondWith = (response: unknown) => {
   );
 };
 
-const createTestStore = () => {
+const createTestStore = (currency?: string) => {
   return configureStore({
     reducer: reducers,
     preloadedState: {
       auth: {
-        user: { id: "1", email: "test@example.com", name: "Test User" },
+        user: { id: "1", email: "test@example.com", name: "Test User", ...(currency ? { currency } : {}) },
         token: "mock-token",
         isAuthenticated: true,
         isLoading: false,
@@ -93,8 +93,8 @@ const createTestStore = () => {
   });
 };
 
-const renderWithProviders = (component: React.ReactElement) => {
-  const store = createTestStore();
+const renderWithProviders = (component: React.ReactElement, currency?: string) => {
+  const store = createTestStore(currency);
 
   return {
     store,
@@ -107,8 +107,8 @@ const renderWithProviders = (component: React.ReactElement) => {
 };
 
 // Render and wait for the time entries fetch to settle
-const renderPage = async () => {
-  const result = renderWithProviders(<TimeEntries />);
+const renderPage = async (currency?: string) => {
+  const result = renderWithProviders(<TimeEntries />, currency);
   await waitFor(() => {
     expect(result.store.getState().timeEntries.loading).toBe(false);
   });
@@ -226,6 +226,14 @@ describe("TimeEntries Component", () => {
 
       expect(screen.getByText(money(50, "USD"), exact)).toBeInTheDocument();
       expect(screen.getByText(money(0, "USD"), exact)).toBeInTheDocument();
+    });
+
+    it("displays earnings in the user's currency", async () => {
+      respondWith({ entries: [completedEntry({ hourlyRateSnapshot: 50 })], pagination: pagination(1) });
+
+      await renderPage("EUR");
+
+      expect(screen.getByText(money(50, "EUR"), exact)).toBeInTheDocument();
     });
 
     it("shows delete button only for completed entries", async () => {
