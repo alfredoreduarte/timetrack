@@ -9,14 +9,16 @@ import { importAgentSessions, MAX_IMPORT_SESSIONS, MAX_SPANS_PER_SESSION } from 
 const router = express.Router();
 router.use(authenticate);
 
-// An import can write tens of thousands of rows and take a second or more.
-// At most a few run at once across everyone, which keeps memory bounded on
-// a small server (the 1 MB body cap in app.ts bounds each one); the rest
-// wait their turn for a while, and each account may only have a couple
-// running or waiting, so a few accounts can't keep everyone else out. The
-// hourly cap only stops a runaway loop: the plugin's import of a long
-// history sends up to 50 sessions per request, one at a time, so it must
-// fit a year of heavy use. No RateLimit headers: importers retry later.
+// An import can write tens of thousands of rows and take a second or more,
+// and each one in progress or waiting holds its parsed body (about 6 MB for
+// a 1 MB request, the cap in app.ts). So at most a few run at once across
+// everyone, a few more wait their turn for a while, and the rest are told
+// the server is busy (code import_busy, which the plugin retries): memory
+// stays under (running + waiting) x 6 MB. Each account may only have a
+// couple running or waiting, so a few accounts can't keep everyone else
+// out. The hourly cap only stops a runaway loop: the plugin's import of a
+// long history sends up to 50 sessions per request, one at a time, so it
+// must fit a year of heavy use. No RateLimit headers: importers retry later.
 const importLimiter = rateLimit({
   windowMs: 60 * 60_000,
   limit: () => Number(process.env.AGENT_IMPORTS_PER_HOUR || 1000),
@@ -27,7 +29,9 @@ const importLimiter = rateLimit({
 });
 const maxConcurrentImports = () => Number(process.env.AGENT_IMPORTS_CONCURRENT || 2);
 const maxImportsPerAccount = () => Number(process.env.AGENT_IMPORTS_PER_ACCOUNT || 2);
+const maxQueuedImports = () => Number(process.env.AGENT_IMPORTS_QUEUED || 6);
 const importWaitMs = () => Number(process.env.AGENT_IMPORT_WAIT_MS || 20_000);
+const busy = () => createError("Other imports are running right now; try again in a minute.", 429, "import_busy");
 
 let importsRunning = 0;
 const waitingForSlot: Array<() => void> = [];
@@ -37,12 +41,14 @@ const importsByAccount = new Map<string, number>();
 async function inImportSlot<T>(userId: string, fn: () => Promise<T>): Promise<T> {
   const mine = importsByAccount.get(userId) ?? 0;
   if (mine >= maxImportsPerAccount()) {
-    throw createError("This account already has imports running; send them one at a time.", 429);
+    throw createError("This account already has imports running; send them one at a time.", 429, "import_busy");
   }
   importsByAccount.set(userId, mine + 1);
   try {
     if (importsRunning < maxConcurrentImports() && waitingForSlot.length === 0) {
       importsRunning++;
+    } else if (waitingForSlot.length >= maxQueuedImports()) {
+      throw busy();
     } else {
       // A finishing import hands its slot straight to the next in line.
       await new Promise<void>((resolve, reject) => {
@@ -53,7 +59,7 @@ async function inImportSlot<T>(userId: string, fn: () => Promise<T>): Promise<T>
         const timer = setTimeout(() => {
           const at = waitingForSlot.indexOf(go);
           if (at >= 0) waitingForSlot.splice(at, 1);
-          reject(createError("Other imports are running right now; try again in a minute.", 429));
+          reject(busy());
         }, importWaitMs());
         waitingForSlot.push(go);
       });

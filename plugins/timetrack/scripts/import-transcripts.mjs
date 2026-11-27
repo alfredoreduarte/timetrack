@@ -47,10 +47,13 @@ const BATCH = 50;
 const MAX_BODY_BYTES = 800_000;
 // Written only after a complete, successful import (the plugin's first-run marker).
 const MARK = opt("mark");
-// A busy server answers 429: wait and resend the same batch a few times
-// before giving up (giving up restarts the whole import on a later session).
-const BUSY_RETRIES = 4;
-const BUSY_WAIT_MS = Number(opt("busy-wait-ms", "15000"));
+// A busy server answers 429 with code import_busy (after holding the
+// request in line for up to 20 s): wait and resend the same batch a few
+// times before giving up, which would restart the whole import on a later
+// session. Four tries plus the waits stay under two minutes, the time an
+// interactive /import gets. Other 429s (the hourly cap) won't clear soon.
+const BUSY_RETRIES = 3;
+const BUSY_WAIT_MS = Number(opt("busy-wait-ms", "5000"));
 
 const done = (message) => {
   // Nothing (more) to import is a finished import: don't retry every session.
@@ -279,8 +282,12 @@ const sendBatch = async (batch) => {
       process.exit(1);
     }
     if (res.status !== 429 || attempt >= BUSY_RETRIES) return res;
+    const body = await res.clone().json().catch(() => ({}));
+    if (body.code !== "import_busy") return res;
     await res.body?.cancel().catch(() => {});
-    await new Promise((r) => setTimeout(r, BUSY_WAIT_MS * (attempt + 1)));
+    const wait = BUSY_WAIT_MS * (attempt + 1);
+    console.error(`TimeTrack is busy with other imports; retrying in ${Math.round(wait / 1000)} s...`);
+    await new Promise((r) => setTimeout(r, wait));
   }
 };
 

@@ -3,11 +3,11 @@ import { api, resetDb, createUser, disconnect } from "../../test/helpers";
 
 beforeEach(async () => {
   await resetDb();
-  for (const k of ["AGENT_IMPORTS_PER_HOUR", "AGENT_IMPORTS_CONCURRENT", "AGENT_IMPORTS_PER_ACCOUNT", "AGENT_IMPORT_WAIT_MS"]) delete process.env[k];
+  for (const k of ["AGENT_IMPORTS_PER_HOUR", "AGENT_IMPORTS_CONCURRENT", "AGENT_IMPORTS_PER_ACCOUNT", "AGENT_IMPORTS_QUEUED", "AGENT_IMPORT_WAIT_MS"]) delete process.env[k];
 });
 afterEach(() => jest.restoreAllMocks());
 afterAll(async () => {
-  for (const k of ["AGENT_IMPORTS_PER_HOUR", "AGENT_IMPORTS_CONCURRENT", "AGENT_IMPORTS_PER_ACCOUNT", "AGENT_IMPORT_WAIT_MS"]) delete process.env[k];
+  for (const k of ["AGENT_IMPORTS_PER_HOUR", "AGENT_IMPORTS_CONCURRENT", "AGENT_IMPORTS_PER_ACCOUNT", "AGENT_IMPORTS_QUEUED", "AGENT_IMPORT_WAIT_MS"]) delete process.env[k];
   await disconnect();
 });
 
@@ -29,20 +29,18 @@ describe("transcript import limits", () => {
     expect((await api().post("/agent-sessions/import").set(b.auth).send(body())).status).toBe(200);
   });
 
-  /** Holds the next n imports until released; reports each one as it starts. */
+  /** Records every import as it starts; holds the first n until released. */
   function holdImports(n: number) {
     const real = imports.importAgentSessions;
     const started: string[] = [];
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
-    const spy = jest.spyOn(imports, "importAgentSessions");
-    for (let i = 0; i < n; i++) {
-      spy.mockImplementationOnce(async (...args) => {
-        started.push(args[0].userId);
-        await gate;
-        return real(...args);
-      });
-    }
+    let toHold = n;
+    jest.spyOn(imports, "importAgentSessions").mockImplementation(async (...args) => {
+      started.push(args[0].userId);
+      if (toHold-- > 0) await gate;
+      return real(...args);
+    });
     return { started, release };
   }
   const until = async (cond: () => boolean) => {
@@ -64,6 +62,7 @@ describe("transcript import limits", () => {
     held.release();
     const [r1, r2, r3] = await Promise.all([first, second, third]);
     expect([r1.status, r2.status, r3.status]).toEqual([200, 200, 200]);
+    expect(held.started).toEqual([a.user.id, b.user.id, c.user.id]);
   });
 
   it("serves waiting imports in arrival order", async () => {
@@ -76,6 +75,7 @@ describe("transcript import limits", () => {
     await new Promise((r) => setTimeout(r, 50));
     const third = send(c.auth);
     await new Promise((r) => setTimeout(r, 50));
+    expect(held.started).toEqual([a.user.id]);
     held.release();
     await Promise.all([first, second, third]);
     expect(held.started).toEqual([a.user.id, b.user.id, c.user.id]);
@@ -84,6 +84,8 @@ describe("transcript import limits", () => {
   it("gives up with a 429 after waiting too long", async () => {
     process.env.AGENT_IMPORTS_CONCURRENT = "1";
     process.env.AGENT_IMPORT_WAIT_MS = "100";
+    // One per account, so the retry below proves the wait gave its count back.
+    process.env.AGENT_IMPORTS_PER_ACCOUNT = "1";
     const [a, b] = [await createUser(), await createUser()];
     const held = holdImports(1);
     const first = send(a.auth);
@@ -95,7 +97,7 @@ describe("transcript import limits", () => {
       held.release(); // even if that failed, so nothing is left hanging
     }
     expect(second.status).toBe(429);
-    expect(second.body.error).toMatch(/Other imports are running/);
+    expect(second.body).toMatchObject({ code: "import_busy", error: expect.stringMatching(/Other imports are running/) });
     expect((await first).status).toBe(200);
     // The timed-out wait left the line: the next import runs at once.
     expect((await send(b.auth)).status).toBe(200);
@@ -116,14 +118,39 @@ describe("transcript import limits", () => {
       held.release();
     }
     expect(again.status).toBe(429);
-    expect(again.body.error).toMatch(/one at a time/);
+    expect(again.body).toMatchObject({ code: "import_busy", error: expect.stringMatching(/one at a time/) });
     expect(other.status).toBe(200);
     expect((await first).status).toBe(200);
     expect((await send(a.auth)).status).toBe(200);
   });
 
+  it("lets only so many wait; the rest hear the server is busy", async () => {
+    process.env.AGENT_IMPORTS_CONCURRENT = "1";
+    process.env.AGENT_IMPORTS_QUEUED = "1";
+    const [a, b, c] = [await createUser(), await createUser(), await createUser()];
+    const held = holdImports(1);
+    const first = send(a.auth);
+    await until(() => held.started.length === 1);
+    const second = send(b.auth); // waits
+    await new Promise((r) => setTimeout(r, 50));
+    let third;
+    try {
+      third = await send(c.auth); // line full
+    } finally {
+      held.release();
+    }
+    expect(third.status).toBe(429);
+    expect(third.body.code).toBe("import_busy");
+    expect((await first).status).toBe(200);
+    expect((await second).status).toBe(200);
+    // Turned away before waiting: its count came back too.
+    expect((await send(c.auth)).status).toBe(200);
+  });
+
   it("frees the slot when an import fails", async () => {
     process.env.AGENT_IMPORTS_CONCURRENT = "1";
+    // One per account, so the retry below proves the failure gave its count back.
+    process.env.AGENT_IMPORTS_PER_ACCOUNT = "1";
     const a = await createUser();
     jest.spyOn(imports, "importAgentSessions").mockRejectedValueOnce(new Error("boom"));
     expect((await api().post("/agent-sessions/import").set(a.auth).send(body())).status).toBe(500);
