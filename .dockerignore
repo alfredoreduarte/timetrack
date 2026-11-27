@@ -41,6 +41,11 @@ Thumbs.db
 logs/
 *.log
 
+# Database dumps deploy.sh writes next to the compose files: they hold user
+# data, so they must never reach an image or the build cache (root only, so
+# Prisma's migration.sql files are still included)
+backup_*.sql
+
 # Database files (SQLite - not needed with PostgreSQL)
 *.db
 *.sqlite

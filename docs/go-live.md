@@ -65,6 +65,14 @@ cleanup on the droplet (`crontab -e`):
 (`-mtime +88` matches dumps 89 or more full days old, so each one is gone
 by day 90.) The same 90 days applies to any copy you keep elsewhere.
 
+Deploys before this release also copied the dumps into Docker's build
+cache. Clear it once, after this release is deployed (it only makes the
+next build slower):
+
+```bash
+docker builder prune -af
+```
+
 The Terms, Privacy Policy and Refund & Cancellation Policy
 (`content/legal/`) are a plain-language starting point written for this
 product, but they aren't legal advice: have them reviewed for where you

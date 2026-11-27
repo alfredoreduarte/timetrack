@@ -107,13 +107,26 @@ describe("DELETE /users/me", () => {
     fake.customers.del
       .mockResolvedValueOnce({ deleted: true })
       .mockRejectedValueOnce(Object.assign(new Error("No such customer"), { code: "resource_missing" }));
-    const [a, b] = await Promise.all([
-      api().delete("/users/me").set(auth).send({ password: PASSWORD }),
-      api().delete("/users/me").set(auth).send({ password: PASSWORD }),
-    ]);
-    // The second may find the account already gone (401/404 from auth) or finish the job (200).
-    expect([a.status, b.status]).toContain(200);
-    for (const s of [a.status, b.status]) expect([200, 401, 404]).toContain(s);
+    // Both requests get past the password check before either deletes anything.
+    const realCompare = bcrypt.compare.bind(bcrypt);
+    let arrived = 0;
+    let release!: () => void;
+    const bothChecking = new Promise<void>((resolve) => (release = resolve));
+    const spy = jest.spyOn(bcrypt, "compare").mockImplementation(async (pw: string, hash: string) => {
+      if (++arrived === 2) release();
+      await bothChecking;
+      return realCompare(pw, hash);
+    });
+    try {
+      const [a, b] = await Promise.all([
+        api().delete("/users/me").set(auth).send({ password: PASSWORD }),
+        api().delete("/users/me").set(auth).send({ password: PASSWORD }),
+      ]);
+      expect([a.status, b.status]).toEqual([200, 200]);
+      expect(arrived).toBe(2);
+    } finally {
+      spy.mockRestore();
+    }
     expect(await prisma.user.count({ where: { id: user.id } })).toBe(0);
   });
 
