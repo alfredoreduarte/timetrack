@@ -226,6 +226,8 @@ router.put(
  *         description: Password changed successfully
  *       400:
  *         description: Invalid current password
+ *       429:
+ *         description: Too many password attempts (10 per 15 minutes per account)
  */
 router.post(
   "/change-password",
@@ -576,6 +578,14 @@ router.get(
  *         description: Account deleted
  *       400:
  *         description: Password is incorrect
+ *       401:
+ *         description: Not signed in
+ *       403:
+ *         description: Called with an API key (a signed-in session is required)
+ *       409:
+ *         description: The account changed while it was being deleted, or concurrent writes kept aborting it. The account is still there (any subscription may already be cancelled); retrying is safe
+ *       429:
+ *         description: Too many password attempts (10 per 15 minutes per account)
  *       502:
  *         description: The subscription couldn't be cancelled; nothing was deleted
  */

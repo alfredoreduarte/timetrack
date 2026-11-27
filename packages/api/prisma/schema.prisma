@@ -199,6 +199,9 @@ model Timer {
   @@index([userId, status])
   @@index([status, lastActivityAt])
   @@map("timers")
+  // Deleting a project or task (or the account) nulls these: index them
+  @@index([projectId])
+  @@index([taskId])
 }
 
 // Work-log lines attached to a timer ("refactored auth middleware").
@@ -269,6 +272,8 @@ model Favorite {
   @@map("favorites")
   @@index([userId])
   @@index([userId, displayOrder])
+  @@index([projectId])
+  @@index([taskId])
 }
 // Append-only record of changes to billable data: who (user, API key, or the
 // system), through which client, and what changed. Lets a developer show a
@@ -322,6 +327,7 @@ model ShareLink {
 
   @@index([userId])
   @@map("share_links")
+  @@index([projectId])
 }
 
 // Stripe webhook events already processed (idempotency: Stripe retries and
