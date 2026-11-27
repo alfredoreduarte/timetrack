@@ -5,6 +5,7 @@ import { RootState, AppDispatch } from "../store";
 import {
   fetchWeeklyData,
   fetchDetailedTimeEntries,
+  getWeekDates,
 } from "../store/slices/reportsSlice";
 import WeeklyChart from "../components/WeeklyChart";
 import DetailedTimeEntriesTable from "../components/DetailedTimeEntriesTable";
@@ -60,8 +61,15 @@ const Reports: React.FC = () => {
   }, [detailedEntries]);
 
   const hasAi = ai.duration > 0;
-  // Named for the week the figures are from.
-  const whichWeek = detailedWeekOffset === 0 ? "this week" : detailedWeekOffset === -1 ? "last week" : "that week";
+  // Named for the week the figures are from (the chart may already show
+  // another one while they load): "this week", "last week", or its dates.
+  const whichWeek = (() => {
+    if (detailedWeekOffset === 0) return "this week";
+    if (detailedWeekOffset === -1) return "last week";
+    const { startDate, endDate } = getWeekDates(detailedWeekOffset);
+    const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return `${day(startDate)} – ${day(endDate)}`;
+  })();
 
   return (
     <div className="space-y-6">
