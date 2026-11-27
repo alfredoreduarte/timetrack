@@ -45,6 +45,9 @@ interface ReportsState {
   currentWeekOffset: number; // 0 = current week, -1 = previous week, etc.
   /** The week detailedEntries are from (they load separately from the chart). */
   detailedWeekOffset: number;
+  /** That week's bounds as requested, so it can be named even after the clock moves on. */
+  detailedWeekStart: string | null;
+  detailedWeekEnd: string | null;
   /** The latest request of each kind; a slower, older response is ignored. */
   weeklyRequestId: string | null;
   detailedRequestId: string | null;
@@ -58,6 +61,8 @@ const initialState: ReportsState = {
   error: null,
   currentWeekOffset: 0,
   detailedWeekOffset: 0,
+  detailedWeekStart: null,
+  detailedWeekEnd: null,
   weeklyRequestId: null,
   detailedRequestId: null,
 };
@@ -148,7 +153,7 @@ export const fetchDetailedTimeEntries = createAsyncThunk(
       timezone: getUserTimezone(),
     });
 
-    return response.timeEntries;
+    return { timeEntries: response.timeEntries, startDate, endDate };
   }
 );
 
@@ -189,8 +194,10 @@ const reportsSlice = createSlice({
       .addCase(fetchDetailedTimeEntries.fulfilled, (state, action) => {
         if (action.meta.requestId !== state.detailedRequestId) return;
         state.detailedLoading = false;
-        state.detailedEntries = action.payload;
+        state.detailedEntries = action.payload.timeEntries;
         state.detailedWeekOffset = action.meta.arg ?? 0;
+        state.detailedWeekStart = action.payload.startDate;
+        state.detailedWeekEnd = action.payload.endDate;
       })
       .addCase(fetchDetailedTimeEntries.rejected, (state, action) => {
         if (action.meta.requestId !== state.detailedRequestId) return;
