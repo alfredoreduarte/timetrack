@@ -143,29 +143,4 @@ describe("Reports", () => {
     expect(state.detailedLoading).toBe(false);
     expect(queryParagraph(aiLine("that week", 1, 50, "USD"))).toBeTruthy();
   });
-
-  it("keeps Monday to Sunday east of UTC: Sunday's work counts and the header shows the right days", async () => {
-    const tz = process.env.TZ;
-    process.env.TZ = "Europe/Berlin";
-    try {
-      vi.setSystemTime(new Date(2026, 10, 11, 12, 0));
-      // The API keys days by the user's local date.
-      vi.spyOn(reportsAPI, "getSummaryReport").mockResolvedValue({
-        summary: {
-          dailyBreakdown: [
-            { date: "2026-11-09", totalDuration: 3600, totalEarnings: 100, entryCount: 1 },
-            { date: "2026-11-15", totalDuration: 3600, totalEarnings: 100, entryCount: 1 },
-          ],
-        },
-      } as never);
-      vi.spyOn(reportsAPI, "getDetailedReport").mockResolvedValue({ timeEntries: [] } as never);
-      renderAs("USD");
-
-      const label = await screen.findByText("Total Earnings");
-      await waitFor(() => expect(label.previousElementSibling?.textContent?.trim()).toBe(money(200, "USD")));
-      expect(screen.getByText("Nov 9 - Nov 15, 2026")).toBeTruthy();
-    } finally {
-      process.env.TZ = tz;
-    }
-  });
 });

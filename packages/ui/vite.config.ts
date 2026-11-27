@@ -29,6 +29,9 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // Child processes, not worker threads: a test that switches the timezone
+    // (process.env.TZ) only takes effect in a process of its own.
+    pool: "forks",
     env: {
       VITE_API_URL: "http://localhost:3011",
     },
