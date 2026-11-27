@@ -9,14 +9,18 @@ import {
 import { fetchTimeEntries, TimeEntry } from "../store/slices/timeEntriesSlice";
 import { fetchProjects } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
-import RunningTimersStack from "../components/RunningTimersStack";
+import TimersBoard from "../components/TimersBoard";
+import GettingStarted from "../components/GettingStarted";
 import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import { PlayIcon } from "@heroicons/react/24/solid";
 import FavoritesBar from "../components/FavoritesBar";
 import FavoriteButton from "../components/FavoriteButton";
+import { money } from "../utils/agentFormat";
+import { useCurrency } from "../hooks/useCurrency";
 
 const Dashboard: React.FC = () => {
+  const currency = useCurrency();
   const dispatch = useDispatch<AppDispatch>();
 
   // Use centralized timer hook
@@ -80,8 +84,11 @@ const Dashboard: React.FC = () => {
         <p className="text-gray-600">Track your time and monitor earnings</p>
       </div>
 
+      {/* First steps for a new account (hidden once done or dismissed) */}
+      <GettingStarted />
+
       {/* Running timers (zero or more) */}
-      <RunningTimersStack />
+      <TimersBoard />
 
       {/* Timer and Earnings Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
@@ -103,7 +110,7 @@ const Dashboard: React.FC = () => {
                 <p className="text-xl font-bold text-gray-900 tabular-nums">
                   {showEarningsPlaceholder
                     ? "..."
-                    : `$${liveEarnings.today.toFixed(2)}`}
+                    : money(liveEarnings.today, currency)}
                 </p>
               </div>
               <div className="h-10 w-10 bg-blue-50 rounded-lg flex items-center justify-center">
@@ -120,7 +127,7 @@ const Dashboard: React.FC = () => {
                 <p className="text-xl font-bold text-gray-900 tabular-nums">
                   {showEarningsPlaceholder
                     ? "..."
-                    : `$${liveEarnings.thisWeek.toFixed(2)}`}
+                    : money(liveEarnings.thisWeek, currency)}
                 </p>
               </div>
               <div className="h-10 w-10 bg-green-50 rounded-lg flex items-center justify-center">
@@ -138,7 +145,7 @@ const Dashboard: React.FC = () => {
                     Earning Now
                   </p>
                   <p className="text-xl font-bold text-green-700 tabular-nums">
-                    ${liveEarnings.currentTimer.toFixed(2)}
+                    {money(liveEarnings.currentTimer, currency)}
                   </p>
                 </div>
                 <div className="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
@@ -220,7 +227,7 @@ const Dashboard: React.FC = () => {
                           {formatReportsDuration(entry.duration || 0)}
                         </p>
                         <p className="text-sm text-green-600">
-                          ${calculateEarnings(entry).toFixed(2)}
+                          {money(calculateEarnings(entry), currency)}
                         </p>
                       </div>
                       {entry.projectId && (

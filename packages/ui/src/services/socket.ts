@@ -35,6 +35,9 @@ interface SocketEventHandlers {
   // Favorite events
   onFavoriteCreated?: EventCallback<Favorite>;
   onFavoriteDeleted?: EventCallback<{ id: string }>;
+  // Timer events (pausable timers). Payload is the full Timer view, or
+  // just { id } for a few server paths — handlers refetch in that case.
+  onTimerEvent?: (event: string, data: unknown) => void;
   // Connection events
   onConnectionStateChange?: EventCallback<ConnectionState>;
 }
@@ -202,6 +205,18 @@ class SocketService {
       console.log("[Socket] favorite-deleted", data.id);
       this.handlers.onFavoriteDeleted?.(data);
     });
+
+    for (const event of [
+      "timer-started",
+      "timer-paused",
+      "timer-resumed",
+      "timer-stopped",
+      "timer-updated",
+      "timer-note-added",
+      "timers-imported",
+    ]) {
+      this.socket.on(event, (data: unknown) => this.handlers.onTimerEvent?.(event, data));
+    }
 
   }
 

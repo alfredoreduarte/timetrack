@@ -5,6 +5,7 @@ import { AppDispatch, RootState } from "../store";
 import { registerUser, clearError } from "../store/slices/authSlice";
 import toast from "react-hot-toast";
 import Captcha from "../components/Captcha";
+import { landingUrl } from "../utils/siteLinks";
 
 const Register: React.FC = () => {
   const [name, setName] = useState("");
@@ -124,7 +125,7 @@ const Register: React.FC = () => {
             Create your account
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Start tracking your time today
+            Every agent session tracked. Pro is free for your first 14 days.
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -304,6 +305,17 @@ const Register: React.FC = () => {
             >
               {isLoading ? "Creating account..." : "Create account"}
             </button>
+            <p className="mt-3 text-center text-xs text-gray-500">
+              By creating an account you agree to the{" "}
+              <a href={`${landingUrl()}/terms`} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-700">
+                Terms of Service
+              </a>{" "}
+              and{" "}
+              <a href={`${landingUrl()}/privacy`} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-700">
+                Privacy Policy
+              </a>
+              .
+            </p>
           </div>
 
           <div className="text-center">

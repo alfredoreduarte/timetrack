@@ -4,6 +4,9 @@ import express from "express";
 import compression from "compression";
 import serveStatic from "serve-static";
 import { createServer as createViteServer } from "vite";
+// ".js" so ts-node's ESM loader (dev:ssr) resolves it; esbuild and tsc map
+// it to the .ts source.
+import { canonicalRedirect } from "./src/canonical.js";
 
 async function start() {
   const isProd = process.env.NODE_ENV === "production";
@@ -28,9 +31,14 @@ async function start() {
     });
   } else {
     app.use(compression());
+    // The raw template has no page in it: send the real home page instead.
+    app.get("/index.html", (_req, res) => res.redirect(301, "/"));
     app.use(
       serveStatic(path.resolve(root, "dist/client"), {
         index: false,
+        // No /assets → /assets/ directory redirect: the SSR handler would
+        // send it back (one URL per page), looping.
+        redirect: false,
       })
     );
   }
@@ -40,13 +48,20 @@ async function start() {
   // -------------------------------------------------------------------
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
-    // Skip SSR for static assets (includes dots or vite client path)
-    if (url.includes(".") || url.startsWith("/@")) {
+    const [pathname, ...rest] = url.split("?");
+    const query = rest.length ? `?${rest.join("?")}` : "";
+    // Skip SSR for static assets (a file extension in the path, not the
+    // query: links like ?utm_source=news.example still render) and Vite's
+    // own paths.
+    if (path.extname(pathname) || pathname.startsWith("/@")) {
       return next();
     }
+    // One URL per page: /terms/ → /terms (always on this site).
+    const canonical = canonicalRedirect(pathname);
+    if (canonical) return res.redirect(301, `${canonical}${query}`);
     try {
       let template: string;
-      let render: () => Promise<string> | string;
+      let render: (url: string) => { html: string; head: string; status: number };
 
       if (!isProd && vite) {
         template = fs.readFileSync(path.resolve(root, "index.html"), "utf-8");
@@ -63,11 +78,11 @@ async function start() {
         render = (await import("./dist/server/entry-server.js")).render;
       }
 
-      const appHtml = await render();
-      console.log("SSR html generated length:", appHtml.length);
-      const html = template.replace(`<!--app-html-->`, appHtml);
+      const page = render(url);
+      // Replacer functions, so "$&" or "$$" in page text stays literal.
+      const html = template.replace(`<!--app-head-->`, () => page.head).replace(`<!--app-html-->`, () => page.html);
 
-      res.status(200).set({ "Content-Type": "text/html" }).end(html);
+      res.status(page.status).set({ "Content-Type": "text/html" }).end(html);
     } catch (err) {
       if (!isProd && vite) {
         vite.ssrFixStacktrace(err as Error);

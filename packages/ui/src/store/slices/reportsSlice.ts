@@ -43,6 +43,16 @@ interface ReportsState {
   detailedLoading: boolean;
   error: string | null;
   currentWeekOffset: number; // 0 = current week, -1 = previous week, etc.
+  /**
+   * The week detailedEntries are from (they load separately from the chart),
+   * as the bounds that were requested: they name it even after the clock
+   * passes Monday.
+   */
+  detailedWeekStart: string | null;
+  detailedWeekEnd: string | null;
+  /** The latest request of each kind; a slower, older response is ignored. */
+  weeklyRequestId: string | null;
+  detailedRequestId: string | null;
 }
 
 const initialState: ReportsState = {
@@ -52,10 +62,18 @@ const initialState: ReportsState = {
   detailedLoading: false,
   error: null,
   currentWeekOffset: 0,
+  detailedWeekStart: null,
+  detailedWeekEnd: null,
+  weeklyRequestId: null,
+  detailedRequestId: null,
 };
 
+/** YYYY-MM-DD of a date in the browser's timezone (the API keys days the same way). */
+const localDayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 // Helper function to get start and end of week (Monday to Sunday)
-const getWeekDates = (weekOffset: number = 0) => {
+export const getWeekDates = (weekOffset: number = 0) => {
   const now = new Date();
   const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
   
@@ -100,7 +118,7 @@ export const fetchWeeklyData = createAsyncThunk(
     for (let i = 0; i < 7; i++) {
       const currentDate = new Date(startOfWeek);
       currentDate.setDate(startOfWeek.getDate() + i);
-      const dateString = currentDate.toISOString().split("T")[0];
+      const dateString = localDayKey(currentDate);
 
       // Find existing data for this date
       const existingData = summaryData.dailyBreakdown.find(
@@ -136,7 +154,7 @@ export const fetchDetailedTimeEntries = createAsyncThunk(
       timezone: getUserTimezone(),
     });
 
-    return response.timeEntries;
+    return { timeEntries: response.timeEntries, startDate, endDate };
   }
 );
 
@@ -153,28 +171,36 @@ const reportsSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchWeeklyData.pending, (state) => {
+      .addCase(fetchWeeklyData.pending, (state, action) => {
         state.loading = true;
         state.error = null;
+        state.weeklyRequestId = action.meta.requestId;
       })
       .addCase(fetchWeeklyData.fulfilled, (state, action) => {
+        if (action.meta.requestId !== state.weeklyRequestId) return;
         state.loading = false;
         state.weeklyData = action.payload;
         state.currentWeekOffset = action.payload.weekOffset;
       })
       .addCase(fetchWeeklyData.rejected, (state, action) => {
+        if (action.meta.requestId !== state.weeklyRequestId) return;
         state.loading = false;
         state.error = action.error.message || "Failed to fetch weekly data";
       })
-      .addCase(fetchDetailedTimeEntries.pending, (state) => {
+      .addCase(fetchDetailedTimeEntries.pending, (state, action) => {
         state.detailedLoading = true;
         state.error = null;
+        state.detailedRequestId = action.meta.requestId;
       })
       .addCase(fetchDetailedTimeEntries.fulfilled, (state, action) => {
+        if (action.meta.requestId !== state.detailedRequestId) return;
         state.detailedLoading = false;
-        state.detailedEntries = action.payload;
+        state.detailedEntries = action.payload.timeEntries;
+        state.detailedWeekStart = action.payload.startDate;
+        state.detailedWeekEnd = action.payload.endDate;
       })
       .addCase(fetchDetailedTimeEntries.rejected, (state, action) => {
+        if (action.meta.requestId !== state.detailedRequestId) return;
         state.detailedLoading = false;
         state.error =
           action.error.message || "Failed to fetch detailed entries";

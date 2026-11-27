@@ -11,12 +11,16 @@ import { fetchProjects, fetchTasks } from "../store/slices/projectsSlice";
 import Timer from "../components/Timer";
 import EditTimeEntryModal from "../components/EditTimeEntryModal";
 import AiBadge from "../components/AiBadge";
+import EntryHistoryModal from "../components/EntryHistoryModal";
 import { formatReportsDuration, formatDateTime } from "../utils/dateTime";
 import { ClockIcon, PencilIcon } from "@heroicons/react/24/outline";
 import { StopIcon } from "@heroicons/react/24/solid";
 import FavoriteButton from "../components/FavoriteButton";
+import { money } from "../utils/agentFormat";
+import { useCurrency } from "../hooks/useCurrency";
 
 const TimeEntries: React.FC = () => {
+  const currency = useCurrency();
   const dispatch = useDispatch<AppDispatch>();
   const { entries, loading, error, pagination } = useSelector(
     (state: RootState) => state.timeEntries
@@ -33,6 +37,7 @@ const TimeEntries: React.FC = () => {
   const [endDate, setEndDate] = useState("");
 
   // Edit modal state
+  const [historyEntryId, setHistoryEntryId] = useState<string | null>(null);
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
@@ -309,7 +314,7 @@ const TimeEntries: React.FC = () => {
                         {formatReportsDuration(entry.duration || 0)}
                       </div>
                       <div className="text-sm text-green-600 font-medium">
-                        ${calculateEarnings(entry).toFixed(2)}
+                        {money(calculateEarnings(entry), currency)}
                       </div>
                       {isRunning ? (
                         <button
@@ -333,6 +338,12 @@ const TimeEntries: React.FC = () => {
                             className="text-red-600 hover:text-red-700 text-sm hover:bg-red-50 px-2 py-1 rounded transition-colors"
                           >
                             Delete
+                          </button>
+                          <button
+                            onClick={() => setHistoryEntryId(entry.id)}
+                            className="text-gray-600 hover:text-gray-800 text-sm hover:bg-gray-100 px-2 py-1 rounded transition-colors"
+                          >
+                            History
                           </button>
                         </div>
                       )}
@@ -366,6 +377,10 @@ const TimeEntries: React.FC = () => {
           </div>
         )}
       </div>
+
+      {historyEntryId && (
+        <EntryHistoryModal entryId={historyEntryId} onClose={() => setHistoryEntryId(null)} />
+      )}
 
       {/* Edit Modal */}
       {editingEntry && (

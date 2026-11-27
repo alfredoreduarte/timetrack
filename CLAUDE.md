@@ -11,8 +11,13 @@ packages/
 ├── mac-app/   # Native macOS SwiftUI — see packages/mac-app/CLAUDE.md
 ├── ios-app/   # Native iOS & watchOS SwiftUI — see packages/ios-app/CLAUDE.md
 ├── landing/   # SSR marketing page (React + Vite)
+├── mcp/       # stdio MCP bridge to the API's hosted /mcp endpoint
 └── shared/    # Shared TypeScript types and utilities
+plugins/
+└── timetrack/ # Claude Code plugin (hooks + remote MCP + commands), listed by .claude-plugin/marketplace.json
 ```
+
+Validate plugin changes with `claude plugin validate ./plugins/timetrack` (and `claude plugin validate .` for the marketplace).
 
 Core data model: **User → Projects → Tasks → TimeEntries**. Hourly rates cascade Task > Project > User.
 
@@ -25,7 +30,7 @@ npm run stop             # Stop all services
 npm run restart          # Restart all services
 npm run status           # Check service status
 npm run build:all        # Build all packages (shared → api → ui → landing)
-npm run test:all         # Run tests across api and ui
+npm run test:all         # Run tests across api, ui and landing
 npm run lint:all         # Lint all packages
 npm run type-check:all
 npm run migrate          # Run DB migrations (dev)

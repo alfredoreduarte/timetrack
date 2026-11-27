@@ -7,6 +7,10 @@ const ALLOWED_VIA = new Set([
   "mac",
   "mcp",
   "api",
+  "claude_code",
+  "cursor",
+  "codex",
+  "import",
 ]);
 
 const isTruthyHeader = (value: string | string[] | undefined): boolean => {

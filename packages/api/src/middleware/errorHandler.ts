@@ -5,7 +5,14 @@ import { ZodError } from "zod";
 export interface AppError extends Error {
   statusCode?: number;
   isOperational?: boolean;
+  /** Machine-readable reason, e.g. "plan_limit" (sent as `code`). */
+  code?: string;
 }
+
+/** Share link URLs carry their token; logs keep only its first characters. */
+export const redactTokens = (url: string) =>
+  // Case-insensitive, like Express's routing: /Public/Timesheets/<token> works too.
+  url.replace(/(\/(?:share|public\/timesheets)\/)([^/?#]{6})[^/?#]*/gi, "$1$2…");
 
 export const errorHandler = (
   err: AppError | ZodError,
@@ -16,11 +23,11 @@ export const errorHandler = (
   let statusCode = 500;
   let message = err.message;
 
-  // Log error
+  // Log error (share link tokens are secrets; keep them out of the logs)
   logger.error("Request failed", {
     error: err.message,
     stack: err.stack,
-    url: req.url,
+    url: redactTokens(req.url),
     method: req.method,
     ip: req.ip,
     userAgent: req.get("User-Agent"),
@@ -64,17 +71,23 @@ export const errorHandler = (
 
   res.status(statusCode).json({
     error: message,
+    // Only codes we set ourselves (createError) — never library codes like Prisma's.
+    ...((err as AppError).isOperational && typeof (err as AppError).code === "string" && statusCode < 500
+      ? { code: (err as AppError).code }
+      : {}),
     ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
   });
 };
 
 export const createError = (
   message: string,
-  statusCode: number = 500
+  statusCode: number = 500,
+  code?: string
 ): AppError => {
   const error = new Error(message) as AppError;
   error.statusCode = statusCode;
   error.isOperational = true;
+  if (code) error.code = code;
   return error;
 };
 

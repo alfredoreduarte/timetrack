@@ -41,6 +41,13 @@ Thumbs.db
 logs/
 *.log
 
+# Files deploy.sh keeps next to the compose files that hold secrets or user
+# data: they must never reach an image or the build cache. The staging env
+# file sits in the staging build context; the dumps are root only, so
+# Prisma's migration.sql files are still included.
+docker.staging.env
+backup_*.sql
+
 # Database files (SQLite - not needed with PostgreSQL)
 *.db
 *.sqlite

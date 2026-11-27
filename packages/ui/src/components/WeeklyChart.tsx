@@ -11,6 +11,7 @@ import {
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import { DailyData } from "../store/slices/reportsSlice";
 import { formatReportsDuration } from "../utils/dateTime";
+import { money } from "../utils/agentFormat";
 
 interface WeeklyChartProps {
   data: DailyData[];
@@ -19,6 +20,8 @@ interface WeeklyChartProps {
   loading: boolean;
   onPreviousWeek: () => void;
   onNextWeek: () => void;
+  /** The user's currency (earnings are in it). */
+  currency?: string;
 }
 
 type ChartMode = "hours" | "earnings";
@@ -28,6 +31,7 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
   weekStartDate,
   weekEndDate,
   loading,
+  currency = "USD",
   onPreviousWeek,
   onNextWeek,
 }) => {
@@ -48,13 +52,12 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
     totalDuration: day.totalDuration,
   }));
 
-  // Format week range for display
+  // Format week range for display: the bounds are local Monday 00:00 and
+  // Sunday 23:59:59.999 as instants, so read them in local time (their UTC
+  // date can be a day off).
   const formatWeekRange = () => {
-    // Extract just the date part and add time to avoid timezone issues
-    const startDateStr = weekStartDate.split('T')[0] + 'T12:00:00';
-    const endDateStr = weekEndDate.split('T')[0] + 'T12:00:00';
-    const startDate = new Date(startDateStr);
-    const endDate = new Date(endDateStr);
+    const startDate = new Date(weekStartDate);
+    const endDate = new Date(weekEndDate);
     return `${startDate.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
@@ -75,7 +78,7 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
           <p className="text-blue-600">
             Hours: {formatReportsDuration(data.totalDuration)}
           </p>
-          <p className="text-green-600">Earnings: ${data.earnings}</p>
+          <p className="text-green-600">Earnings: {money(data.earnings, currency)}</p>
           <p className="text-gray-600">Entries: {data.entryCount}</p>
         </div>
       );
@@ -88,7 +91,11 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
     if (chartMode === "hours") {
       return `${value}h`;
     }
-    return `$${value}`;
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
+    } catch {
+      return `${value} ${currency}`;
+    }
   };
 
   // Calculate totals for the summary
@@ -96,7 +103,8 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
     (sum, day) => sum + day.totalDuration,
     0
   );
-  const totalEarnings = chartData.reduce((sum, day) => sum + day.earnings, 0);
+  // From the unrounded days, rounded once (as the table and AI line are).
+  const totalEarnings = data.reduce((sum, day) => sum + day.totalEarnings, 0);
   const totalEntries = chartData.reduce((sum, day) => sum + day.entryCount, 0);
 
   return (
@@ -107,6 +115,7 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
           <button
             onClick={onPreviousWeek}
             disabled={loading}
+            aria-label="Previous week"
             className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-50"
           >
             <ChevronLeftIcon className="h-5 w-5" />
@@ -122,6 +131,7 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
           <button
             onClick={onNextWeek}
             disabled={loading}
+            aria-label="Next week"
             className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-50"
           >
             <ChevronRightIcon className="h-5 w-5" />
@@ -177,6 +187,8 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={formatYAxis}
+                // Money ticks are whole units (labels drop the cents).
+                allowDecimals={chartMode === "hours"}
               />
               <Tooltip content={customTooltip} />
               <Bar
@@ -201,7 +213,7 @@ const WeeklyChart: React.FC<WeeklyChartProps> = ({
           </div>
           <div className="text-center">
             <p className="text-2xl font-bold text-green-600 tabular-nums">
-              ${Math.round(totalEarnings * 100) / 100}
+              {money(totalEarnings, currency)}
             </p>
             <p className="text-sm text-gray-600">Total Earnings</p>
           </div>

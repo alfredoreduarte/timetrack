@@ -1,5 +1,16 @@
 # TimeTrack Monorepo
 
+## Track Claude Code sessions automatically
+
+```
+claude plugin install timetrack --marketplace alfredoreduarte/timetrack
+```
+
+Every Claude Code session gets its own pausable timer, idle sessions stop billing
+by themselves, and the TimeTrack MCP tools let the agent fix entries and build
+client timesheets. See [`plugins/timetrack`](plugins/timetrack/README.md).
+
+
 A streamlined monorepo for the TimeTrack application with Docker-based development and production deployment.
 
 ## 🚀 Quick Start

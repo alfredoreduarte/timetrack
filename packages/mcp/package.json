@@ -1,7 +1,7 @@
 {
   "name": "@timetrack/mcp",
-  "version": "0.1.0",
-  "description": "MCP server for TimeTrack — lets AI agents (Claude Code, etc.) start/stop timers and manage projects/tasks",
+  "version": "2.0.0",
+  "description": "TimeTrack MCP server (stdio) \u2014 bridges to the hosted MCP endpoint so AI agents can run parallel timers, edit past entries and build timesheets",
   "type": "module",
   "bin": {
     "timetrack-mcp": "dist/index.js"
@@ -15,9 +15,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "undici": "^6.0.0",
-    "zod": "^3.22.0"
+    "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

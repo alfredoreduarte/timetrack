@@ -14,5 +14,7 @@ export default defineConfig({
     host: "0.0.0.0",
     strictPort: true,
   },
-  base: "./",
+  // Always served from the domain root; relative asset paths would break on
+  // nested URLs such as /terms/.
+  base: "/",
 });

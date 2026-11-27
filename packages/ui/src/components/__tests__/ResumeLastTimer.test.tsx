@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ResumeLastTimer from "../ResumeLastTimer";
 import { renderWithProviders, createMockStore } from "../../test/utils";
+import { getStartTimerCalls, resetMockData } from "../../test/mocks/server";
 
 describe("ResumeLastTimer Component", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetMockData();
   });
 
   describe("Visibility", () => {
@@ -145,7 +147,7 @@ describe("ResumeLastTimer Component", () => {
   });
 
   describe("User Interactions", () => {
-    it("should call startTimer when resume button is clicked", async () => {
+    it("should restart the last entry's project, task and description and then hide", async () => {
       const user = userEvent.setup();
       const store = createMockStore();
 
@@ -178,8 +180,14 @@ describe("ResumeLastTimer Component", () => {
       });
       await user.click(resumeButton);
 
-      // Simplified check that the component rendered and button was clickable
-      expect(resumeButton).toBeInTheDocument();
+      await waitFor(() => {
+        expect(store.getState().timer.isRunning).toBe(true);
+      });
+      expect(getStartTimerCalls()).toEqual([
+        { projectId: "project-1", taskId: "task-1", description: "Test work" },
+      ]);
+      // Hidden while a timer runs
+      expect(screen.queryByText("Test Project 1")).not.toBeInTheDocument();
     });
   });
 });

@@ -9,15 +9,24 @@ import {
   ChartBarIcon,
   CogIcon,
   WrenchScrewdriverIcon,
+  DocumentTextIcon,
+  SparklesIcon,
+  CreditCardIcon,
 } from "@heroicons/react/24/outline";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: HomeIcon, shortcutHint: ["D"] },
   { name: "Projects", href: "/projects", icon: FolderIcon, shortcutHint: ["P"] },
   { name: "Time Entries", href: "/time-entries", icon: ClockIcon, shortcutHint: ["T"] },
+  { name: "Timesheet", href: "/timesheet", icon: DocumentTextIcon, shortcutHint: undefined },
   { name: "Reports", href: "/reports", icon: ChartBarIcon, shortcutHint: ["R"] },
+  { name: "Agents", href: "/integrations", icon: SparklesIcon, shortcutHint: undefined },
+  { name: "Billing", href: "/billing", icon: CreditCardIcon, shortcutHint: undefined },
   { name: "Settings", href: "/settings", icon: CogIcon, shortcutHint: ["S"] },
-  { name: "API Test", href: "/api-test", icon: WrenchScrewdriverIcon, shortcutHint: undefined },
+  // A developer tool: only in local dev builds.
+  ...((import.meta as any).env.DEV
+    ? [{ name: "API Test", href: "/api-test", icon: WrenchScrewdriverIcon, shortcutHint: undefined }]
+    : []),
 ];
 
 const isStaging = ((import.meta as any).env.VITE_API_URL || "").includes(

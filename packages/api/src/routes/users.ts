@@ -1,9 +1,12 @@
 import express from "express";
+import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../utils/database";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, requireJwt, AuthenticatedRequest } from "../middleware/auth";
+import { contextFromRequest } from "../services/context";
+import { deleteAccount } from "../services/account";
 
 const router = express.Router();
 
@@ -78,16 +81,46 @@ const updateProfileSchema = z.object({
     .min(60, "Idle timeout must be at least 60 seconds (1 minute)")
     .max(7200, "Idle timeout cannot exceed 7200 seconds (120 minutes)")
     .optional(),
-  aiMultiplier: z
+  // How long an agent timer fed by heartbeats may stay silent before it
+  // auto-pauses (at its last activity).
+  agentIdleTimeoutSeconds: z
     .number()
-    .min(1, "AI multiplier must be at least 1")
-    .max(20, "AI multiplier cannot exceed 20")
+    .int("Agent idle timeout must be a whole number of seconds")
+    .min(60, "Agent idle timeout must be at least 60 seconds")
+    .max(86400, "Agent idle timeout cannot exceed 24 hours")
+    .optional(),
+  // Default for projects: bill overlapping parallel timers once (dedupe)
+  // or per timer (sum).
+  overlapMode: z.enum(["dedupe", "sum"]).optional(),
+  currency: z
+    .string()
+    .regex(/^[A-Z]{3}$/, "Currency must be a 3-letter ISO code like USD or EUR")
     .optional(),
 });
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
-  newPassword: z.string().min(6, "New password must be at least 6 characters"),
+  newPassword: z
+    .string()
+    .min(6, "New password must be at least 6 characters")
+    .max(100, "New password must be at most 100 characters"),
+});
+
+/**
+ * Endpoints that check the account password (a bcrypt compare each): a few
+ * tries per account, so a stolen session can't guess the password or tie up
+ * the CPU.
+ */
+const passwordCheckLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  // No RateLimit/Retry-After headers: the web app reads Retry-After as "the
+  // whole API is limited" and pauses every request, but this limit only
+  // covers password checks.
+  standardHeaders: false,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthenticatedRequest).user?.id ?? req.ip ?? "anon",
+  message: { error: "Too many password attempts. Try again in 15 minutes." },
 });
 
 /**
@@ -150,7 +183,9 @@ router.put(
         email: true,
         defaultHourlyRate: true,
         idleTimeoutSeconds: true,
-        aiMultiplier: true,
+        agentIdleTimeoutSeconds: true,
+        overlapMode: true,
+        currency: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -191,10 +226,13 @@ router.put(
  *         description: Password changed successfully
  *       400:
  *         description: Invalid current password
+ *       429:
+ *         description: Too many password attempts (10 per 15 minutes per account)
  */
 router.post(
   "/change-password",
   requireJwt,
+  passwordCheckLimiter,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { currentPassword, newPassword } = changePasswordSchema.parse(
       req.body
@@ -510,6 +548,55 @@ router.get(
         },
       },
     });
+  })
+);
+
+/**
+ * @swagger
+ * /users/me:
+ *   delete:
+ *     summary: Delete the account and all of its data
+ *     description: >
+ *       Cancels any subscription (the Stripe customer is deleted) and removes
+ *       every project, entry, timer, note, API key and share link. Needs the
+ *       account password, and a signed-in session (not an API key).
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [password]
+ *             properties:
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Account deleted
+ *       400:
+ *         description: Password is incorrect
+ *       401:
+ *         description: Not signed in
+ *       403:
+ *         description: Called with an API key (a signed-in session is required)
+ *       409:
+ *         description: The account changed while it was being deleted, or concurrent writes kept aborting it. The account is still there (any subscription may already be cancelled); retrying is safe
+ *       429:
+ *         description: Too many password attempts (10 per 15 minutes per account)
+ *       502:
+ *         description: The subscription couldn't be cancelled; nothing was deleted
+ */
+router.delete(
+  "/me",
+  requireJwt,
+  passwordCheckLimiter,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { password } = z.object({ password: z.string().min(1).max(1000) }).parse(req.body ?? {});
+    await deleteAccount(contextFromRequest(req), password);
+    res.json({ deleted: true });
   })
 );
 

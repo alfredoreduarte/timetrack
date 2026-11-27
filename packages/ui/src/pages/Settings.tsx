@@ -4,8 +4,12 @@ import { RootState, AppDispatch } from "../store";
 import { updateProfile } from "../store/slices/authSlice";
 import { toast } from "react-hot-toast";
 import ApiKeysSection from "../components/ApiKeysSection";
+import AgentBillingSettings from "../components/AgentBillingSettings";
+import { useCurrency } from "../hooks/useCurrency";
+import DeleteAccount from "../components/DeleteAccount";
 
 const Settings: React.FC = () => {
+  const currency = useCurrency();
   const dispatch = useDispatch<AppDispatch>();
   const { user, isLoading, error } = useSelector(
     (state: RootState) => state.auth
@@ -17,7 +21,6 @@ const Settings: React.FC = () => {
     email: "",
     defaultHourlyRate: "",
     idleTimeoutMinutes: "",
-    aiMultiplier: "",
   });
 
   const [hasChanges, setHasChanges] = useState(false);
@@ -40,10 +43,6 @@ const Settings: React.FC = () => {
             ? user.defaultHourlyRate.toString()
             : "",
         idleTimeoutMinutes: idleMinutes,
-        aiMultiplier:
-          user.aiMultiplier !== null && user.aiMultiplier !== undefined
-            ? user.aiMultiplier.toString()
-            : "3",
       });
     }
   }, [user]);
@@ -66,19 +65,9 @@ const Settings: React.FC = () => {
           : "10";
       const hasIdleTimeoutChange =
         formData.idleTimeoutMinutes !== currentIdleMinutes;
-      const currentMultiplier =
-        user.aiMultiplier !== null && user.aiMultiplier !== undefined
-          ? user.aiMultiplier.toString()
-          : "3";
-      const hasMultiplierChange =
-        formData.aiMultiplier !== currentMultiplier;
 
       setHasChanges(
-        hasNameChange ||
-          hasEmailChange ||
-          hasRateChange ||
-          hasIdleTimeoutChange ||
-          hasMultiplierChange
+        hasNameChange || hasEmailChange || hasRateChange || hasIdleTimeoutChange
       );
     }
   }, [formData, user]);
@@ -104,7 +93,6 @@ const Settings: React.FC = () => {
       email?: string;
       defaultHourlyRate?: number;
       idleTimeoutSeconds?: number;
-      aiMultiplier?: number;
     } = {};
 
     if (formData.name !== (user?.name || "")) {
@@ -145,19 +133,6 @@ const Settings: React.FC = () => {
       updateData.idleTimeoutSeconds = minutes * 60;
     }
 
-    const currentMultiplier =
-      user?.aiMultiplier !== null && user?.aiMultiplier !== undefined
-        ? user.aiMultiplier.toString()
-        : "3";
-    if (formData.aiMultiplier !== currentMultiplier) {
-      const multiplier = parseFloat(formData.aiMultiplier);
-      if (isNaN(multiplier) || multiplier < 1 || multiplier > 20) {
-        toast.error("AI multiplier must be between 1 and 20.");
-        return;
-      }
-      updateData.aiMultiplier = multiplier;
-    }
-
     try {
       await dispatch(updateProfile(updateData)).unwrap();
       toast.success("Profile updated successfully!");
@@ -182,10 +157,6 @@ const Settings: React.FC = () => {
             ? user.defaultHourlyRate.toString()
             : "",
         idleTimeoutMinutes: idleMinutes,
-        aiMultiplier:
-          user.aiMultiplier !== null && user.aiMultiplier !== undefined
-            ? user.aiMultiplier.toString()
-            : "3",
       });
     }
   };
@@ -240,18 +211,15 @@ const Settings: React.FC = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Default Hourly Rate
+                Default Hourly Rate ({currency})
               </label>
-              <div className="mt-1 relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                  $
-                </span>
+              <div className="mt-1">
                 <input
                   type="number"
                   name="defaultHourlyRate"
                   value={formData.defaultHourlyRate}
                   onChange={handleInputChange}
-                  className="input-field pl-8"
+                  className="input-field"
                   placeholder="0.00"
                   min="0"
                   step="0.01"
@@ -283,29 +251,6 @@ const Settings: React.FC = () => {
               </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                AI Billing Multiplier
-              </label>
-              <input
-                type="number"
-                name="aiMultiplier"
-                value={formData.aiMultiplier}
-                onChange={handleInputChange}
-                className="input-field mt-1"
-                placeholder="3"
-                min="1"
-                max="20"
-                step="0.1"
-                required
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Reports can apply this multiplier to time entries created by AI
-                agents (so 1 AI hour shows as {parseFloat(formData.aiMultiplier || "3").toFixed(1)} billable hours).
-                Pick what represents equivalent senior-dev time for the work.
-              </p>
-            </div>
-
             <div className="flex space-x-3">
               <button
                 type="submit"
@@ -333,52 +278,21 @@ const Settings: React.FC = () => {
         </div>
 
         <div className="card p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
-            Preferences
-          </h3>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">
-                Email notifications
-              </span>
-              <input type="checkbox" className="rounded" />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">
-                Desktop notifications
-              </span>
-              <input type="checkbox" className="rounded" />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">
-                Auto-start timer
-              </span>
-              <input type="checkbox" className="rounded" />
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Account</h3>
+          <div className="text-xs text-gray-500 space-y-1">
+            <div>User ID: {user?.id}</div>
+            <div>
+              Member since:{" "}
+              {user?.createdAt
+                ? new Date(user.createdAt).toLocaleDateString()
+                : "N/A"}
             </div>
           </div>
-
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <h4 className="text-sm font-medium text-gray-900 mb-2">
-              Account Info
-            </h4>
-            <div className="text-xs text-gray-500 space-y-1">
-              <div>User ID: {user?.id}</div>
-              <div>
-                Member since:{" "}
-                {user?.createdAt
-                  ? new Date(user.createdAt).toLocaleDateString()
-                  : "N/A"}
-              </div>
-              <div>
-                Last updated:{" "}
-                {user?.updatedAt
-                  ? new Date(user.updatedAt).toLocaleDateString()
-                  : "N/A"}
-              </div>
-            </div>
-          </div>
+          <DeleteAccount />
         </div>
       </div>
+
+      <AgentBillingSettings />
 
       <ApiKeysSection />
     </div>

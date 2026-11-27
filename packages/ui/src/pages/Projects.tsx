@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from "react";
+import ProjectAgentSettings from "../components/ProjectAgentSettings";
+import { money } from "../utils/agentFormat";
+import { useCurrency } from "../hooks/useCurrency";
 import { useDispatch, useSelector } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -308,6 +311,7 @@ const Projects: React.FC = () => {
     "#06B6D4", // Cyan
     "#84CC16", // Lime
   ];
+  const currency = useCurrency();
 
   if (loading && projects.length === 0) {
     return (
@@ -364,6 +368,8 @@ const Projects: React.FC = () => {
             New Task
           </button>
         </div>
+
+        <ProjectAgentSettings project={selectedProject} />
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-md p-4">
@@ -440,7 +446,7 @@ const Projects: React.FC = () => {
                         </span>
                         {task.hourlyRate !== null && task.hourlyRate !== undefined && (
                           <span className="font-medium tabular-nums">
-                            ${task.hourlyRate}/hr
+                            {money(task.hourlyRate, currency)}/hr
                           </span>
                         )}
                         {task._count?.timeEntries && (
@@ -521,7 +527,7 @@ const Projects: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Hourly Rate ($)
+                      Hourly Rate ({currency})
                     </label>
                     <input
                       type="number"
@@ -708,7 +714,7 @@ const Projects: React.FC = () => {
                   Created {new Date(project.createdAt).toLocaleDateString()}
                 </span>
                 {project.hourlyRate !== null && project.hourlyRate !== undefined && (
-                  <span className="font-medium tabular-nums">${project.hourlyRate}/hr</span>
+                  <span className="font-medium tabular-nums">{money(project.hourlyRate, currency)}/hr</span>
                 )}
               </div>
             </div>
@@ -788,7 +794,7 @@ const Projects: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Hourly Rate ($)
+                    Hourly Rate ({currency})
                   </label>
                   <input
                     type="number"

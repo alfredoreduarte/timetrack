@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "timetrack": {
+      "type": "http",
+      "url": "${user_config.api_url}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${user_config.api_key}",
+        "X-Client": "claude_code"
+      }
+    }
+  }
+}

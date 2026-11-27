@@ -8,9 +8,13 @@ import timerSlice, {
   resetTimer,
   clearError,
 } from "../timerSlice";
+import { http, HttpResponse } from "msw";
 import {
+  apiPath,
   resetMockData,
+  server,
   setMockCurrentEntry,
+  setMockTimeEntries,
 } from "../../../test/mocks/server";
 
 // Create a test store
@@ -170,7 +174,8 @@ describe("timerSlice", () => {
       expect(state.error).toBe(null);
     });
 
-    it("should handle timer start without project ID", async () => {
+    it("should start an unassigned timer without a project ID", async () => {
+      // The API accepts timers with no project (assigned later, e.g. from the board)
       const store = createTestStore();
 
       const result = await store.dispatch(
@@ -179,13 +184,44 @@ describe("timerSlice", () => {
         })
       );
 
-      expect(result.type).toBe("timer/startTimer/rejected");
+      expect(result.type).toBe("timer/startTimer/fulfilled");
 
+      const state = store.getState().timer;
+      expect(state.isRunning).toBe(true);
+      expect(state.currentEntry?.projectId).toBe(null);
+      expect(state.currentEntry?.description).toBe("Test work without project");
+    });
+
+    it("should surface the API error message when the start is rejected", async () => {
+      // Not a 429: the API client treats any 429 as rate limiting and blocks
+      // every request for up to 60s, which would leak into later tests.
+      server.use(
+        http.post(apiPath("/time-entries/start"), () =>
+          HttpResponse.json({ error: "Project not found" }, { status: 404 })
+        )
+      );
+      const store = createTestStore();
+
+      const result = await store.dispatch(startTimer({ projectId: "project-1" }));
+
+      expect(result.type).toBe("timer/startTimer/rejected");
       const state = store.getState().timer;
       expect(state.loading).toBe(false);
       expect(state.isRunning).toBe(false);
       expect(state.currentEntry).toBe(null);
-      expect(state.error).toBe("Failed to start timer");
+      expect(state.error).toBe("Project not found");
+    });
+
+    it("should fall back to a generic error when the API gives no message", async () => {
+      server.use(
+        http.post(apiPath("/time-entries/start"), () => HttpResponse.error())
+      );
+      const store = createTestStore();
+
+      const result = await store.dispatch(startTimer({ projectId: "project-1" }));
+
+      expect(result.type).toBe("timer/startTimer/rejected");
+      expect(store.getState().timer.error).toBe("Failed to start timer");
     });
 
     it("should handle timer start with only project ID", async () => {
@@ -203,7 +239,7 @@ describe("timerSlice", () => {
       expect(state.isRunning).toBe(true);
       expect(state.currentEntry?.projectId).toBe("project-1");
       expect(state.currentEntry?.taskId).toBe(null);
-      expect(state.currentEntry?.description).toBe("");
+      expect(state.currentEntry?.description).toBe(null);
     });
 
     it("should set loading state during timer start", async () => {
@@ -264,7 +300,25 @@ describe("timerSlice", () => {
 
       const state = store.getState().timer;
       expect(state.loading).toBe(false);
-      expect(state.error).toBe("Failed to stop timer");
+      expect(state.stoppingIds).toEqual({});
+      expect(state.error).toBe("Time entry not found");
+    });
+
+    it("should stop only the given timer when several are running", async () => {
+      const store = createTestStore();
+
+      await store.dispatch(startTimer({ projectId: "project-1" }));
+      const first = store.getState().timer.currentEntry!;
+      await store.dispatch(startTimer({ projectId: "project-2" }));
+      const second = store.getState().timer.currentEntry!;
+      expect(store.getState().timer.runningEntries).toHaveLength(2);
+
+      await store.dispatch(stopTimer(second.id));
+
+      const state = store.getState().timer;
+      expect(state.runningEntries.map((e) => e.id)).toEqual([first.id]);
+      expect(state.isRunning).toBe(true);
+      expect(state.currentEntry?.id).toBe(first.id);
     });
 
     it("should set loading state during timer stop", async () => {
@@ -336,55 +390,80 @@ describe("timerSlice", () => {
       expect(state.elapsedTime).toBe(0);
     });
 
-    it("should handle API returning null timeEntry gracefully", async () => {
-      // This test ensures that when the API returns { timeEntry: null },
-      // the frontend handles it correctly
+    it("should track every running entry, most recent first", async () => {
+      const startedAt = (secondsAgo: number) =>
+        new Date(Date.now() - secondsAgo * 1000).toISOString();
+      const entry = (id: string, secondsAgo: number) => ({
+        id,
+        description: id,
+        startTime: startedAt(secondsAgo),
+        endTime: null,
+        duration: null,
+        projectId: "project-1",
+      });
+      // GET /time-entries/running returns newest first
+      setMockTimeEntries([entry("newer", 60), entry("older", 600)]);
+
       const store = createTestStore();
-
-      // Explicitly set mock to null to get { timeEntry: null } response
-      setMockCurrentEntry(null);
-
       const result = await store.dispatch(fetchRunningEntries());
 
       expect(result.type).toBe("timer/fetchRunningEntries/fulfilled");
-      expect(result.payload).toBe(null);
+      const state = store.getState().timer;
+      expect(state.runningEntries.map((e) => e.id)).toEqual(["newer", "older"]);
+      expect(state.currentEntry?.id).toBe("newer");
+      expect(state.elapsedById.newer).toBeGreaterThanOrEqual(59);
+      expect(state.elapsedById.older).toBeGreaterThanOrEqual(599);
+      expect(state.elapsedTime).toBe(state.elapsedById.newer);
+    });
+
+    it("should replace stale running entries with the server's list", async () => {
+      const store = createTestStore();
+      await store.dispatch(startTimer({ projectId: "project-1" }));
+      expect(store.getState().timer.isRunning).toBe(true);
+
+      // Stopped elsewhere: the server no longer reports it as running
+      resetMockData();
+      await store.dispatch(fetchRunningEntries());
 
       const state = store.getState().timer;
+      expect(state.runningEntries).toEqual([]);
+      expect(state.elapsedById).toEqual({});
       expect(state.isRunning).toBe(false);
       expect(state.currentEntry).toBe(null);
-      expect(state.elapsedTime).toBe(0);
+    });
+
+    it("should keep the current state when the running list can't be fetched", async () => {
+      const store = createTestStore();
+      await store.dispatch(startTimer({ projectId: "project-1" }));
+      const before = store.getState().timer.runningEntries;
+
+      server.use(
+        http.get(apiPath("/time-entries/running"), () =>
+          HttpResponse.json({ error: "Server error" }, { status: 500 })
+        )
+      );
+      const result = await store.dispatch(fetchRunningEntries());
+
+      expect(result.type).toBe("timer/fetchRunningEntries/rejected");
+      const state = store.getState().timer;
+      expect(state.fetchingCurrentEntry).toBe(false);
+      expect(state.runningEntries).toEqual(before);
+      expect(state.isRunning).toBe(true);
       expect(state.error).toBe(null);
     });
 
-    it("should handle legacy 404 responses gracefully for backward compatibility", async () => {
-      // This test ensures backward compatibility with legacy API behavior
-      // that might still return 404 for no current entry
+    it("should skip a fetch while another one is in flight", async () => {
       const store = createTestStore();
 
-      // Mock a 404 response directly using MSW
-      const { server } = await import("../../../test/mocks/server");
-      const { http, HttpResponse } = await import("msw");
+      const first = store.dispatch(fetchRunningEntries());
+      const second = await store.dispatch(fetchRunningEntries());
+      await first;
 
-      server.use(
-        http.get("http://localhost:3011/time-entries/current", () => {
-          return HttpResponse.json(
-            { message: "No running time entry found" },
-            { status: 404 }
-          );
-        })
-      );
-
-      const result = await store.dispatch(fetchRunningEntries());
-
-      // Should handle 404 gracefully and return fulfilled with null
-      expect(result.type).toBe("timer/fetchRunningEntries/fulfilled");
-      expect(result.payload).toBe(null);
-
-      const state = store.getState().timer;
-      expect(state.isRunning).toBe(false);
-      expect(state.currentEntry).toBe(null);
-      expect(state.elapsedTime).toBe(0);
-      expect(state.error).toBe(null);
+      // A condition-skipped thunk resolves to a rejected action flagged meta.condition
+      expect(
+        fetchRunningEntries.rejected.match(second) && second.meta.condition
+      ).toBe(true);
+      expect(store.getState().timer.fetchingCurrentEntry).toBe(false);
     });
 
     it("should calculate elapsed time correctly", async () => {
