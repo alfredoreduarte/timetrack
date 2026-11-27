@@ -4,6 +4,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import { reducers } from "../../store/reducers";
 import { renderWithProviders } from "../../test/utils";
 import { reportsAPI } from "../../services/api";
+import { getWeekDates } from "../../store/slices/reportsSlice";
 import { money } from "../../utils/agentFormat";
 import Reports from "../Reports";
 
@@ -110,7 +111,7 @@ describe("Reports", () => {
     fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
     expect(await findParagraph(aiLine("Oct 26 – Nov 1", 0.5, 40, "USD"))).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
-    await waitFor(() => expect(store.getState().reports.detailedWeekOffset).toBe(-3));
+    await waitFor(() => expect(store.getState().reports.detailedWeekStart).toBe(getWeekDates(-3).startDate));
     expect(document.body.textContent).not.toContain("AI work");
   });
 
@@ -139,7 +140,7 @@ describe("Reports", () => {
 
     const state = store.getState().reports;
     expect(state.currentWeekOffset).toBe(-2);
-    expect(state.detailedWeekOffset).toBe(-2);
+    expect(state.detailedWeekStart).toBe(getWeekDates(-2).startDate);
     expect(state.detailedLoading).toBe(false);
     expect(queryParagraph(aiLine("Oct 26 – Nov 1", 1, 50, "USD"))).toBeTruthy();
   });
