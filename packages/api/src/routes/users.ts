@@ -114,10 +114,13 @@ const changePasswordSchema = z.object({
 const passwordCheckLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  standardHeaders: true,
+  // No RateLimit/Retry-After headers: the web app reads Retry-After as "the
+  // whole API is limited" and pauses every request, but this limit only
+  // covers password checks.
+  standardHeaders: false,
   legacyHeaders: false,
   keyGenerator: (req) => (req as AuthenticatedRequest).user?.id ?? req.ip ?? "anon",
-  message: { error: "Too many attempts, try again in a few minutes." },
+  message: { error: "Too many password attempts. Try again in 15 minutes." },
 });
 
 /**

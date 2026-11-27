@@ -13,7 +13,12 @@ const Support: React.FC = () => (
           </a>{" "}
           for help, billing, refunds and privacy requests. We answer within two business days.
         </p>
-      ) : null}
+      ) : (
+        <p>
+          For anything private (your account, billing, a refund or a privacy request), open an issue that says only
+          that you need private help, and we'll set up a private channel with you.
+        </p>
+      )}
       {site.githubIssues ? (
         <p>
           Found a bug or want a feature? Open an issue on{" "}

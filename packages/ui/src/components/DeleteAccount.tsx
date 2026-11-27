@@ -1,14 +1,17 @@
 import React, { useState } from "react";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { authAPI } from "../services/api";
 import { logout } from "../store/slices/authSlice";
+import { RootState } from "../store";
+import { forgetChecklist } from "../utils/onboarding";
 
 /** Permanently deletes the account, after the password is confirmed. */
 const DeleteAccount: React.FC = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const userId = useSelector((state: RootState) => state.auth.user?.id);
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -20,6 +23,7 @@ const DeleteAccount: React.FC = () => {
     setError(null);
     try {
       await authAPI.deleteAccount(password);
+      forgetChecklist(userId);
       dispatch(logout());
       toast.success("Your account and all of its data were deleted.");
       navigate("/login", { replace: true });

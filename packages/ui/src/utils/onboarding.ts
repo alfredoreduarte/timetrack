@@ -29,3 +29,14 @@ export const markChecklistDone = (userId: string | undefined) => write("dismisse
 /** A timesheet went out as CSV or Markdown (Free accounts can't make share links). */
 export const timesheetSent = (userId: string | undefined) => read("timesheetSent", userId);
 export const markTimesheetSent = (userId: string | undefined) => write("timesheetSent", userId);
+
+/** Drops this browser's checklist flags for an account (it was deleted). */
+export const forgetChecklist = (userId: string | undefined) => {
+  if (!userId) return;
+  try {
+    localStorage.removeItem(key("dismissed", userId));
+    localStorage.removeItem(key("timesheetSent", userId));
+  } catch {
+    // Nothing was stored.
+  }
+};
