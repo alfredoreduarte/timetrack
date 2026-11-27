@@ -6,6 +6,7 @@ import { Routes, Route } from "react-router-dom";
 import { reducers } from "../../store/reducers";
 import { renderWithProviders } from "../../test/utils";
 import { server, apiPath } from "../../test/mocks/server";
+import { markChecklistDone, markTimesheetSent } from "../../utils/onboarding";
 import DeleteAccount from "../DeleteAccount";
 
 function signedIn() {
@@ -46,6 +47,8 @@ describe("DeleteAccount", () => {
       })
     );
     const store = signedIn();
+    markChecklistDone("u1");
+    markTimesheetSent("u1");
     renderPage(store);
     fireEvent.click(screen.getByRole("button", { name: "Delete my account…" }));
     fireEvent.change(screen.getByLabelText("Your password, to confirm"), { target: { value: "right one" } });
@@ -54,5 +57,7 @@ describe("DeleteAccount", () => {
     expect(body).toEqual({ password: "right one" });
     await waitFor(() => expect(store.getState().auth.isAuthenticated).toBe(false));
     expect(localStorage.getItem("token")).toBeNull();
+    // Nothing about the deleted account stays in this browser.
+    expect(Object.keys(localStorage).filter((k) => k.includes("u1"))).toEqual([]);
   });
 });

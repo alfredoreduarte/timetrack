@@ -4,6 +4,7 @@ import express from "express";
 import compression from "compression";
 import serveStatic from "serve-static";
 import { createServer as createViteServer } from "vite";
+import { canonicalRedirect } from "./src/canonical";
 
 async function start() {
   const isProd = process.env.NODE_ENV === "production";
@@ -50,12 +51,9 @@ async function start() {
     if (path.extname(pathname) || pathname.startsWith("/@")) {
       return next();
     }
-    // One URL per page: /terms/ → /terms.
-    if (pathname.length > 1 && pathname.endsWith("/")) {
-      let canonical = pathname;
-      while (canonical.length > 1 && canonical.endsWith("/")) canonical = canonical.slice(0, -1);
-      return res.redirect(301, `${canonical}${query}`);
-    }
+    // One URL per page: /terms/ → /terms (always on this site).
+    const canonical = canonicalRedirect(pathname);
+    if (canonical) return res.redirect(301, `${canonical}${query}`);
     try {
       let template: string;
       let render: (url: string) => { html: string; head: string; status: number };

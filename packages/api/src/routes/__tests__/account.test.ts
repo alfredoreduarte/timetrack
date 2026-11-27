@@ -87,11 +87,18 @@ describe("DELETE /users/me", () => {
   it("allows a few password tries per account, then 429", async () => {
     const { auth } = await withPassword();
     const statuses: number[] = [];
+    let last: Awaited<ReturnType<ReturnType<typeof api>["delete"]>> | null = null;
     for (let i = 0; i < 11; i++) {
-      statuses.push((await api().delete("/users/me").set(auth).send({ password: "wrong" })).status);
+      last = await api().delete("/users/me").set(auth).send({ password: "wrong" });
+      statuses.push(last.status);
     }
     expect(statuses.slice(0, 10).every((s) => s === 400)).toBe(true);
     expect(statuses[10]).toBe(429);
+    expect(last!.body.error).toMatch(/Too many password attempts/);
+    // The web app pauses every request on a Retry-After; this limit is only
+    // for password checks, so it mustn't send one.
+    expect(last!.headers["retry-after"]).toBeUndefined();
+    expect(last!.headers["ratelimit"] ?? last!.headers["ratelimit-limit"]).toBeUndefined();
   });
 });
 

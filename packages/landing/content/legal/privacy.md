@@ -12,7 +12,7 @@ Trackr is a time tracker for developers who work with AI agents. This policy exp
 
 **Your time data.** Projects, tasks, rates, time entries, timers and their segments, and the notes you or your agents add. This is the core of the service.
 
-**What the Claude Code plugin and agents send.** For each agent session: the session id, the event name (session started, activity, session ended), the working folder path and, when a session starts, the git remote URL (with any credentials stripped) and branch. The importer adds message timestamps and token counts per model, so time and API-equivalent cost can be calculated. **We never receive your prompts, the agent's replies, tool input or output, or the contents of your files.**
+**What the Claude Code plugin and agents send.** With each event of an agent session: the session id, the event name (session started, activity, session ended), how the session was opened (new, resumed, cleared or compacted), the working folder path, and the repo's git remote URL (with any credentials stripped) and branch. The importer adds message timestamps and token counts per model, so time and API-equivalent cost can be calculated. **We never receive your prompts, the agent's replies, tool input or output, or the contents of your files.**
 
 **Billing.** If you subscribe, Stripe handles the payment. We store your Stripe customer and subscription ids and your plan status, never your card details.
 
@@ -29,7 +29,7 @@ We don't sell your data, we don't use it for advertising, and we don't use third
 
 ## Cookies and local storage
 
-The landing site sets no cookies. The web app keeps your sign-in token and profile in your browser's local storage so you stay signed in; signing out removes them.
+The landing site sets no cookies. The web app keeps your sign-in token and profile in your browser's local storage so you stay signed in; signing out removes them. It also remembers there whether you've finished or hidden the setup checklist, and deleting your account clears that too.
 
 ## Who processes it for us
 

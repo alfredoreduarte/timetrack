@@ -65,7 +65,7 @@ If we make a material change, we'll tell you by email or in the app before it ta
 
 ## 10. General
 
-These terms are governed by the laws of the country where the operator of Trackr, named at the top of this page, is established, without affecting any mandatory rights you have under the law of the country you live in. If part of these terms can't be enforced, the rest still applies.
+These terms are governed by the laws of the country where Trackr's operator is established, without affecting any mandatory rights you have under the law of the country you live in. If part of these terms can't be enforced, the rest still applies.
 
 ## Contact
 

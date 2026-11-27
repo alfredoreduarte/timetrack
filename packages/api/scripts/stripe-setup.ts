@@ -1,7 +1,8 @@
 /**
- * One-time Stripe setup for TimeTrack Pro. Idempotent: re-running reuses
- * the product and prices (found by lookup key) and only creates a webhook
- * endpoint if none points at this API yet.
+ * One-time Stripe setup for Trackr Pro. Idempotent: re-running reuses
+ * the product and prices (found by lookup key), brings the product's name
+ * and description up to date, and only creates a webhook endpoint if none
+ * points at this API yet.
  *
  *   STRIPE_SECRET_KEY=sk_live_... API_PUBLIC_URL=https://api.track.alfredo.re \
  *     npx ts-node scripts/stripe-setup.ts
@@ -42,7 +43,7 @@ async function main() {
     productId = product.id;
   } else {
     // Checkout shows this text, so keep an existing product's copy current.
-    await stripe.products.update(productId, { description: PRODUCT_DESCRIPTION });
+    await stripe.products.update(productId, { name: PRODUCT_NAME, description: PRODUCT_DESCRIPTION });
   }
 
   const lines: string[] = [];

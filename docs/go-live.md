@@ -16,14 +16,19 @@ nothing in them is expanded): `SMTP_PASS='...'`.
 **Restarting the API after an edit.** The compose files fill
 `JWT_SECRET`, `POSTGRES_PASSWORD` and `ALLOWED_ORIGINS` from the env file,
 so always pass it (a bare `docker compose up` would start the API without
-them and take it down):
+them and take it down). `--no-deps` restarts only the API: Postgres reads
+the same env file, and without it compose would recreate the database
+container too, for about half a minute of downtime.
 
 ```bash
 # production
-cd ~/websites/timetrack-production && docker compose --env-file docker.env -f docker-compose.prod.yml up -d api
+cd ~/websites/timetrack-production && docker compose --env-file docker.env -f docker-compose.prod.yml up -d --no-deps api
 # staging
-cd ~/websites/timetrack-staging && docker compose --env-file docker.staging.env -f docker-compose.staging.yml up -d api
+cd ~/websites/timetrack-staging && docker compose --env-file docker.staging.env -f docker-compose.staging.yml up -d --no-deps api
 ```
+
+The next deploy still recreates the database container once, because its
+env file changed; deploys take a backup first.
 
 Then check it came back:
 
@@ -50,14 +55,15 @@ shows the address, and <https://track.alfredo.re/terms> names the operator.
 
 **Backup cleanup.** Each production deploy writes a `backup_prod_*.sql`
 dump in `~/websites/timetrack-production` and never removes old ones. The
-Privacy Policy says these are deleted after 90 days, so add a daily cleanup
-on the droplet (`crontab -e`):
+Privacy Policy says these are deleted within 90 days, so add a daily
+cleanup on the droplet (`crontab -e`):
 
 ```
-15 3 * * * find /root/websites/timetrack-production /root/websites/timetrack-staging -maxdepth 1 -name 'backup_*.sql' -mtime +90 -delete
+15 3 * * * find /root/websites/timetrack-production /root/websites/timetrack-staging -maxdepth 1 -name 'backup_*.sql' -mtime +88 -delete
 ```
 
-Copy any dump you want to keep somewhere else first.
+(`-mtime +88` matches dumps 89 or more full days old, so each one is gone
+by day 90.) The same 90 days applies to any copy you keep elsewhere.
 
 The Terms, Privacy Policy and Refund & Cancellation Policy
 (`content/legal/`) are a plain-language starting point written for this
@@ -151,17 +157,7 @@ to do at any time.
 4. Decide on **taxes.** Prices are charged as shown, with no tax added. If
    you need to collect VAT or sales tax, set up Stripe Tax and register
    where required.
-5. **Grandfathering.** Accounts that existed when this release was deployed
-   already keep Pro for free. To extend that to everyone who signed up
-   before payments went live (as the FAQ promises), run this right before
-   the next step:
-
-   ```bash
-   docker exec -i timetrack-postgres-prod psql -U timetrack_user -d timetrack_db \
-     -c "UPDATE users SET is_subscription_exempt = true;"
-   ```
-
-6. Run the setup script with the **live** key against production:
+5. Run the setup script with the **live** key against production:
 
    ```bash
    cd packages/api
@@ -169,8 +165,25 @@ to do at any time.
      npx ts-node scripts/stripe-setup.ts
    ```
 
-7. Add the four printed values to production's `docker.env`, then restart
-   the API (see the top of this page).
+6. Add the four printed values to production's `docker.env`, restart the
+   API (see the top of this page), and once it's back, note the time:
+
+   ```bash
+   CUTOFF=$(date -u +%Y-%m-%dT%H:%M:%SZ); echo "$CUTOFF"
+   ```
+
+7. **Grandfathering.** Accounts that existed when this release was
+   deployed already keep Pro for free. To extend that to everyone who
+   signed up before payments went live (as the FAQ promises), in the same
+   shell:
+
+   ```bash
+   docker exec -i timetrack-postgres-prod psql -U timetrack_user -d timetrack_db \
+     -c "UPDATE users SET is_subscription_exempt = true WHERE \"createdAt\" < '$CUTOFF';"
+   ```
+
+   It prints `UPDATE` and the number of accounts. Accounts made from now
+   on keep their trial.
 
 **Check:**
 
@@ -188,8 +201,9 @@ to do at any time.
 
 - **Uptime:** point a free monitor (UptimeRobot, Better Stack) at
   `https://api.track.alfredo.re/health` and `https://track.alfredo.re/`.
-- **Backups off the droplet:** copy the nightly or pre-deploy dumps
-  somewhere else from time to time (the cleanup in step 1 keeps 90 days).
+- **Backups off the droplet:** copy the pre-deploy dumps somewhere else
+  from time to time, and delete those copies within 90 days too (the
+  Privacy Policy promises that).
 - **Logs:** the API's log files and the web, API and landing containers'
   logs rotate by size (set in the code and compose files), and the host's
   nginx logs rotate with logrotate.
