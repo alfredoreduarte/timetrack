@@ -58,6 +58,26 @@ describe("GettingStarted", () => {
     expect(await screen.findByText("0 of 4 done")).toBeInTheDocument();
   });
 
+  it("after a sign-out, waits for the next account's own projects", async () => {
+    // Account A finished setup: a project and a rate.
+    const store = storeFor({ defaultHourlyRate: 90 }, [{ id: "p1", name: "Acme", hourlyRate: 90 }]);
+    store.dispatch({ type: "auth/logout" });
+    expect(store.getState().projects).toMatchObject({ projects: [], loaded: false });
+
+    // Account B signs in in the same tab; its checklist data answers first.
+    store.dispatch({ type: "auth/setCredentials", payload: { user: { id: "u2", name: "Bea", email: "bea@dev.test" }, token: "t2" } });
+    const calls = respond(1, 1);
+    renderWithProviders(<GettingStarted />, { store });
+    await waitFor(() => expect(calls.count).toBe(2));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText("Get set up")).not.toBeInTheDocument();
+    expect(localStorage.getItem("gettingStarted.dismissed.u2")).toBeNull();
+
+    // B's own (empty) list arrives: B still has steps to do.
+    store.dispatch({ type: "projects/fetchProjects/fulfilled", payload: [] });
+    expect(await screen.findByText("2 of 4 done")).toBeInTheDocument();
+  });
+
   it("checks off what's done, counts a CSV or Markdown export, and hides itself for good when finished", async () => {
     respond(1, 0);
     const store = storeFor({ defaultHourlyRate: 90 }, [{ id: "p1", name: "Acme", hourlyRate: null }]);

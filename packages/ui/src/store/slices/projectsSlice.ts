@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { projectsAPI, tasksAPI } from "../../services/api";
 import { fetchDashboardEarnings } from "./dashboardSlice";
+import { logout } from "./authSlice";
 
 export interface Project {
   id: string;
@@ -187,6 +188,8 @@ const projectsSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
+    // Signing out forgets the list, so the next account never sees it.
+    builder.addCase(logout, () => initialState);
     // Projects
     builder
       .addCase(fetchProjects.pending, (state) => {
