@@ -57,7 +57,8 @@ describe("DeleteAccount", () => {
     expect(body).toEqual({ password: "right one" });
     await waitFor(() => expect(store.getState().auth.isAuthenticated).toBe(false));
     expect(localStorage.getItem("token")).toBeNull();
-    // Nothing about the deleted account stays in this browser.
-    expect(Object.keys(localStorage).filter((k) => k.includes("u1"))).toEqual([]);
+    // Nothing about the deleted account stays in this browser, under any key or in any value.
+    expect(localStorage.getItem("user")).toBeNull();
+    expect(Object.entries(localStorage).filter(([k, v]) => k.includes("u1") || String(v).includes("u1"))).toEqual([]);
   });
 });

@@ -4,6 +4,7 @@ import { createError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 import { getStripe } from "../billing/stripeClient";
 import { ServiceContext } from "./context";
+import { withTxRetry } from "./txRetry";
 
 /**
  * Deletes the account and everything in it (projects, entries, timers,
@@ -29,7 +30,7 @@ export async function deleteAccount(ctx: ServiceContext, password: string): Prom
   let customerId = user.stripeCustomerId;
   for (let attempt = 0; attempt < 3; attempt++) {
     if (customerId) await deleteStripeCustomer(customerId, user.id);
-    const { count } = await prisma.user.deleteMany({ where: { id: user.id, stripeCustomerId: customerId } });
+    const count = await deleteUserRow(user.id, customerId);
     if (count === 1) {
       logger.info("Account deleted", { userId: user.id });
       return;
@@ -40,6 +41,30 @@ export async function deleteAccount(ctx: ServiceContext, password: string): Prom
     customerId = current.stripeCustomerId;
   }
   throw createError("Your account changed while it was being deleted, so it wasn't. Try again.", 409);
+}
+
+/**
+ * Deletes the user row (everything cascades) while the customer on file is
+ * still `customerId`. The cascade reaches every timer, project, task and
+ * entry; writers lock those first and the user row last (an audit or entry
+ * insert's foreign key), so lock them in that order (see deletions.ts)
+ * before the row, rather than let the cascade take them the other way round
+ * and deadlock with a running timer. A deadlock that still happens retries.
+ */
+async function deleteUserRow(userId: string, customerId: string | null): Promise<number> {
+  return withTxRetry("account.delete", () =>
+    prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM timers WHERE user_id = ${userId} ORDER BY id FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM projects WHERE "userId" = ${userId} ORDER BY id FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM tasks WHERE "userId" = ${userId} ORDER BY id FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM time_entries WHERE "userId" = ${userId} ORDER BY id FOR UPDATE`;
+        const { count } = await tx.user.deleteMany({ where: { id: userId, stripeCustomerId: customerId } });
+        return count;
+      },
+      { timeout: 30_000 }
+    )
+  );
 }
 
 async function deleteStripeCustomer(customerId: string, userId: string): Promise<void> {
