@@ -47,6 +47,10 @@ const BATCH = 50;
 const MAX_BODY_BYTES = 800_000;
 // Written only after a complete, successful import (the plugin's first-run marker).
 const MARK = opt("mark");
+// A busy server answers 429: wait and resend the same batch a few times
+// before giving up (giving up restarts the whole import on a later session).
+const BUSY_RETRIES = 4;
+const BUSY_WAIT_MS = Number(opt("busy-wait-ms", "15000"));
 
 const done = (message) => {
   // Nothing (more) to import is a finished import: don't retry every session.
@@ -260,19 +264,28 @@ for (const session of payload) {
 if (current.length > 0) batches.push(current);
 
 const skippedBy = new Map();
-for (const batch of batches) {
-  let res;
-  try {
-    res = await fetch(`${API}/agent-sessions/import`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json", "X-Client": "import" },
-      body: JSON.stringify({ dryRun: DRY_RUN, afterTrackedWork: !INCLUDE_TRACKED, sessions: batch }),
-      signal: AbortSignal.timeout(60_000),
-    });
-  } catch (e) {
-    console.error(`Couldn't reach TimeTrack at ${API}: ${e?.cause?.code || e?.message || e}`);
-    process.exit(1);
+const sendBatch = async (batch) => {
+  for (let attempt = 0; ; attempt++) {
+    let res;
+    try {
+      res = await fetch(`${API}/agent-sessions/import`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json", "X-Client": "import" },
+        body: JSON.stringify({ dryRun: DRY_RUN, afterTrackedWork: !INCLUDE_TRACKED, sessions: batch }),
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch (e) {
+      console.error(`Couldn't reach TimeTrack at ${API}: ${e?.cause?.code || e?.message || e}`);
+      process.exit(1);
+    }
+    if (res.status !== 429 || attempt >= BUSY_RETRIES) return res;
+    await res.body?.cancel().catch(() => {});
+    await new Promise((r) => setTimeout(r, BUSY_WAIT_MS * (attempt + 1)));
   }
+};
+
+for (const batch of batches) {
+  const res = await sendBatch(batch);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error(`TimeTrack refused the import (${res.status}): ${body.error || "unknown error"}`);
