@@ -170,4 +170,24 @@ describe("Reports", () => {
     await waitFor(() => expect(store.getState().reports.detailedLoading).toBe(false));
     expect(queryParagraph(twoBack)).toBeTruthy();
   });
+
+  it("names the figures' week as it was requested, even after the clock passes Monday", async () => {
+    vi.spyOn(reportsAPI, "getSummaryReport").mockResolvedValue({ summary: { dailyBreakdown: [] } } as never);
+    let rejectNext!: (e: unknown) => void;
+    vi.spyOn(reportsAPI, "getDetailedReport")
+      .mockResolvedValueOnce({ timeEntries: [entry("this week", true, 3600, 100)] } as never)
+      .mockReturnValueOnce(new Promise((_, rej) => (rejectNext = rej)) as never);
+    const store = renderAs("USD");
+    expect(await findParagraph(aiLine("this week", 1, 100, "USD"))).toBeTruthy();
+
+    // The page stays open into the next week (Mon Nov 16), then moves back.
+    vi.setSystemTime(new Date(2026, 10, 16, 0, 5));
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    await waitFor(() => expect(store.getState().reports.currentWeekOffset).toBe(-1));
+    // The figures were fetched for Nov 9 – 15, which is now last week.
+    expect(queryParagraph(aiLine("last week", 1, 100, "USD"))).toBeTruthy();
+    rejectNext(new Error("timeout"));
+    await waitFor(() => expect(store.getState().reports.detailedLoading).toBe(false));
+    expect(queryParagraph(aiLine("last week", 1, 100, "USD"))).toBeTruthy();
+  });
 });

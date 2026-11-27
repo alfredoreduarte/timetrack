@@ -25,7 +25,8 @@ const Reports: React.FC = () => {
     detailedLoading,
     error,
     currentWeekOffset,
-    detailedWeekOffset,
+    detailedWeekStart,
+    detailedWeekEnd,
   } = useSelector((state: RootState) => state.reports);
   const currency = useCurrency();
 
@@ -61,14 +62,15 @@ const Reports: React.FC = () => {
   }, [detailedEntries]);
 
   const hasAi = ai.duration > 0;
-  // Named for the week the figures are from (the chart may already show
-  // another one while they load): "this week", "last week", or its dates.
+  // Named for the week the figures are from, as it was requested (the chart
+  // may already show another one while they load, and the clock may have
+  // passed Monday since): "this week", "last week", or its dates.
   const whichWeek = (() => {
-    if (detailedWeekOffset === 0) return "this week";
-    if (detailedWeekOffset === -1) return "last week";
-    const { startDate, endDate } = getWeekDates(detailedWeekOffset);
+    if (!detailedWeekStart || !detailedWeekEnd) return "this week";
+    if (detailedWeekStart === getWeekDates(0).startDate) return "this week";
+    if (detailedWeekStart === getWeekDates(-1).startDate) return "last week";
     const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    return `${day(startDate)} – ${day(endDate)}`;
+    return `${day(detailedWeekStart)} – ${day(detailedWeekEnd)}`;
   })();
 
   return (
