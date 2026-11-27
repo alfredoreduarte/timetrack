@@ -302,12 +302,13 @@ async function importOne(
       };
       let timerId: string;
       let notesToReattach: string[] = [];
+      let replacedSegments: number | null = null;
       if (existing) {
         // The stored copy is replaced; its notes move to the new segments.
         notesToReattach = (
           await tx.timerNote.findMany({ where: { timerId: existing.id, timeEntryId: { not: null } }, select: { id: true } })
         ).map((n) => n.id);
-        await tx.timeEntry.deleteMany({ where: { timerId: existing.id } });
+        replacedSegments = (await tx.timeEntry.deleteMany({ where: { timerId: existing.id } })).count;
         await tx.timer.update({ where: { id: existing.id }, data });
         timerId = existing.id;
       } else {
@@ -349,7 +350,9 @@ async function importOne(
         entityId: timerId,
         action: existing ? "reimport" : "import",
         changes: {
-          segments: { from: null, to: segments.length },
+          // From the stored copy's count on a re-import (the daily import
+          // budget charges only what an import adds).
+          segments: { from: replacedSegments, to: segments.length },
           trackedSeconds: { from: null, to: trackedSeconds },
           // The idle gap the segments were built with (see storedCopyBlocker).
           gapSeconds: { from: null, to: gapSeconds },

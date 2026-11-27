@@ -1,13 +1,32 @@
 import * as imports from "../../services/imports";
 import { api, resetDb, createUser, disconnect } from "../../test/helpers";
+import { prisma } from "../../utils/database";
+
+const LIMITS = [
+  "AGENT_IMPORTS_PER_HOUR",
+  "AGENT_IMPORTS_CONCURRENT",
+  "AGENT_IMPORTS_PER_ACCOUNT",
+  "AGENT_IMPORTS_QUEUED",
+  "AGENT_IMPORT_WAIT_MS",
+  "AGENT_IMPORT_SEGMENTS_PER_DAY",
+  "AGENT_IMPORT_SESSIONS_PER_DAY",
+];
+// Gates still closed when a test ends (it failed early): opened so its
+// held imports finish and give their slots back before the next test.
+const openGates: Array<() => void> = [];
 
 beforeEach(async () => {
   await resetDb();
-  for (const k of ["AGENT_IMPORTS_PER_HOUR", "AGENT_IMPORTS_CONCURRENT", "AGENT_IMPORTS_PER_ACCOUNT", "AGENT_IMPORTS_QUEUED", "AGENT_IMPORT_WAIT_MS"]) delete process.env[k];
+  for (const k of LIMITS) delete process.env[k];
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(async () => {
+  const left = openGates.splice(0);
+  for (const open of left) open();
+  if (left.length > 0) await new Promise((r) => setTimeout(r, 200));
+  jest.restoreAllMocks();
+});
 afterAll(async () => {
-  for (const k of ["AGENT_IMPORTS_PER_HOUR", "AGENT_IMPORTS_CONCURRENT", "AGENT_IMPORTS_PER_ACCOUNT", "AGENT_IMPORTS_QUEUED", "AGENT_IMPORT_WAIT_MS"]) delete process.env[k];
+  for (const k of LIMITS) delete process.env[k];
   await disconnect();
 });
 
@@ -35,6 +54,7 @@ describe("transcript import limits", () => {
     const started: string[] = [];
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
+    openGates.push(() => release());
     let toHold = n;
     jest.spyOn(imports, "importAgentSessions").mockImplementation(async (...args) => {
       started.push(args[0].userId);
@@ -58,8 +78,11 @@ describe("transcript import limits", () => {
     const second = send(b.auth);
     const third = send(c.auth);
     await new Promise((r) => setTimeout(r, 100));
-    expect(held.started).toEqual([a.user.id]); // b and c are waiting, not running
-    held.release();
+    try {
+      expect(held.started).toEqual([a.user.id]); // b and c are waiting, not running
+    } finally {
+      held.release();
+    }
     const [r1, r2, r3] = await Promise.all([first, second, third]);
     expect([r1.status, r2.status, r3.status]).toEqual([200, 200, 200]);
     expect(held.started).toEqual([a.user.id, b.user.id, c.user.id]);
@@ -75,8 +98,11 @@ describe("transcript import limits", () => {
     await new Promise((r) => setTimeout(r, 50));
     const third = send(c.auth);
     await new Promise((r) => setTimeout(r, 50));
-    expect(held.started).toEqual([a.user.id]);
-    held.release();
+    try {
+      expect(held.started).toEqual([a.user.id]);
+    } finally {
+      held.release();
+    }
     await Promise.all([first, second, third]);
     expect(held.started).toEqual([a.user.id, b.user.id, c.user.id]);
   });
@@ -103,8 +129,7 @@ describe("transcript import limits", () => {
     expect((await send(b.auth)).status).toBe(200);
   });
 
-  it("lets one account have only a couple of imports running or waiting", async () => {
-    process.env.AGENT_IMPORTS_PER_ACCOUNT = "1";
+  it("lets one account have only one import running or waiting (the default)", async () => {
     const [a, b] = [await createUser(), await createUser()];
     const held = holdImports(1);
     const first = send(a.auth);
@@ -124,9 +149,33 @@ describe("transcript import limits", () => {
     expect((await send(a.auth)).status).toBe(200);
   });
 
+  it("counts a waiting import as the account's one", async () => {
+    process.env.AGENT_IMPORTS_CONCURRENT = "1";
+    process.env.AGENT_IMPORTS_PER_ACCOUNT = "1";
+    const [a, b] = [await createUser(), await createUser()];
+    const held = holdImports(1);
+    const first = send(a.auth);
+    await until(() => held.started.length === 1);
+    const waiting = send(b.auth);
+    await new Promise((r) => setTimeout(r, 50));
+    let again;
+    try {
+      again = await send(b.auth); // b's first is still waiting
+    } finally {
+      held.release();
+    }
+    expect(again.status).toBe(429);
+    expect(again.body).toMatchObject({ code: "import_busy", error: expect.stringMatching(/one at a time/) });
+    expect((await first).status).toBe(200);
+    expect((await waiting).status).toBe(200);
+    expect(held.started).toEqual([a.user.id, b.user.id]);
+  });
+
   it("lets only so many wait; the rest hear the server is busy", async () => {
     process.env.AGENT_IMPORTS_CONCURRENT = "1";
     process.env.AGENT_IMPORTS_QUEUED = "1";
+    // One per account, so the retry below proves the rejection gave its count back.
+    process.env.AGENT_IMPORTS_PER_ACCOUNT = "1";
     const [a, b, c] = [await createUser(), await createUser(), await createUser()];
     const held = holdImports(1);
     const first = send(a.auth);
@@ -155,6 +204,44 @@ describe("transcript import limits", () => {
     jest.spyOn(imports, "importAgentSessions").mockRejectedValueOnce(new Error("boom"));
     expect((await api().post("/agent-sessions/import").set(a.auth).send(body())).status).toBe(500);
     expect((await api().post("/agent-sessions/import").set(a.auth).send(body())).status).toBe(200);
+  });
+
+  // An hour apart: a segment each at the default idle timeout.
+  const write = (auth: Record<string, string>, sessionKey: string, segments = 2) =>
+    api()
+      .post("/agent-sessions/import")
+      .set(auth)
+      .send({ sessions: [{ sessionKey, spans: [[at(5), at(4.9)], [at(3), at(2.9)], [at(1), at(0.9)]].slice(0, segments) }] });
+
+  it("caps the segments an account adds per day; a re-import counts only what it adds", async () => {
+    process.env.AGENT_IMPORT_SEGMENTS_PER_DAY = "5";
+    const [a, b] = [await createUser(), await createUser()];
+    expect((await write(a.auth, "s1")).body.sessions[0]).toMatchObject({ status: "imported", segments: 2 }); // 2
+    expect((await write(a.auth, "s1")).body.sessions[0]).toMatchObject({ status: "replaced", segments: 2 }); // 2
+    expect((await write(a.auth, "s1", 3)).body.sessions[0]).toMatchObject({ status: "replaced", segments: 3 }); // 3
+    expect((await write(a.auth, "s2")).status).toBe(200); // started under the cap: 5
+    const over = await write(a.auth, "s3");
+    expect(over.status).toBe(429);
+    expect(over.body).toMatchObject({ code: "import_daily_limit", error: expect.stringMatching(/as much as it can today/) });
+    // Previews write nothing and still run; other accounts have their own budget.
+    expect((await send(a.auth)).status).toBe(200);
+    expect((await write(b.auth, "s1")).status).toBe(200);
+    // A day later the budget is back.
+    await prisma.auditEvent.updateMany({
+      where: { userId: a.user.id },
+      data: { createdAt: new Date(Date.now() - 25 * 3600_000) },
+    });
+    expect((await write(a.auth, "s3")).status).toBe(200);
+  });
+
+  it("caps the sessions an account writes per day, re-imports included", async () => {
+    process.env.AGENT_IMPORT_SESSIONS_PER_DAY = "2";
+    const a = await createUser();
+    expect((await write(a.auth, "s1")).status).toBe(200);
+    expect((await write(a.auth, "s1")).body.sessions[0].status).toBe("replaced");
+    const over = await write(a.auth, "s1");
+    expect(over.status).toBe(429);
+    expect(over.body.code).toBe("import_daily_limit");
   });
 
   it("refuses bodies over 1 MB", async () => {

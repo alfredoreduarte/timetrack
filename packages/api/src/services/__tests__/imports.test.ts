@@ -166,6 +166,9 @@ describe("S5 review round 3", () => {
   });
 
   it("the shrink check holds under the row lock (a fuller import may land in between)", async () => {
+    // The route runs one import per account at a time; the service must
+    // hold up anyway (an operator may allow more).
+    process.env.AGENT_IMPORTS_PER_ACCOUNT = "2";
     const { auth } = await createUser();
     await api().post("/agent-sessions/import").set(auth).send({ sessions: [{ sessionKey: "k", spans: [[iso(0), iso(100)]] }] });
     const original = prisma.$transaction.bind(prisma) as (...a: unknown[]) => Promise<unknown>;
@@ -180,11 +183,16 @@ describe("S5 review round 3", () => {
     }) as never);
     // Grows the stored copy at the first look, but covers less than the
     // fuller import that lands before its lock.
-    const res = await api()
-      .post("/agent-sessions/import")
-      .set(auth)
-      .send({ sessions: [{ sessionKey: "k", spans: [[iso(0), iso(100)], [iso(200), iso(300)]] }] });
-    jest.restoreAllMocks();
+    let res;
+    try {
+      res = await api()
+        .post("/agent-sessions/import")
+        .set(auth)
+        .send({ sessions: [{ sessionKey: "k", spans: [[iso(0), iso(100)], [iso(200), iso(300)]] }] });
+    } finally {
+      jest.restoreAllMocks();
+      delete process.env.AGENT_IMPORTS_PER_ACCOUNT;
+    }
     expect(fuller!.body.sessions[0].status).toBe("replaced");
     expect(res.body.sessions[0].status).toBe("skipped_partial");
     expect(await prisma.timeEntry.aggregate({ _sum: { duration: true } })).toMatchObject({ _sum: { duration: 300 * 60 } });

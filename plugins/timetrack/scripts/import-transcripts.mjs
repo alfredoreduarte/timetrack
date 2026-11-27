@@ -50,8 +50,9 @@ const MARK = opt("mark");
 // A busy server answers 429 with code import_busy (after holding the
 // request in line for up to 20 s): wait and resend the same batch a few
 // times before giving up, which would restart the whole import on a later
-// session. Four tries plus the waits stay under two minutes, the time an
-// interactive /import gets. Other 429s (the hourly cap) won't clear soon.
+// session. That's at most about two minutes per batch, so on a busy server a
+// long import takes several; /import gives it ten. Other 429s (the hourly
+// and daily caps) won't clear soon.
 const BUSY_RETRIES = 3;
 const BUSY_WAIT_MS = Number(opt("busy-wait-ms", "5000"));
 
