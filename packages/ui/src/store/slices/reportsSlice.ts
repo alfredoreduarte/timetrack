@@ -43,9 +43,11 @@ interface ReportsState {
   detailedLoading: boolean;
   error: string | null;
   currentWeekOffset: number; // 0 = current week, -1 = previous week, etc.
-  /** The week detailedEntries are from (they load separately from the chart). */
-  detailedWeekOffset: number;
-  /** That week's bounds as requested, so it can be named even after the clock moves on. */
+  /**
+   * The week detailedEntries are from (they load separately from the chart),
+   * as the bounds that were requested: they name it even after the clock
+   * passes Monday.
+   */
   detailedWeekStart: string | null;
   detailedWeekEnd: string | null;
   /** The latest request of each kind; a slower, older response is ignored. */
@@ -60,7 +62,6 @@ const initialState: ReportsState = {
   detailedLoading: false,
   error: null,
   currentWeekOffset: 0,
-  detailedWeekOffset: 0,
   detailedWeekStart: null,
   detailedWeekEnd: null,
   weeklyRequestId: null,
@@ -195,7 +196,6 @@ const reportsSlice = createSlice({
         if (action.meta.requestId !== state.detailedRequestId) return;
         state.detailedLoading = false;
         state.detailedEntries = action.payload.timeEntries;
-        state.detailedWeekOffset = action.meta.arg ?? 0;
         state.detailedWeekStart = action.payload.startDate;
         state.detailedWeekEnd = action.payload.endDate;
       })

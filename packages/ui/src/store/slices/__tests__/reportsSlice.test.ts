@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
 import { reducers } from "../../reducers";
 import { reportsAPI } from "../../../services/api";
-import { fetchWeeklyData, fetchDetailedTimeEntries } from "../reportsSlice";
+import { fetchWeeklyData, fetchDetailedTimeEntries, getWeekDates } from "../reportsSlice";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -72,7 +72,7 @@ describe("reports slice: only the latest request counts", () => {
     const state = s.getState().reports;
     expect(state.error).toBeNull();
     expect(state.detailedLoading).toBe(false);
-    expect(state.detailedWeekOffset).toBe(0);
+    expect(state.detailedWeekStart).toBe(getWeekDates(0).startDate);
     expect(state.detailedEntries.map((e) => e.id)).toEqual(["e1"]);
   });
 });
