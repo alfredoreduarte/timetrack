@@ -191,6 +191,11 @@ class APIClient {
       );
     },
 
+    /** Deletes the account and all of its data (cancels any subscription). */
+    deleteAccount: async (password: string) => {
+      return this.request<{ deleted: true }>("DELETE", "/users/me", { password });
+    },
+
     updateProfile: async (profileData: ProfileUpdate) => {
       const response = await this.request<{ message: string; user: User }>(
         "PUT",

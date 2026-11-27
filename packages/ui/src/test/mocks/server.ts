@@ -115,6 +115,10 @@ export const handlers = [
     return HttpResponse.json({ favorites: [] });
   }),
 
+  // The dashboard's getting-started checklist
+  http.get(apiPath("/api-keys"), () => HttpResponse.json({ apiKeys: [] })),
+  http.get(apiPath("/share-links"), () => HttpResponse.json({ shareLinks: [] })),
+
   // Time entries
   http.get(apiPath("/time-entries"), () => {
     const total = mockTimeEntries.length;

@@ -14,11 +14,13 @@ const logger = winston.createLogger({
     winston.format.json()
   ),
   defaultMeta: { service: "timetrack-api" },
+  // Rotated by size (5 files of 10 MB each), so old entries (which include
+  // IP addresses) are deleted as new ones come in.
   transports: [
     // Write all logs with importance level of `error` or less to `error.log`
-    new winston.transports.File({ filename: "logs/error.log", level: "error" }),
+    new winston.transports.File({ filename: "logs/error.log", level: "error", maxsize: 10 * 1024 * 1024, maxFiles: 5, tailable: true }),
     // Write all logs with importance level of `info` or less to `combined.log`
-    new winston.transports.File({ filename: "logs/combined.log" }),
+    new winston.transports.File({ filename: "logs/combined.log", maxsize: 10 * 1024 * 1024, maxFiles: 5, tailable: true }),
   ],
 });
 

@@ -23,7 +23,10 @@ const navigation = [
   { name: "Agents", href: "/integrations", icon: SparklesIcon, shortcutHint: undefined },
   { name: "Billing", href: "/billing", icon: CreditCardIcon, shortcutHint: undefined },
   { name: "Settings", href: "/settings", icon: CogIcon, shortcutHint: ["S"] },
-  { name: "API Test", href: "/api-test", icon: WrenchScrewdriverIcon, shortcutHint: undefined },
+  // A developer tool: only in local dev builds.
+  ...((import.meta as any).env.DEV
+    ? [{ name: "API Test", href: "/api-test", icon: WrenchScrewdriverIcon, shortcutHint: undefined }]
+    : []),
 ];
 
 const isStaging = ((import.meta as any).env.VITE_API_URL || "").includes(

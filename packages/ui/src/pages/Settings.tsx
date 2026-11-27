@@ -6,6 +6,7 @@ import { toast } from "react-hot-toast";
 import ApiKeysSection from "../components/ApiKeysSection";
 import AgentBillingSettings from "../components/AgentBillingSettings";
 import { useCurrency } from "../hooks/useCurrency";
+import DeleteAccount from "../components/DeleteAccount";
 
 const Settings: React.FC = () => {
   const currency = useCurrency();
@@ -277,50 +278,17 @@ const Settings: React.FC = () => {
         </div>
 
         <div className="card p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
-            Preferences
-          </h3>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">
-                Email notifications
-              </span>
-              <input type="checkbox" className="rounded" />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">
-                Desktop notifications
-              </span>
-              <input type="checkbox" className="rounded" />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">
-                Auto-start timer
-              </span>
-              <input type="checkbox" className="rounded" />
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Account</h3>
+          <div className="text-xs text-gray-500 space-y-1">
+            <div>User ID: {user?.id}</div>
+            <div>
+              Member since:{" "}
+              {user?.createdAt
+                ? new Date(user.createdAt).toLocaleDateString()
+                : "N/A"}
             </div>
           </div>
-
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <h4 className="text-sm font-medium text-gray-900 mb-2">
-              Account Info
-            </h4>
-            <div className="text-xs text-gray-500 space-y-1">
-              <div>User ID: {user?.id}</div>
-              <div>
-                Member since:{" "}
-                {user?.createdAt
-                  ? new Date(user.createdAt).toLocaleDateString()
-                  : "N/A"}
-              </div>
-              <div>
-                Last updated:{" "}
-                {user?.updatedAt
-                  ? new Date(user.updatedAt).toLocaleDateString()
-                  : "N/A"}
-              </div>
-            </div>
-          </div>
+          <DeleteAccount />
         </div>
       </div>
 

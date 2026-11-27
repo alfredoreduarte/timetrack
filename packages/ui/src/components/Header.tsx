@@ -44,7 +44,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenMenu }) => {
             <Bars3Icon className="w-6 h-6" />
           </button>
           <h2 className="text-base md:text-lg font-semibold text-gray-900 truncate">
-            Welcome back!
+            {user?.name ? `Hi, ${user.name.split(" ")[0]}` : "Welcome"}
           </h2>
         </div>
 
