@@ -111,7 +111,14 @@ class APIClient {
         }
 
         if (error.response?.status === 401) {
-          localStorage.removeItem("token");
+          // Signed out by the server (expired session, deleted account):
+          // forget the profile too, as signing out does.
+          try {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+          } catch {
+            // Storage unavailable: nothing was kept.
+          }
           window.location.href = "/login";
         }
         return Promise.reject(error);

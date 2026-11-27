@@ -130,6 +130,42 @@ describe("DELETE /users/me", () => {
     expect(await prisma.user.count({ where: { id: user.id } })).toBe(0);
   });
 
+  it("waits for a timer write in progress instead of deadlocking with it", async () => {
+    const { user, auth } = await withPassword();
+    const p = await createProject(user.id, { name: "Acme" });
+    const timer = await api().post("/timers").set(auth).send({ projectId: p.id, description: "work" });
+    expect(timer.status).toBe(201);
+    const timerId: string = timer.body.timer.id;
+
+    // Like a pause: lock the timer, then write an audit row (whose foreign
+    // key needs the user row) while the deletion is already waiting.
+    let locked!: () => void;
+    let release!: () => void;
+    const isLocked = new Promise<void>((r) => (locked = r));
+    const gate = new Promise<void>((r) => (release = r));
+    const timerWrite = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM timers WHERE id = ${timerId} FOR UPDATE`;
+        locked();
+        await gate;
+        await tx.auditEvent.create({
+          data: { userId: user.id, entityType: "timer", entityId: timerId, action: "pause", actorType: "user" },
+        });
+      },
+      { timeout: 20_000 }
+    );
+    await isLocked;
+    // .then() sends it now (supertest requests are lazy).
+    const deletion = api().delete("/users/me").set(auth).send({ password: PASSWORD }).then((r) => r);
+    await new Promise((r) => setTimeout(r, 400)); // the deletion is now waiting on the timer
+    release();
+
+    const [del, write] = await Promise.allSettled([deletion, timerWrite]);
+    expect(write.status).toBe("fulfilled");
+    expect(del.status === "fulfilled" && del.value.status).toBe(200);
+    expect(await prisma.user.count({ where: { id: user.id } })).toBe(0);
+  });
+
   it("allows a few password tries per account, then 429", async () => {
     const { auth } = await withPassword();
     const statuses: number[] = [];
