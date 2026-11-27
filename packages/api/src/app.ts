@@ -324,9 +324,10 @@ export function createApp() {
     // already whitelist and bound every field; those rely on the size cap.
     let heuristics = true;
 
-    // Transcript import legitimately carries many sessions with many spans.
+    // Transcript import legitimately carries many sessions with many spans
+    // (the plugin sends batches under 800 KB; nginx's default cap is 1 MB).
     if (req.path.startsWith("/agent-sessions/import")) {
-      sizeLimit = process.env.REQUEST_SIZE_IMPORT || "5mb";
+      sizeLimit = process.env.REQUEST_SIZE_IMPORT || "1mb";
       heuristics = false;
     }
     // Hook events: raw Claude Code/Cursor payloads may carry tool input;

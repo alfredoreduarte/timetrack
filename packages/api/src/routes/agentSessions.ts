@@ -1,12 +1,30 @@
 import express from "express";
+import rateLimit from "express-rate-limit";
 import { z } from "zod";
-import { asyncHandler } from "../middleware/errorHandler";
+import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, AuthenticatedRequest } from "../middleware/auth";
 import { contextFromRequest } from "../services/context";
 import { importAgentSessions, MAX_IMPORT_SESSIONS, MAX_SPANS_PER_SESSION } from "../services/imports";
 
 const router = express.Router();
 router.use(authenticate);
+
+// An import can write tens of thousands of rows and take a second or more.
+// At most a few run at once across everyone, which keeps memory bounded on
+// a small server (the 1 MB body cap in app.ts bounds each one). The hourly
+// cap only stops a runaway loop: the plugin's import of a long history sends
+// up to 50 sessions per request, and starts over if one fails, so it must
+// fit a year of heavy use. No RateLimit headers: importers retry later.
+const importLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  limit: () => Number(process.env.AGENT_IMPORTS_PER_HOUR || 1000),
+  standardHeaders: false,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthenticatedRequest).user?.id ?? req.ip ?? "anon",
+  message: { error: "Too many imports from this account; try again in an hour." },
+});
+const maxConcurrentImports = () => Number(process.env.AGENT_IMPORTS_CONCURRENT || 2);
+let importsRunning = 0;
 
 const usage = z.object({
   inputTokens: z.number().int().nonnegative().optional(),
@@ -52,10 +70,19 @@ const importSchema = z.object({
  */
 router.post(
   "/import",
+  importLimiter,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { dryRun, afterTrackedWork, sessions } = importSchema.parse(req.body);
-    const ctx = contextFromRequest(req);
-    res.json(await importAgentSessions(ctx, sessions, { dryRun, afterTrackedWork }));
+    if (importsRunning >= maxConcurrentImports()) {
+      throw createError("Other imports are running right now; try again in a minute.", 429);
+    }
+    importsRunning++;
+    try {
+      const ctx = contextFromRequest(req);
+      res.json(await importAgentSessions(ctx, sessions, { dryRun, afterTrackedWork }));
+    } finally {
+      importsRunning--;
+    }
   })
 );
 
