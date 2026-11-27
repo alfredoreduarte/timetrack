@@ -5,7 +5,13 @@ import { asyncHandler, createError } from "../middleware/errorHandler";
 import { authenticate, AuthenticatedRequest } from "../middleware/auth";
 import { contextFromRequest } from "../services/context";
 import { prisma } from "../utils/database";
-import { importAgentSessions, MAX_IMPORT_SESSIONS, MAX_SPANS_PER_SESSION } from "../services/imports";
+import {
+  importAgentSessions,
+  importRequestBytes,
+  IMPORT_ROW_BYTES,
+  MAX_IMPORT_SESSIONS,
+  MAX_SPANS_PER_SESSION,
+} from "../services/imports";
 
 const router = express.Router();
 router.use(authenticate);
@@ -16,17 +22,18 @@ router.use(authenticate);
 // everyone, a few more wait their turn for a while, and the rest are told
 // the server is busy (code import_busy, which the plugin retries): memory
 // stays under (running + waiting) x 6 MB. Each account gets one place,
-// running or waiting (the plugin sends its batches one at a time), so no
-// account can hold more than one; a flood from many accounts at once only
-// delays imports, which are safe to resend.
+// running or waiting, so no account holds more than one; a second import
+// for the same account (another machine, or /import during the first-run
+// import) is told so at once. A flood from many accounts only delays
+// imports, which are safe to resend.
 // The hourly cap only stops a runaway loop: the plugin's import of a long
 // history sends up to 50 sessions per request, one at a time, so it must
-// fit a year of heavy use. The daily caps bound what one account can add to
-// the database: 50k new segments and 50k sessions written (imports and
-// re-imports, each with an audit row), about a year of heavy use, take at
-// most about 90 MB (measured with every segment its own session). They're
-// checked before each import, so the one that crosses a cap still finishes.
-// A re-import is charged only the segments it adds, so resending a long
+// fit a year of heavy use. The daily cap bounds what one account can add to
+// the database: AGENT_IMPORT_MB_PER_DAY (100) of estimated on-disk size,
+// indexes and audit rows included, against about 50 MB for a heavy year
+// (18k sessions, 36k segments). Each request is checked at its largest possible size before it runs,
+// so none crosses the cap, and charged afterwards for what it added: a
+// re-import pays for its audit row and any growth, so resending a long
 // history the next day carries on where the cap stopped it.
 // No RateLimit headers: importers retry later.
 const importLimiter = rateLimit({
@@ -41,25 +48,20 @@ const maxConcurrentImports = () => Number(process.env.AGENT_IMPORTS_CONCURRENT |
 const maxImportsPerAccount = () => Number(process.env.AGENT_IMPORTS_PER_ACCOUNT || 1);
 const maxQueuedImports = () => Number(process.env.AGENT_IMPORTS_QUEUED || 6);
 const importWaitMs = () => Number(process.env.AGENT_IMPORT_WAIT_MS || 20_000);
-const maxSegmentsPerDay = () => Number(process.env.AGENT_IMPORT_SEGMENTS_PER_DAY || 50_000);
-const maxSessionsPerDay = () => Number(process.env.AGENT_IMPORT_SESSIONS_PER_DAY || 50_000);
+const maxBytesPerDay = () => Number(process.env.AGENT_IMPORT_MB_PER_DAY || 100) * 1024 * 1024;
 const busy = () => createError("Other imports are running right now; try again in a minute.", 429, "import_busy");
 
-/**
- * What this account's imports wrote in the last 24 hours: sessions (imports
- * and re-imports) and the segments they added over the copies they replaced.
- */
-async function importedToday(userId: string, now: Date): Promise<{ sessions: number; segments: number }> {
+/** Estimated bytes this account's imports added in the last 24 hours. */
+async function importedBytesToday(userId: string, now: Date): Promise<number> {
   const since = new Date(now.getTime() - 24 * 3600_000);
-  const [row] = await prisma.$queryRaw<Array<{ sessions: number; segments: number }>>`
-    SELECT COUNT(*)::int AS sessions,
-      COALESCE(SUM(GREATEST(
-        (changes->'segments'->>'to')::int - COALESCE((changes->'segments'->>'from')::int, 0), 0
-      )), 0)::int AS segments
+  const [row] = await prisma.$queryRaw<Array<{ bytes: number }>>`
+    SELECT COALESCE(SUM(${IMPORT_ROW_BYTES.audit} + GREATEST(
+      COALESCE((changes->'storedBytes'->>'to')::bigint, 0) - COALESCE((changes->'storedBytes'->>'from')::bigint, 0), 0
+    )), 0)::float8 AS bytes
     FROM audit_events
     WHERE user_id = ${userId} AND created_at > ${since}
       AND entity_type = 'timer' AND action IN ('import', 'reimport')`;
-  return row ?? { sessions: 0, segments: 0 };
+  return row?.bytes ?? 0;
 }
 
 let importsRunning = 0;
@@ -70,7 +72,7 @@ const importsByAccount = new Map<string, number>();
 async function inImportSlot<T>(userId: string, fn: () => Promise<T>): Promise<T> {
   const mine = importsByAccount.get(userId) ?? 0;
   if (mine >= maxImportsPerAccount()) {
-    throw createError("This account already has imports running; send them one at a time.", 429, "import_busy");
+    throw createError("Another import for this account is running; send this one when it finishes.", 429, "import_busy");
   }
   importsByAccount.set(userId, mine + 1);
   try {
@@ -149,8 +151,8 @@ const importSchema = z.object({
  *       skipped. dryRun returns the totals without writing.
  *
  *       One import per account runs at a time. Request bodies are limited
- *       to 1 MB, and by default each account to 1000 requests an hour and to
- *       50k new segments and 50k sessions written a day.
+ *       to 1 MB, and by default each account to 1000 requests an hour and
+ *       100 MB of imported data a day (estimated on-disk size).
  *     tags: [Agents]
  *     responses:
  *       200:
@@ -172,8 +174,7 @@ router.post(
     const ctx = contextFromRequest(req);
     const result = await inImportSlot(ctx.userId, async () => {
       // In the slot, so the account's earlier import has finished writing.
-      const today = dryRun ? null : await importedToday(ctx.userId, ctx.now());
-      if (today && (today.segments >= maxSegmentsPerDay() || today.sessions >= maxSessionsPerDay())) {
+      if (!dryRun && (await importedBytesToday(ctx.userId, ctx.now())) + importRequestBytes(sessions) > maxBytesPerDay()) {
         throw createError(
           "This account has imported as much as it can today; import the rest tomorrow.",
           429,

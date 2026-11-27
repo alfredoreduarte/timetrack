@@ -1,4 +1,5 @@
 import * as imports from "../../services/imports";
+import { importRequestBytes, IMPORT_ROW_BYTES } from "../../services/imports";
 import { api, resetDb, createUser, disconnect } from "../../test/helpers";
 import { prisma } from "../../utils/database";
 
@@ -8,8 +9,7 @@ const LIMITS = [
   "AGENT_IMPORTS_PER_ACCOUNT",
   "AGENT_IMPORTS_QUEUED",
   "AGENT_IMPORT_WAIT_MS",
-  "AGENT_IMPORT_SEGMENTS_PER_DAY",
-  "AGENT_IMPORT_SESSIONS_PER_DAY",
+  "AGENT_IMPORT_MB_PER_DAY",
 ];
 // Gates still closed when a test ends (it failed early): opened so its
 // held imports finish and give their slots back before the next test.
@@ -143,7 +143,7 @@ describe("transcript import limits", () => {
       held.release();
     }
     expect(again.status).toBe(429);
-    expect(again.body).toMatchObject({ code: "import_busy", error: expect.stringMatching(/one at a time/) });
+    expect(again.body).toMatchObject({ code: "import_busy", error: expect.stringMatching(/Another import for this account/) });
     expect(other.status).toBe(200);
     expect((await first).status).toBe(200);
     expect((await send(a.auth)).status).toBe(200);
@@ -165,7 +165,7 @@ describe("transcript import limits", () => {
       held.release();
     }
     expect(again.status).toBe(429);
-    expect(again.body).toMatchObject({ code: "import_busy", error: expect.stringMatching(/one at a time/) });
+    expect(again.body).toMatchObject({ code: "import_busy", error: expect.stringMatching(/Another import for this account/) });
     expect((await first).status).toBe(200);
     expect((await waiting).status).toBe(200);
     expect(held.started).toEqual([a.user.id, b.user.id]);
@@ -207,41 +207,108 @@ describe("transcript import limits", () => {
   });
 
   // An hour apart: a segment each at the default idle timeout.
-  const write = (auth: Record<string, string>, sessionKey: string, segments = 2) =>
-    api()
-      .post("/agent-sessions/import")
-      .set(auth)
-      .send({ sessions: [{ sessionKey, spans: [[at(5), at(4.9)], [at(3), at(2.9)], [at(1), at(0.9)]].slice(0, segments) }] });
+  const writeBody = (sessionKey: string, segments = 2) => ({
+    sessions: [{ sessionKey, spans: [[at(5), at(4.9)], [at(3), at(2.9)], [at(1), at(0.9)]].slice(0, segments) as [string, string][] }],
+  });
+  const write = (auth: Record<string, string>, b: ReturnType<typeof writeBody>) =>
+    api().post("/agent-sessions/import").set(auth).send(b);
+  const MB = 1024 * 1024;
+  /** Sets the daily cap to `bytes`, give or take half a byte. */
+  const capAt = (bytes: number) => (process.env.AGENT_IMPORT_MB_PER_DAY = String(bytes / MB));
+  /** What the budget has charged the account: an audit row each, plus growth. */
+  async function charged(userId: string) {
+    const rows = await prisma.auditEvent.findMany({ where: { userId, entityType: "timer" }, select: { changes: true } });
+    return rows.reduce((sum, r) => {
+      const b = (r.changes as { storedBytes: { from: number | null; to: number } }).storedBytes;
+      return sum + IMPORT_ROW_BYTES.audit + Math.max(b.to - (b.from ?? 0), 0);
+    }, 0);
+  }
 
-  it("caps the segments an account adds per day; a re-import counts only what it adds", async () => {
-    process.env.AGENT_IMPORT_SEGMENTS_PER_DAY = "5";
+  it("caps what an account adds per day, checking each request at its largest size first", async () => {
     const [a, b] = [await createUser(), await createUser()];
-    expect((await write(a.auth, "s1")).body.sessions[0]).toMatchObject({ status: "imported", segments: 2 }); // 2
-    expect((await write(a.auth, "s1")).body.sessions[0]).toMatchObject({ status: "replaced", segments: 2 }); // 2
-    expect((await write(a.auth, "s1", 3)).body.sessions[0]).toMatchObject({ status: "replaced", segments: 3 }); // 3
-    expect((await write(a.auth, "s2")).status).toBe(200); // started under the cap: 5
-    const over = await write(a.auth, "s3");
+    const s1 = writeBody("s1");
+    const most = importRequestBytes(s1.sessions);
+    capAt(most - 0.5);
+    const over = await write(a.auth, s1);
     expect(over.status).toBe(429);
     expect(over.body).toMatchObject({ code: "import_daily_limit", error: expect.stringMatching(/as much as it can today/) });
+    capAt(most + 0.5);
+    expect((await write(a.auth, s1)).body.sessions[0].status).toBe("imported");
+    // The estimate before the import bounds what it then records.
+    const used = await charged(a.user.id);
+    expect(used).toBeLessThanOrEqual(most);
     // Previews write nothing and still run; other accounts have their own budget.
+    capAt(1);
     expect((await send(a.auth)).status).toBe(200);
-    expect((await write(b.auth, "s1")).status).toBe(200);
+    capAt(most + 0.5);
+    expect((await write(a.auth, writeBody("s2"))).status).toBe(429);
+    expect((await write(b.auth, s1)).status).toBe(200);
     // A day later the budget is back.
     await prisma.auditEvent.updateMany({
       where: { userId: a.user.id },
       data: { createdAt: new Date(Date.now() - 25 * 3600_000) },
     });
-    expect((await write(a.auth, "s3")).status).toBe(200);
+    expect((await write(a.auth, writeBody("s2"))).status).toBe(200);
   });
 
-  it("caps the sessions an account writes per day, re-imports included", async () => {
-    process.env.AGENT_IMPORT_SESSIONS_PER_DAY = "2";
+  it("charges a re-import only its audit row and what it adds", async () => {
     const a = await createUser();
-    expect((await write(a.auth, "s1")).status).toBe(200);
-    expect((await write(a.auth, "s1")).body.sessions[0].status).toBe("replaced");
-    const over = await write(a.auth, "s1");
-    expect(over.status).toBe(429);
-    expect(over.body.code).toBe("import_daily_limit");
+    expect((await write(a.auth, writeBody("s1"))).body.sessions[0].status).toBe("imported");
+    const first = await charged(a.user.id);
+    expect((await write(a.auth, writeBody("s1"))).body.sessions[0].status).toBe("replaced");
+    expect(await charged(a.user.id)).toBe(first + IMPORT_ROW_BYTES.audit);
+    expect((await write(a.auth, writeBody("s1", 3))).body.sessions[0]).toMatchObject({ status: "replaced", segments: 3 });
+    const used = await charged(a.user.id);
+    expect(used).toBeGreaterThan(first + 2 * IMPORT_ROW_BYTES.audit);
+    // Exactly what the budget counts: one more byte and the next is refused.
+    const s2 = writeBody("s2");
+    capAt(used + importRequestBytes(s2.sessions) - 0.5);
+    expect((await write(a.auth, s2)).status).toBe(429);
+    capAt(used + importRequestBytes(s2.sessions) + 0.5);
+    expect((await write(a.auth, s2)).status).toBe(200);
+  });
+
+  it("bounds, before an import, what it then records, whatever the fields hold", async () => {
+    const a = await createUser();
+    const spans = writeBody("x").sessions[0].spans;
+    const long = (c: string, n: number) => c.repeat(n);
+    const shapes = [
+      { sessionKey: "plain", spans },
+      { sessionKey: "blank-title", title: "   ", cwd: "/Users/someone/dev/app", gitBranch: "main", spans },
+      { sessionKey: "unknown-agent", agent: "Some_Agent", gitRemote: "https://github.com/someone/app.git", spans },
+      {
+        sessionKey: long("k", 200),
+        agent: "codex",
+        title: long("t", 500),
+        cwd: "/" + long("c", 999),
+        gitRemote: "github.com/" + long("r", 480),
+        gitBranch: long("b", 255),
+        spans,
+        usage: { [long("m", 100)]: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 4 } },
+      },
+      { sessionKey: long("鍵", 200), title: long("題", 500), cwd: "/" + long("路", 999), gitBranch: long("枝", 255), spans },
+    ];
+    for (const shape of shapes) {
+      const res = await api().post("/agent-sessions/import").set(a.auth).send({ sessions: [shape] });
+      expect(res.body.sessions[0].status).toBe("imported");
+      const audit = await prisma.auditEvent.findFirstOrThrow({
+        where: { userId: a.user.id, entityType: "timer", entityId: res.body.sessions[0].timerId },
+      });
+      const recorded = (audit.changes as { storedBytes: { to: number } }).storedBytes.to;
+      expect(IMPORT_ROW_BYTES.audit + recorded).toBeLessThanOrEqual(importRequestBytes([shape as imports.ImportSessionInput]));
+    }
+  });
+
+  it("checks a sessionKey repeated in one request only once", async () => {
+    const a = await createUser();
+    const one = writeBody("k").sessions[0];
+    const res = await api()
+      .post("/agent-sessions/import")
+      .set(a.auth)
+      .send({ sessions: [one, one, { ...one, spans: one.spans.slice(0, 1) }] });
+    expect(res.body.sessions.map((r: { status: string }) => r.status)).toEqual(["imported", "invalid", "invalid"]);
+    expect(res.body.sessions[1].reason).toMatch(/more than once/);
+    expect(await prisma.timer.count({ where: { userId: a.user.id } })).toBe(1);
   });
 
   it("refuses bodies over 1 MB", async () => {

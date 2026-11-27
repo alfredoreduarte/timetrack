@@ -10,6 +10,6 @@ TimeTrack imports the last 30 days automatically on the first session after inst
 3. Preview: `node "${CLAUDE_PLUGIN_ROOT}/scripts/import-transcripts.mjs" --days <days> --dry-run`
 4. Show the preview and ask whether to import. If yes, run the same command without `--dry-run`.
 
-Run both with a 10-minute Bash timeout (600000 ms): when TimeTrack is busy, each batch waits its turn. If the import still times out or stops with an error, it is safe to run again: sessions already imported are replaced, never doubled.
+Run both with a 10-minute Bash timeout (600000 ms): when TimeTrack is busy with other accounts' imports, each batch waits its turn. If it stops because another import for this account is running (the automatic first-run import, or another machine), tell the user to run it again once that one finishes. If it times out or stops with another error, it is also safe to run again: sessions already imported are replaced, never doubled.
 
 It sends session ids, the working directory, the git remote (credentials stripped) and branch, activity timestamps and token counts per model — never prompts, messages or code. Sessions are sent whole, so a shorter window never removes time imported earlier. Activity before the last AI work already tracked in TimeTrack another way (e.g. an older MCP setup) is left out so it isn't billed twice; add `--include-tracked` only if the user asks to import it anyway.

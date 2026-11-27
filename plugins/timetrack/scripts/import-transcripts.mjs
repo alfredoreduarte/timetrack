@@ -47,12 +47,14 @@ const BATCH = 50;
 const MAX_BODY_BYTES = 800_000;
 // Written only after a complete, successful import (the plugin's first-run marker).
 const MARK = opt("mark");
-// A busy server answers 429 with code import_busy (after holding the
-// request in line for up to 20 s): wait and resend the same batch a few
-// times before giving up, which would restart the whole import on a later
-// session. That's at most about two minutes per batch, so on a busy server a
-// long import takes several; /import gives it ten. Other 429s (the hourly
-// and daily caps) won't clear soon.
+// A busy server answers 429 with code import_busy: after holding the
+// request in line for up to 20 s when other accounts' imports fill it, or at
+// once when another import for this account is running (another machine,
+// or /import during the first-run import). Wait and resend the same batch a
+// few times before giving up, which would restart the whole import on a
+// later session. That's at most about two minutes per batch, so on a busy
+// server a long import takes several; /import gives it ten. Other 429s (the
+// hourly and daily caps) won't clear soon.
 const BUSY_RETRIES = 3;
 const BUSY_WAIT_MS = Number(opt("busy-wait-ms", "5000"));
 

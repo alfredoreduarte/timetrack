@@ -91,6 +91,68 @@ export interface ImportSessionResult {
 const sumSeconds = (segments: Span[]) =>
   segments.reduce((s, [a, b]) => s + Math.floor((b.getTime() - a.getTime()) / 1000), 0);
 
+/**
+ * On-disk bytes per imported row, indexes included, beyond its text
+ * (measured on Postgres 15 and rounded up): the daily import budget in
+ * routes/agentSessions.ts charges these.
+ */
+export const IMPORT_ROW_BYTES = { timer: 700, segment: 500, audit: 650 };
+
+const utf8 = (v: string | null | undefined) => (v ? Buffer.byteLength(v) : 0);
+
+/**
+ * Estimated on-disk size of one imported session's timer and segments (its
+ * audit row is charged separately). The description is stored on the timer
+ * and again on every segment.
+ */
+export function importedSessionBytes(
+  session: {
+    sessionKey: string;
+    agent?: string | null;
+    cwd?: string | null;
+    gitRemote?: string | null;
+    gitBranch?: string | null;
+    description?: string | null;
+    usage?: unknown;
+  },
+  segments: number
+): number {
+  const description = utf8(session.description);
+  return (
+    IMPORT_ROW_BYTES.timer +
+    utf8(session.sessionKey) * 2 + // also in the (user, sessionKey) index
+    utf8(session.agent) +
+    utf8(session.cwd) +
+    utf8(session.gitRemote) +
+    utf8(session.gitBranch) +
+    description +
+    (session.usage ? utf8(JSON.stringify(session.usage)) * 2 : 0) + // jsonb takes more than the JSON text
+    // Rows with a long description pack poorly into 8 KB pages.
+    segments * (IMPORT_ROW_BYTES.segment + Math.ceil(description * 1.5))
+  );
+}
+
+/**
+ * An upper bound on what importing these sessions can add, from the request
+ * as sent: every span its own segment, with the longest description it
+ * could get, and an audit row each.
+ */
+export function importRequestBytes(sessions: ImportSessionInput[]): number {
+  return sessions.reduce((sum, s) => {
+    const agent = s.agent?.trim().toLowerCase() || "claude_code";
+    // The title, or (if it cleans to nothing) the generated one, whichever is longer.
+    const generated = `${agentLabel(agent)} · ${s.gitRemote ?? ""}${s.cwd ?? ""} (${s.gitBranch ?? ""})`.slice(0, 500);
+    const title = (s.title ?? "").slice(0, 500);
+    const description = utf8(title) > utf8(generated) ? title : generated;
+    const spans = Array.isArray(s.spans) ? s.spans.length : 0;
+    return (
+      sum +
+      IMPORT_ROW_BYTES.audit +
+      importedSessionBytes({ ...s, agent, sessionKey: String(s.sessionKey ?? ""), description }, spans)
+    );
+  }, 0);
+}
+
 type Skip = {
   status: "skipped_live" | "skipped_edited" | "skipped_plan" | "skipped_partial" | "skipped_tracked";
   reason: string;
@@ -126,7 +188,8 @@ async function storedCopyBlocker(db: TxClient, userId: string, timerId: string, 
   if (timer.createdVia !== "import" || timer.status !== "stopped") {
     return { status: "skipped_live", reason: "session was tracked live" };
   }
-  const [timerEdits, lastImport, entries] = await Promise.all([
+  // Totals, not rows: a stored session can have 10k segments.
+  const [timerEdits, lastImport, entries, [{ entryEdits }]] = await Promise.all([
     db.auditEvent.count({
       where: { userId, entityType: "timer", entityId: timerId, action: { notIn: ["import", "reimport"] } },
     }),
@@ -135,30 +198,35 @@ async function storedCopyBlocker(db: TxClient, userId: string, timerId: string, 
       orderBy: { createdAt: "desc" },
       select: { changes: true },
     }),
-    db.timeEntry.findMany({ where: { timerId }, select: { id: true, duration: true, startTime: true } }),
+    db.timeEntry.aggregate({
+      where: { timerId },
+      _count: { _all: true },
+      _sum: { duration: true },
+      _min: { startTime: true },
+    }),
+    db.$queryRaw<Array<{ entryEdits: number }>>`
+      SELECT COUNT(*)::int AS "entryEdits" FROM audit_events
+      WHERE user_id = ${userId} AND entity_type = 'time_entry'
+        AND entity_id IN (SELECT id FROM time_entries WHERE timer_id = ${timerId})`,
   ]);
-  const entryEdits = entries.length
-    ? await db.auditEvent.count({
-        where: { userId, entityType: "time_entry", entityId: { in: entries.map((e) => e.id) } },
-      })
-    : 0;
   const recorded = (lastImport?.changes ?? {}) as {
     segments?: { to?: number };
     trackedSeconds?: { to?: number };
     gapSeconds?: { to?: number };
   };
-  const seconds = entries.reduce((sum, e) => sum + (e.duration ?? 0), 0);
+  const seconds = entries._sum.duration ?? 0;
   // Deleting a segment leaves no audit on the survivors; the totals the
   // import recorded catch it.
   const changedSinceImport =
-    recorded.segments?.to !== entries.length || recorded.trackedSeconds?.to !== seconds;
+    recorded.segments?.to !== entries._count._all || recorded.trackedSeconds?.to !== seconds;
   if (timerEdits > 0 || entryEdits > 0 || changedSinceImport) {
     return { status: "skipped_edited", reason: "session was edited after it was imported" };
   }
 
   // Replacing deletes every stored segment, so a clipped import must not
   // replace one that has history from before the plan window.
-  if (incoming.clipped && entries.some((e) => e.startTime < incoming.clipped!.floor)) return incoming.clipped.skip;
+  const firstStart = entries._min.startTime;
+  if (incoming.clipped && firstStart && firstStart < incoming.clipped.floor) return incoming.clipped.skip;
 
   // Compared at the gap the stored copy was built with: the user may have
   // changed their idle timeout since, which alone moves segment edges and
@@ -303,12 +371,20 @@ async function importOne(
       let timerId: string;
       let notesToReattach: string[] = [];
       let replacedSegments: number | null = null;
+      let replacedBytes: number | null = null;
       if (existing) {
         // The stored copy is replaced; its notes move to the new segments.
         notesToReattach = (
           await tx.timerNote.findMany({ where: { timerId: existing.id, timeEntryId: { not: null } }, select: { id: true } })
         ).map((n) => n.id);
         replacedSegments = (await tx.timeEntry.deleteMany({ where: { timerId: existing.id } })).count;
+        const last = await tx.auditEvent.findFirst({
+          where: { userId: ctx.userId, entityType: "timer", entityId: existing.id, action: { in: ["import", "reimport"] } },
+          orderBy: { createdAt: "desc" },
+          select: { changes: true },
+        });
+        const was = (last?.changes as { storedBytes?: { to?: unknown } } | null)?.storedBytes?.to;
+        replacedBytes = typeof was === "number" ? was : null;
         await tx.timer.update({ where: { id: existing.id }, data });
         timerId = existing.id;
       } else {
@@ -356,6 +432,11 @@ async function importOne(
           trackedSeconds: { from: null, to: trackedSeconds },
           // The idle gap the segments were built with (see storedCopyBlocker).
           gapSeconds: { from: null, to: gapSeconds },
+          // Estimated on-disk size, for the daily import budget.
+          storedBytes: {
+            from: replacedBytes,
+            to: importedSessionBytes({ sessionKey, agent, cwd, gitRemote, gitBranch, description, usage: s.usage }, segments.length),
+          },
         },
       });
       return timerId;
@@ -395,6 +476,7 @@ export async function importAgentSessions(
   const floor = trackedUntil && (!planFloor || trackedUntil > planFloor) ? trackedUntil : planFloor;
   const byTracked = Boolean(trackedUntil && floor === trackedUntil);
   const results: ImportSessionResult[] = [];
+  const seen = new Set<string>();
 
   for (const s of sessions) {
     const base = { project: null, segments: 0, trackedSeconds: 0, startedAt: null, endedAt: null };
@@ -403,6 +485,11 @@ export async function importAgentSessions(
       results.push({ ...base, sessionKey: String(s.sessionKey ?? ""), status: "invalid", reason: "missing sessionKey" });
       continue;
     }
+    if (seen.has(sessionKey)) {
+      results.push({ ...base, sessionKey, status: "invalid", reason: "sessionKey appears more than once in this request" });
+      continue;
+    }
+    seen.add(sessionKey);
     if (!Array.isArray(s.spans) || s.spans.length > MAX_SPANS_PER_SESSION) {
       results.push({ ...base, sessionKey, status: "invalid", reason: `spans must be an array of at most ${MAX_SPANS_PER_SESSION}` });
       continue;
