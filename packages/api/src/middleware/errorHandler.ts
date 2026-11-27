@@ -11,7 +11,8 @@ export interface AppError extends Error {
 
 /** Share link URLs carry their token; logs keep only its first characters. */
 export const redactTokens = (url: string) =>
-  url.replace(/(\/(?:share|public\/timesheets)\/)([^/?#]{6})[^/?#]*/g, "$1$2…");
+  // Case-insensitive, like Express's routing: /Public/Timesheets/<token> works too.
+  url.replace(/(\/(?:share|public\/timesheets)\/)([^/?#]{6})[^/?#]*/gi, "$1$2…");
 
 export const errorHandler = (
   err: AppError | ZodError,

@@ -158,6 +158,9 @@ describe("password limits and log redaction", () => {
   it("keeps share link tokens out of logged URLs", () => {
     expect(redactTokens("/share/abcdefSECRETSECRET?x=1")).toBe("/share/abcdef…?x=1");
     expect(redactTokens("/public/timesheets/abcdefSECRET/csv")).toBe("/public/timesheets/abcdef…/csv");
+    // Express matches routes regardless of case, so redaction must too.
+    expect(redactTokens("/Public/Timesheets/abcdefSECRET")).toBe("/Public/Timesheets/abcdef…");
+    expect(redactTokens("/SHARE/abcdefSECRET")).toBe("/SHARE/abcdef…");
     expect(redactTokens("/timers/123")).toBe("/timers/123");
   });
 });
