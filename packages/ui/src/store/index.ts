@@ -1,5 +1,6 @@
 import { configureStore } from "@reduxjs/toolkit";
 import { reducers } from "./reducers";
+import { sessionGuard } from "./sessionGuard";
 
 export const store = configureStore({
   reducer: reducers,
@@ -8,7 +9,7 @@ export const store = configureStore({
       serializableCheck: {
         ignoredActions: ["persist/PERSIST"],
       },
-    }),
+    }).concat(sessionGuard),
 });
 
 export type RootState = ReturnType<typeof store.getState>;

@@ -4,6 +4,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
 import { BrowserRouter } from "react-router-dom";
 import { reducers } from "../store/reducers";
+import { sessionGuard } from "../store/sessionGuard";
 
 // Create a custom render function that includes providers
 interface ExtendedRenderOptions extends Omit<RenderOptions, "wrapper"> {
@@ -15,6 +16,7 @@ export function renderWithProviders(
   {
     store = configureStore({
       reducer: reducers,
+      middleware: (getDefault) => getDefault().concat(sessionGuard),
     }),
     ...renderOptions
   }: ExtendedRenderOptions = {}

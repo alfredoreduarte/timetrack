@@ -26,7 +26,8 @@ const appReducer = combineReducers(sliceReducers);
 /**
  * The one root reducer, used by the app store and by tests so they can't
  * drift. Signing out starts every slice over, so the next account in this
- * tab never sees the last one's timers, projects or reports.
+ * tab never sees the last one's timers, projects or reports (sessionGuard
+ * drops answers to requests the last account still had in flight).
  */
 export const reducers: typeof appReducer = (state, action) =>
   appReducer(action.type === logout.type ? undefined : state, action);
