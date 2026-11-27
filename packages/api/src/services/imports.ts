@@ -132,24 +132,39 @@ export function importedSessionBytes(
   );
 }
 
+/** A session's text as importOne stores it: cleaned, normalized, and its description. */
+function storedText(s: ImportSessionInput) {
+  const gitRemote = normalizeGitRemote(s.gitRemote);
+  const cwd = cleanToken(s.cwd?.slice(0, 1000), "cwd", 1000) ?? null;
+  const gitBranch = cleanToken(s.gitBranch?.slice(0, 255), "gitBranch", 255) ?? null;
+  const agent = cleanAgent(s.agent) ?? "claude_code";
+  const repo = repoLabel({ gitRemote, cwd });
+  const description =
+    cleanText(s.title, "title", 500, { truncate: true }) ??
+    cleanText(`${agentLabel(agent)}${repo ? ` · ${repo}` : ""}${gitBranch ? ` (${gitBranch})` : ""}`, "description", 500, {
+      truncate: true,
+    });
+  return { gitRemote, cwd, gitBranch, agent, description };
+}
+
 /**
- * An upper bound on what importing these sessions can add, from the request
- * as sent: every span its own segment, with the longest description it
- * could get, and an audit row each.
+ * An upper bound on what importing these sessions can add: what each would
+ * store (the same cleaned text importOne records) with every span its own
+ * segment, and an audit row each.
  */
 export function importRequestBytes(sessions: ImportSessionInput[]): number {
   return sessions.reduce((sum, s) => {
-    const agent = s.agent?.trim().toLowerCase() || "claude_code";
-    // The title, or (if it cleans to nothing) the generated one, whichever is longer.
-    const generated = `${agentLabel(agent)} · ${s.gitRemote ?? ""}${s.cwd ?? ""} (${s.gitBranch ?? ""})`.slice(0, 500);
-    const title = (s.title ?? "").slice(0, 500);
-    const description = utf8(title) > utf8(generated) ? title : generated;
+    let text: ReturnType<typeof storedText>;
+    let sessionKey: string | null;
+    try {
+      text = storedText(s);
+      sessionKey = cleanSessionKey(s.sessionKey);
+    } catch {
+      return sum; // reported invalid: nothing is written for it
+    }
+    if (!sessionKey) return sum;
     const spans = Array.isArray(s.spans) ? s.spans.length : 0;
-    return (
-      sum +
-      IMPORT_ROW_BYTES.audit +
-      importedSessionBytes({ ...s, agent, sessionKey: String(s.sessionKey ?? ""), description }, spans)
-    );
+    return sum + IMPORT_ROW_BYTES.audit + importedSessionBytes({ ...text, sessionKey, usage: s.usage }, spans);
   }, 0);
 }
 
@@ -297,10 +312,8 @@ async function importOne(
     if (skip) throw new SkipSession(skip);
   }
 
-  const gitRemote = normalizeGitRemote(s.gitRemote);
-  const cwd = cleanToken(s.cwd?.slice(0, 1000), "cwd", 1000) ?? null;
-  const gitBranch = cleanToken(s.gitBranch?.slice(0, 255), "gitBranch", 255) ?? null;
-  const agent = cleanAgent(s.agent) ?? "claude_code";
+  // The same text importRequestBytes priced before the import.
+  const { gitRemote, cwd, gitBranch, agent, description } = storedText(s);
   let project: { id: string; name: string } | null = null;
   let projectId: string | null = null;
   if (s.projectId) {
@@ -331,12 +344,6 @@ async function importOne(
   };
   if (dryRun) return result;
 
-  const repo = repoLabel({ gitRemote, cwd });
-  const description =
-    cleanText(s.title, "title", 500, { truncate: true }) ??
-    cleanText(`${agentLabel(agent)}${repo ? ` · ${repo}` : ""}${gitBranch ? ` (${gitBranch})` : ""}`, "description", 500, {
-      truncate: true,
-    });
   result.timerId = await prisma.$transaction(
     async (tx) => {
       if (existing) {
@@ -426,8 +433,7 @@ async function importOne(
         entityId: timerId,
         action: existing ? "reimport" : "import",
         changes: {
-          // From the stored copy's count on a re-import (the daily import
-          // budget charges only what an import adds).
+          // From the stored copy's count on a re-import.
           segments: { from: replacedSegments, to: segments.length },
           trackedSeconds: { from: null, to: trackedSeconds },
           // The idle gap the segments were built with (see storedCopyBlocker).

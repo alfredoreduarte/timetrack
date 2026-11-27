@@ -287,6 +287,13 @@ describe("transcript import limits", () => {
         usage: { [long("m", 100)]: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 4 } },
       },
       { sessionKey: long("鍵", 200), title: long("題", 500), cwd: "/" + long("路", 999), gitBranch: long("枝", 255), spans },
+      // Text that grows when it is cleaned: decoded entities, NUL inside a
+      // textarea, a junk remote that leaves the cwd's last folder as the
+      // label, an internationalized host that is punycoded.
+      { sessionKey: "entities", title: long("&nGt;", 100), spans },
+      { sessionKey: "nul", title: "<textarea>" + long("\u0000", 490), spans },
+      { sessionKey: "leaf", gitRemote: long("~", 500), cwd: "/" + long("a", 600) + "/" + long("路", 300), spans },
+      { sessionKey: "idn", gitRemote: "https://" + long("ü", 200) + ".example/org/repo.git", spans },
     ];
     for (const shape of shapes) {
       const res = await api().post("/agent-sessions/import").set(a.auth).send({ sessions: [shape] });
@@ -297,6 +304,40 @@ describe("transcript import limits", () => {
       const recorded = (audit.changes as { storedBytes: { to: number } }).storedBytes.to;
       expect(IMPORT_ROW_BYTES.audit + recorded).toBeLessThanOrEqual(importRequestBytes([shape as imports.ImportSessionInput]));
     }
+  });
+
+  it("counts another import of the account that is still writing (when more than one may run)", async () => {
+    process.env.AGENT_IMPORTS_PER_ACCOUNT = "2";
+    const a = await createUser();
+    const [s1, s2] = [writeBody("s1"), writeBody("s2")];
+    const [b1, b2] = [importRequestBytes(s1.sessions), importRequestBytes(s2.sessions)];
+    capAt(b1 + b2 - 0.5);
+    const held = holdImports(1);
+    const first = write(a.auth, s1).then((r) => r);
+    await until(() => held.started.length === 1);
+    let second;
+    try {
+      second = await write(a.auth, s2); // the first has written nothing yet
+    } finally {
+      held.release();
+    }
+    expect(second.status).toBe(429);
+    expect(second.body.code).toBe("import_daily_limit");
+    expect((await first).status).toBe(200);
+    // Once it finished, only what it recorded counts.
+    capAt((await charged(a.user.id)) + b2 + 0.5);
+    expect((await write(a.auth, s2)).status).toBe(200);
+  });
+
+  it("labels an agent named like an Object property by its name", async () => {
+    const a = await createUser();
+    const res = await api()
+      .post("/agent-sessions/import")
+      .set(a.auth)
+      .send({ sessions: [{ ...writeBody("k").sessions[0], agent: "constructor", cwd: "/Users/someone/dev/app" }] });
+    expect(res.body.sessions[0].status).toBe("imported");
+    const timer = await prisma.timer.findFirstOrThrow({ where: { userId: a.user.id } });
+    expect(timer.description).toBe("constructor · app");
   });
 
   it("checks a sessionKey repeated in one request only once", async () => {

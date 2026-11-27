@@ -64,7 +64,8 @@ const AGENT_LABELS: Record<string, string> = {
 };
 
 export const agentLabel = (agent: string | null | undefined) =>
-  (agent && AGENT_LABELS[agent]) || agent || "Agent";
+  // Own keys only: "constructor" is a valid agent slug.
+  (agent && Object.prototype.hasOwnProperty.call(AGENT_LABELS, agent) && AGENT_LABELS[agent]) || agent || "Agent";
 
 export interface AgentEventInput {
   event: string;

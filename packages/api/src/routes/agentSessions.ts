@@ -31,10 +31,13 @@ router.use(authenticate);
 // fit a year of heavy use. The daily cap bounds what one account can add to
 // the database: AGENT_IMPORT_MB_PER_DAY (100) of estimated on-disk size,
 // indexes and audit rows included, against about 50 MB for a heavy year
-// (18k sessions, 36k segments). Each request is checked at its largest possible size before it runs,
-// so none crosses the cap, and charged afterwards for what it added: a
-// re-import pays for its audit row and any growth, so resending a long
-// history the next day carries on where the cap stopped it.
+// (18k sessions, 36k segments). Each request is checked before it runs at
+// its largest possible size, priced from the same cleaned text it will
+// store, with any other import of the account still writing counted at its
+// own (if AGENT_IMPORTS_PER_ACCOUNT allows one), so none crosses the cap.
+// It is charged afterwards for what it added: a re-import pays for its
+// audit row and any growth, so resending a long history the next day
+// carries on where the cap stopped it.
 // No RateLimit headers: importers retry later.
 const importLimiter = rateLimit({
   windowMs: 60 * 60_000,
@@ -63,6 +66,9 @@ async function importedBytesToday(userId: string, now: Date): Promise<number> {
       AND entity_type = 'timer' AND action IN ('import', 'reimport')`;
   return row?.bytes ?? 0;
 }
+
+/** The pre-check bounds of each account's imports that haven't finished writing. */
+const pendingBytes = new Map<string, number>();
 
 let importsRunning = 0;
 const waitingForSlot: Array<() => void> = [];
@@ -173,15 +179,27 @@ router.post(
     const { dryRun, afterTrackedWork, sessions } = importSchema.parse(req.body);
     const ctx = contextFromRequest(req);
     const result = await inImportSlot(ctx.userId, async () => {
-      // In the slot, so the account's earlier import has finished writing.
-      if (!dryRun && (await importedBytesToday(ctx.userId, ctx.now())) + importRequestBytes(sessions) > maxBytesPerDay()) {
-        throw createError(
-          "This account has imported as much as it can today; import the rest tomorrow.",
-          429,
-          "import_daily_limit"
-        );
+      if (dryRun) return importAgentSessions(ctx, sessions, { dryRun, afterTrackedWork });
+      // Reserved before reading the total, in one synchronous step: an
+      // import that commits meanwhile is counted in the total, its pending
+      // bound, or both, never in neither.
+      const bound = importRequestBytes(sessions);
+      const others = pendingBytes.get(ctx.userId) ?? 0;
+      pendingBytes.set(ctx.userId, others + bound);
+      try {
+        if ((await importedBytesToday(ctx.userId, ctx.now())) + others + bound > maxBytesPerDay()) {
+          throw createError(
+            "This account has imported as much as it can today; import the rest tomorrow.",
+            429,
+            "import_daily_limit"
+          );
+        }
+        return await importAgentSessions(ctx, sessions, { dryRun, afterTrackedWork });
+      } finally {
+        const left = (pendingBytes.get(ctx.userId) ?? bound) - bound;
+        if (left > 0) pendingBytes.set(ctx.userId, left);
+        else pendingBytes.delete(ctx.userId);
       }
-      return importAgentSessions(ctx, sessions, { dryRun, afterTrackedWork });
     });
     res.json(result);
   })
