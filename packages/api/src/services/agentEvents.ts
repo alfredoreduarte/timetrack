@@ -10,6 +10,7 @@ import {
   TimerView,
 } from "./timers";
 import { repoLabel } from "./repos";
+import { cutText } from "./text";
 
 /**
  * Translates agent lifecycle events (Claude Code hooks, Cursor hooks, or any
@@ -54,8 +55,11 @@ const EVENT_KINDS: Record<string, AgentEventKind> = {
   beforereadfile: "activity",
 };
 
-export const classifyAgentEvent = (event: string | undefined | null): AgentEventKind | null =>
-  event ? EVENT_KINDS[event.toLowerCase().replace(/[^a-z0-9]/g, "")] ?? null : null;
+export const classifyAgentEvent = (event: string | undefined | null): AgentEventKind | null => {
+  const key = event ? event.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+  // Own keys only: "constructor" is not an event.
+  return Object.prototype.hasOwnProperty.call(EVENT_KINDS, key) ? EVENT_KINDS[key] : null;
+};
 
 const AGENT_LABELS: Record<string, string> = {
   claude_code: "Claude Code",
@@ -64,7 +68,8 @@ const AGENT_LABELS: Record<string, string> = {
 };
 
 export const agentLabel = (agent: string | null | undefined) =>
-  (agent && AGENT_LABELS[agent]) || agent || "Agent";
+  // Own keys only: "constructor" is a valid agent slug.
+  (agent && Object.prototype.hasOwnProperty.call(AGENT_LABELS, agent) && AGENT_LABELS[agent]) || agent || "Agent";
 
 export interface AgentEventInput {
   event: string;
@@ -184,7 +189,7 @@ export async function handleAgentEvent(
       isAiGenerated: opts.isAiGenerated,
       // Hook-fed timers get reliable heartbeats, so they may auto-pause.
       idleTimeoutSeconds: existing ? undefined : user.agentIdleTimeoutSeconds,
-      description: existing ? undefined : `${label}${repo ? ` · ${repo}` : ""}${branch}`.slice(0, 500),
+      description: existing ? undefined : cutText(`${label}${repo ? ` · ${repo}` : ""}${branch}`, 500),
     });
     const action: AgentEventAction = res.created ? "started" : res.changed ? "resumed" : "touched";
     return {

@@ -47,6 +47,16 @@ const BATCH = 50;
 const MAX_BODY_BYTES = 800_000;
 // Written only after a complete, successful import (the plugin's first-run marker).
 const MARK = opt("mark");
+// A busy server answers 429 with code import_busy: after holding the
+// request in line for up to 20 s when other accounts' imports fill it, or at
+// once when another import for this account is running (another machine,
+// or /import during the first-run import). Wait and resend the same batch a
+// few times before giving up, which would restart the whole import on a
+// later session. That's at most about two minutes per batch, so on a busy
+// server a long import takes several; /import gives it ten. Other 429s (the
+// hourly and daily caps) won't clear soon.
+const BUSY_RETRIES = 3;
+const BUSY_WAIT_MS = Number(opt("busy-wait-ms", "5000"));
 
 const done = (message) => {
   // Nothing (more) to import is a finished import: don't retry every session.
@@ -260,19 +270,32 @@ for (const session of payload) {
 if (current.length > 0) batches.push(current);
 
 const skippedBy = new Map();
-for (const batch of batches) {
-  let res;
-  try {
-    res = await fetch(`${API}/agent-sessions/import`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json", "X-Client": "import" },
-      body: JSON.stringify({ dryRun: DRY_RUN, afterTrackedWork: !INCLUDE_TRACKED, sessions: batch }),
-      signal: AbortSignal.timeout(60_000),
-    });
-  } catch (e) {
-    console.error(`Couldn't reach TimeTrack at ${API}: ${e?.cause?.code || e?.message || e}`);
-    process.exit(1);
+const sendBatch = async (batch) => {
+  for (let attempt = 0; ; attempt++) {
+    let res;
+    try {
+      res = await fetch(`${API}/agent-sessions/import`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json", "X-Client": "import" },
+        body: JSON.stringify({ dryRun: DRY_RUN, afterTrackedWork: !INCLUDE_TRACKED, sessions: batch }),
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch (e) {
+      console.error(`Couldn't reach TimeTrack at ${API}: ${e?.cause?.code || e?.message || e}`);
+      process.exit(1);
+    }
+    if (res.status !== 429 || attempt >= BUSY_RETRIES) return res;
+    const body = await res.clone().json().catch(() => ({}));
+    if (body.code !== "import_busy") return res;
+    await res.body?.cancel().catch(() => {});
+    const wait = BUSY_WAIT_MS * (attempt + 1);
+    console.error(`TimeTrack is busy with other imports; retrying in ${Math.round(wait / 1000)} s...`);
+    await new Promise((r) => setTimeout(r, wait));
   }
+};
+
+for (const batch of batches) {
+  const res = await sendBatch(batch);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error(`TimeTrack refused the import (${res.status}): ${body.error || "unknown error"}`);

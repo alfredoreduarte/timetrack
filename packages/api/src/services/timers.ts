@@ -8,7 +8,7 @@ import { ServiceContext, systemContext } from "./context";
 import { diffFields, recordAudit, AuditChanges } from "./audit";
 import { getHourlyRate } from "./rates";
 import { resolveProjectAndTask } from "./ownership";
-import { cleanText, DESCRIPTION_MAX } from "./text";
+import { cleanText, DESCRIPTION_MAX, wellFormed } from "./text";
 import { assertAgentSlot, assertCanRunTimer } from "./limits";
 import { learnRepoMapping, resolveProjectForRepo } from "./repos";
 import { estimateCost, TokenCounts } from "../billing/pricing";
@@ -149,7 +149,7 @@ export const cleanToken = (
   if (value === undefined) return undefined;
   if (value === null) return null;
   // Paths and branch names: strip control characters, keep everything else.
-  const cleaned = value.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  const cleaned = wellFormed(value).replace(/[\u0000-\u001f\u007f]/g, "").trim();
   if (!cleaned) return null;
   if (cleaned.length > max) throw createError(`${field} must be at most ${max} characters`, 400);
   return cleaned;
@@ -184,7 +184,7 @@ const cleanIdleTimeout = (value: number | null | undefined): number | null | und
 
 export const cleanSessionKey = (value: string | null | undefined): string | null => {
   if (value === undefined || value === null) return null;
-  const v = value.trim();
+  const v = wellFormed(value).trim();
   if (!v) return null;
   if (v.length > 200) throw createError("sessionKey must be at most 200 characters", 400);
   return v;

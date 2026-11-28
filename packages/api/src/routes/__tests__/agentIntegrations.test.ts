@@ -234,8 +234,23 @@ describe("POST /agent-events (hooks)", () => {
   it("ignores unknown events and rejects missing session ids", async () => {
     const { auth } = await createUser();
     expect((await api().post("/agent-events").set(auth).send({ event: "Bogus", sessionKey: "x" })).body.action).toBe("ignored");
+    // Not Object's properties either.
+    for (const event of ["constructor", "Con-structor", "toString"]) {
+      expect((await api().post("/agent-events").set(auth).send({ event, sessionKey: "x" })).body.action).toBe("ignored");
+    }
+    expect(await prisma.timer.count()).toBe(0);
     expect((await api().post("/agent-events").set(auth).send({ hook_event_name: "SessionStart" })).status).toBe(400);
     expect((await api().post("/agent-events").send(ccPayload("SessionStart"))).status).toBe(401);
+  });
+
+  it("starts a session whose generated description would end in half an emoji", async () => {
+    const { auth } = await createUser();
+    // "Claude Code · " + the folder: an emoji straddles the 500-unit cut.
+    const res = await api().post("/agent-events").set(auth).send(ccPayload("SessionStart", { cwd: "/x" + "😀".repeat(400) }));
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe("started");
+    const t = await prisma.timer.findFirstOrThrow({});
+    expect(t.description).toMatch(/😀$/);
   });
 
   it("keeps other users' sessions separate even with the same session id", async () => {

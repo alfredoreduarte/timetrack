@@ -8,7 +8,7 @@ import { recordAudit } from "./audit";
 import { getHourlyRate } from "./rates";
 import { resolveProjectAndTask } from "./ownership";
 import { resolveProjectForRepo, repoLabel } from "./repos";
-import { cleanText } from "./text";
+import { cleanText, cutText } from "./text";
 import { cleanAgent, cleanSessionKey, cleanToken, FUTURE_SKEW_MS, validateUsage } from "./timers";
 import { agentLabel } from "./agentEvents";
 import { estimateCost } from "../billing/pricing";
@@ -91,6 +91,89 @@ export interface ImportSessionResult {
 const sumSeconds = (segments: Span[]) =>
   segments.reduce((s, [a, b]) => s + Math.floor((b.getTime() - a.getTime()) / 1000), 0);
 
+/**
+ * On-disk bytes per imported row, indexes included, beyond its text
+ * (measured on Postgres 15 and rounded up): the daily import budget in
+ * routes/agentSessions.ts charges these.
+ */
+export const IMPORT_ROW_BYTES = { timer: 700, segment: 500, audit: 650 };
+
+const utf8 = (v: string | null | undefined) => (v ? Buffer.byteLength(v) : 0);
+
+/**
+ * Estimated on-disk size of one imported session's timer and segments (its
+ * audit row is charged separately). The description (its UTF-8 size) is
+ * stored on the timer and again on every segment.
+ */
+export function importedSessionBytes(
+  session: {
+    sessionKey: string;
+    agent?: string | null;
+    cwd?: string | null;
+    gitRemote?: string | null;
+    gitBranch?: string | null;
+    descriptionBytes: number;
+    usage?: unknown;
+  },
+  segments: number
+): number {
+  const description = session.descriptionBytes;
+  return (
+    IMPORT_ROW_BYTES.timer +
+    utf8(session.sessionKey) * 2 + // also in the (user, sessionKey) index
+    utf8(session.agent) +
+    utf8(session.cwd) +
+    utf8(session.gitRemote) +
+    utf8(session.gitBranch) +
+    description +
+    (session.usage ? utf8(JSON.stringify(session.usage)) * 2 : 0) + // jsonb takes more than the JSON text
+    // Rows with a long description pack poorly into 8 KB pages.
+    segments * (IMPORT_ROW_BYTES.segment + Math.ceil(description * 1.5))
+  );
+}
+
+/** A session's fields as importOne stores them (cheap: no HTML sanitizing). */
+function storedFields(s: ImportSessionInput) {
+  const gitRemote = normalizeGitRemote(s.gitRemote);
+  const cwd = cleanToken(s.cwd?.slice(0, 1000), "cwd", 1000) ?? null;
+  const gitBranch = cleanToken(s.gitBranch?.slice(0, 255), "gitBranch", 255) ?? null;
+  const agent = cleanAgent(s.agent) ?? "claude_code";
+  const repo = repoLabel({ gitRemote, cwd });
+  // Cut before cleaning, as for live sessions: cleaning costs grow with length.
+  const generated = cutText(`${agentLabel(agent)}${repo ? ` · ${repo}` : ""}${gitBranch ? ` (${gitBranch})` : ""}`, 500);
+  return { gitRemote, cwd, gitBranch, agent, generated };
+}
+
+/** The stored description: the cleaned title, else the generated one. Sanitizes HTML, so only on writes. */
+const storedDescription = (s: ImportSessionInput, generated: string) =>
+  cleanText(s.title, "title", 500, { truncate: true }) ?? cleanText(generated, "description", 500, { truncate: true });
+
+/**
+ * An upper bound on what importing these sessions can add, with every span
+ * its own segment and an audit row each. Priced from the stored fields and,
+ * without sanitizing anything, the description: cleaning only removes,
+ * decodes or collapses text and then keeps at most 500 UTF-16 units, and a
+ * unit takes at most 3 bytes in UTF-8.
+ */
+export function importRequestBytes(sessions: ImportSessionInput[]): number {
+  return sessions.reduce((sum, s) => {
+    let fields: ReturnType<typeof storedFields>;
+    let sessionKey: string | null;
+    try {
+      fields = storedFields(s);
+      sessionKey = cleanSessionKey(s.sessionKey);
+    } catch {
+      return sum; // reported invalid: nothing is written for it
+    }
+    if (!sessionKey) return sum;
+    const units = Math.min(500, Math.max(s.title?.length ?? 0, fields.generated.length));
+    const spans = Array.isArray(s.spans) ? s.spans.length : 0;
+    return (
+      sum + IMPORT_ROW_BYTES.audit + importedSessionBytes({ ...fields, sessionKey, descriptionBytes: 3 * units, usage: s.usage }, spans)
+    );
+  }, 0);
+}
+
 type Skip = {
   status: "skipped_live" | "skipped_edited" | "skipped_plan" | "skipped_partial" | "skipped_tracked";
   reason: string;
@@ -126,7 +209,8 @@ async function storedCopyBlocker(db: TxClient, userId: string, timerId: string, 
   if (timer.createdVia !== "import" || timer.status !== "stopped") {
     return { status: "skipped_live", reason: "session was tracked live" };
   }
-  const [timerEdits, lastImport, entries] = await Promise.all([
+  // Totals, not rows: a stored session can have 10k segments.
+  const [timerEdits, lastImport, entries, [{ entryEdits }]] = await Promise.all([
     db.auditEvent.count({
       where: { userId, entityType: "timer", entityId: timerId, action: { notIn: ["import", "reimport"] } },
     }),
@@ -135,30 +219,35 @@ async function storedCopyBlocker(db: TxClient, userId: string, timerId: string, 
       orderBy: { createdAt: "desc" },
       select: { changes: true },
     }),
-    db.timeEntry.findMany({ where: { timerId }, select: { id: true, duration: true, startTime: true } }),
+    db.timeEntry.aggregate({
+      where: { timerId },
+      _count: { _all: true },
+      _sum: { duration: true },
+      _min: { startTime: true },
+    }),
+    db.$queryRaw<Array<{ entryEdits: number }>>`
+      SELECT COUNT(*)::int AS "entryEdits" FROM audit_events
+      WHERE user_id = ${userId} AND entity_type = 'time_entry'
+        AND entity_id IN (SELECT id FROM time_entries WHERE timer_id = ${timerId})`,
   ]);
-  const entryEdits = entries.length
-    ? await db.auditEvent.count({
-        where: { userId, entityType: "time_entry", entityId: { in: entries.map((e) => e.id) } },
-      })
-    : 0;
   const recorded = (lastImport?.changes ?? {}) as {
     segments?: { to?: number };
     trackedSeconds?: { to?: number };
     gapSeconds?: { to?: number };
   };
-  const seconds = entries.reduce((sum, e) => sum + (e.duration ?? 0), 0);
+  const seconds = entries._sum.duration ?? 0;
   // Deleting a segment leaves no audit on the survivors; the totals the
   // import recorded catch it.
   const changedSinceImport =
-    recorded.segments?.to !== entries.length || recorded.trackedSeconds?.to !== seconds;
+    recorded.segments?.to !== entries._count._all || recorded.trackedSeconds?.to !== seconds;
   if (timerEdits > 0 || entryEdits > 0 || changedSinceImport) {
     return { status: "skipped_edited", reason: "session was edited after it was imported" };
   }
 
   // Replacing deletes every stored segment, so a clipped import must not
   // replace one that has history from before the plan window.
-  if (incoming.clipped && entries.some((e) => e.startTime < incoming.clipped!.floor)) return incoming.clipped.skip;
+  const firstStart = entries._min.startTime;
+  if (incoming.clipped && firstStart && firstStart < incoming.clipped.floor) return incoming.clipped.skip;
 
   // Compared at the gap the stored copy was built with: the user may have
   // changed their idle timeout since, which alone moves segment edges and
@@ -229,10 +318,8 @@ async function importOne(
     if (skip) throw new SkipSession(skip);
   }
 
-  const gitRemote = normalizeGitRemote(s.gitRemote);
-  const cwd = cleanToken(s.cwd?.slice(0, 1000), "cwd", 1000) ?? null;
-  const gitBranch = cleanToken(s.gitBranch?.slice(0, 255), "gitBranch", 255) ?? null;
-  const agent = cleanAgent(s.agent) ?? "claude_code";
+  // The same fields importRequestBytes priced before the import.
+  const { gitRemote, cwd, gitBranch, agent, generated } = storedFields(s);
   let project: { id: string; name: string } | null = null;
   let projectId: string | null = null;
   if (s.projectId) {
@@ -263,12 +350,14 @@ async function importOne(
   };
   if (dryRun) return result;
 
-  const repo = repoLabel({ gitRemote, cwd });
-  const description =
-    cleanText(s.title, "title", 500, { truncate: true }) ??
-    cleanText(`${agentLabel(agent)}${repo ? ` · ${repo}` : ""}${gitBranch ? ` (${gitBranch})` : ""}`, "description", 500, {
-      truncate: true,
-    });
+  let description: string | null | undefined;
+  try {
+    description = storedDescription(s, generated);
+  } catch (e) {
+    // Text the sanitizer chokes on fails this session, not the whole batch.
+    if (typeof (e as AppError).statusCode === "number") throw e;
+    throw createError("title could not be cleaned", 400);
+  }
   result.timerId = await prisma.$transaction(
     async (tx) => {
       if (existing) {
@@ -302,12 +391,21 @@ async function importOne(
       };
       let timerId: string;
       let notesToReattach: string[] = [];
+      let replacedSegments: number | null = null;
+      let replacedBytes: number | null = null;
       if (existing) {
         // The stored copy is replaced; its notes move to the new segments.
         notesToReattach = (
           await tx.timerNote.findMany({ where: { timerId: existing.id, timeEntryId: { not: null } }, select: { id: true } })
         ).map((n) => n.id);
-        await tx.timeEntry.deleteMany({ where: { timerId: existing.id } });
+        replacedSegments = (await tx.timeEntry.deleteMany({ where: { timerId: existing.id } })).count;
+        const last = await tx.auditEvent.findFirst({
+          where: { userId: ctx.userId, entityType: "timer", entityId: existing.id, action: { in: ["import", "reimport"] } },
+          orderBy: { createdAt: "desc" },
+          select: { changes: true },
+        });
+        const was = (last?.changes as { storedBytes?: { to?: unknown } } | null)?.storedBytes?.to;
+        replacedBytes = typeof was === "number" ? was : null;
         await tx.timer.update({ where: { id: existing.id }, data });
         timerId = existing.id;
       } else {
@@ -349,10 +447,19 @@ async function importOne(
         entityId: timerId,
         action: existing ? "reimport" : "import",
         changes: {
-          segments: { from: null, to: segments.length },
+          // From the stored copy's count on a re-import.
+          segments: { from: replacedSegments, to: segments.length },
           trackedSeconds: { from: null, to: trackedSeconds },
           // The idle gap the segments were built with (see storedCopyBlocker).
           gapSeconds: { from: null, to: gapSeconds },
+          // Estimated on-disk size, for the daily import budget.
+          storedBytes: {
+            from: replacedBytes,
+            to: importedSessionBytes(
+              { sessionKey, agent, cwd, gitRemote, gitBranch, descriptionBytes: utf8(description), usage: s.usage },
+              segments.length
+            ),
+          },
         },
       });
       return timerId;
@@ -392,6 +499,7 @@ export async function importAgentSessions(
   const floor = trackedUntil && (!planFloor || trackedUntil > planFloor) ? trackedUntil : planFloor;
   const byTracked = Boolean(trackedUntil && floor === trackedUntil);
   const results: ImportSessionResult[] = [];
+  const seen = new Set<string>();
 
   for (const s of sessions) {
     const base = { project: null, segments: 0, trackedSeconds: 0, startedAt: null, endedAt: null };
@@ -400,6 +508,11 @@ export async function importAgentSessions(
       results.push({ ...base, sessionKey: String(s.sessionKey ?? ""), status: "invalid", reason: "missing sessionKey" });
       continue;
     }
+    if (seen.has(sessionKey)) {
+      results.push({ ...base, sessionKey, status: "invalid", reason: "sessionKey appears more than once in this request" });
+      continue;
+    }
+    seen.add(sessionKey);
     if (!Array.isArray(s.spans) || s.spans.length > MAX_SPANS_PER_SESSION) {
       results.push({ ...base, sessionKey, status: "invalid", reason: `spans must be an array of at most ${MAX_SPANS_PER_SESSION}` });
       continue;

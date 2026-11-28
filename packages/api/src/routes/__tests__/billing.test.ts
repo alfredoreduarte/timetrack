@@ -417,6 +417,9 @@ describe("S4 review fixes", () => {
 
     // Between the Free request's first look and its row lock (the import's
     // write transaction), the same user, now on Pro, re-imports it in full.
+    // The route runs one import per account at a time; the service must
+    // hold up anyway (an operator may allow more).
+    process.env.AGENT_IMPORTS_PER_ACCOUNT = "2";
     const original = prisma.$transaction.bind(prisma) as (...a: unknown[]) => Promise<unknown>;
     let concurrent: { body: { sessions: Array<{ status: string }> } } | null = null;
     let armed = true;
@@ -435,6 +438,7 @@ describe("S4 review fixes", () => {
       free = await api().post("/agent-sessions/import").set(auth).send({ sessions: [{ sessionKey: "k", spans: [old, mid, recent] }] });
     } finally {
       jest.restoreAllMocks();
+      delete process.env.AGENT_IMPORTS_PER_ACCOUNT;
     }
     expect(concurrent!.body.sessions[0].status).toBe("replaced");
     expect(free.body.sessions[0].status).toBe("skipped_plan");
