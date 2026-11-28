@@ -32,9 +32,10 @@ router.use(authenticate);
 // the database: AGENT_IMPORT_MB_PER_DAY (100) of estimated on-disk size,
 // indexes and audit rows included, against about 50 MB for a heavy year
 // (18k sessions, 36k segments). Each request is checked before it runs at
-// its largest possible size, priced from the same cleaned text it will
-// store, with any other import of the account still writing counted at its
-// own (if AGENT_IMPORTS_PER_ACCOUNT allows one), so none crosses the cap.
+// its largest possible size, priced from the fields it will store and an
+// upper bound on its description (no HTML sanitizing before the check),
+// with any other import of the account still writing counted at its own
+// (if AGENT_IMPORTS_PER_ACCOUNT allows one), so none crosses the cap.
 // It is charged afterwards for what it added: a re-import pays for its
 // audit row and any growth, so resending a long history the next day
 // carries on where the cap stopped it.

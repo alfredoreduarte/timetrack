@@ -8,7 +8,7 @@ import { recordAudit } from "./audit";
 import { getHourlyRate } from "./rates";
 import { resolveProjectAndTask } from "./ownership";
 import { resolveProjectForRepo, repoLabel } from "./repos";
-import { cleanText } from "./text";
+import { cleanText, cutText } from "./text";
 import { cleanAgent, cleanSessionKey, cleanToken, FUTURE_SKEW_MS, validateUsage } from "./timers";
 import { agentLabel } from "./agentEvents";
 import { estimateCost } from "../billing/pricing";
@@ -140,7 +140,7 @@ function storedFields(s: ImportSessionInput) {
   const agent = cleanAgent(s.agent) ?? "claude_code";
   const repo = repoLabel({ gitRemote, cwd });
   // Cut before cleaning, as for live sessions: cleaning costs grow with length.
-  const generated = `${agentLabel(agent)}${repo ? ` · ${repo}` : ""}${gitBranch ? ` (${gitBranch})` : ""}`.slice(0, 500);
+  const generated = cutText(`${agentLabel(agent)}${repo ? ` · ${repo}` : ""}${gitBranch ? ` (${gitBranch})` : ""}`, 500);
   return { gitRemote, cwd, gitBranch, agent, generated };
 }
 
@@ -350,7 +350,14 @@ async function importOne(
   };
   if (dryRun) return result;
 
-  const description = storedDescription(s, generated);
+  let description: string | null | undefined;
+  try {
+    description = storedDescription(s, generated);
+  } catch (e) {
+    // Text the sanitizer chokes on fails this session, not the whole batch.
+    if (typeof (e as AppError).statusCode === "number") throw e;
+    throw createError("title could not be cleaned", 400);
+  }
   result.timerId = await prisma.$transaction(
     async (tx) => {
       if (existing) {

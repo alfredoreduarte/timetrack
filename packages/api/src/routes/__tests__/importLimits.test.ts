@@ -295,6 +295,12 @@ describe("transcript import limits", () => {
       { sessionKey: "nul", title: "<textarea>" + long("\u0000", 490), spans },
       { sessionKey: "leaf", gitRemote: long("~", 500), cwd: "/" + long("a", 600) + "/" + long("路", 300), spans },
       { sessionKey: "idn", gitRemote: "https://" + long("ü", 200) + ".example/org/repo.git", spans },
+      // Surrogates: an emoji straddling the generated description's cut,
+      // and unpaired ones in a title, a session key and a folder.
+      { sessionKey: "emoji-cut", cwd: "/x" + long("😀", 400), spans },
+      { sessionKey: "lone-low", title: "\uDC00<b>\uDC00", spans },
+      { sessionKey: "lone-high", title: "Fix login \uD83D", spans },
+      { sessionKey: "lone-key-\uD800", cwd: "/Users/someone/\uDFFFdev", spans },
     ];
     for (const shape of shapes) {
       const res = await api().post("/agent-sessions/import").set(a.auth).send({ sessions: [shape] });
@@ -305,6 +311,44 @@ describe("transcript import limits", () => {
       const recorded = (audit.changes as { storedBytes: { to: number } }).storedBytes.to;
       expect(IMPORT_ROW_BYTES.audit + recorded).toBeLessThanOrEqual(importRequestBytes([shape as imports.ImportSessionInput]));
     }
+    const unpaired = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    for (const t of await prisma.timer.findMany({ where: { userId: a.user.id } })) {
+      for (const v of [t.description, t.cwd, t.sessionKey]) expect(unpaired.test(v ?? "")).toBe(false);
+    }
+  });
+
+  it("imports the rest of a batch around sessions with odd text", async () => {
+    const a = await createUser();
+    const spans = writeBody("x").sessions[0].spans;
+    const sessions = [
+      { sessionKey: "before", spans },
+      { sessionKey: "emoji-cut", cwd: "/x" + "😀".repeat(400), spans },
+      { sessionKey: "lone-low", title: "\uDC00<p>\uDC00", spans },
+      { sessionKey: "after", spans },
+    ];
+    const res = await api().post("/agent-sessions/import").set(a.auth).send({ sessions });
+    expect(res.status).toBe(200);
+    expect(res.body.sessions.map((r: { status: string }) => r.status)).toEqual(["imported", "imported", "imported", "imported"]);
+    // The cut drops the half emoji rather than storing a replacement character.
+    const cut = await prisma.timer.findFirstOrThrow({ where: { userId: a.user.id, sessionKey: "emoji-cut" } });
+    expect(cut.description).toMatch(/😀$/);
+  });
+
+  it("reports a session whose title can't be cleaned as invalid, not the batch", async () => {
+    const a = await createUser();
+    const real = text.cleanText;
+    jest.spyOn(text, "cleanText").mockImplementation((value, field, ...rest) => {
+      if (field === "title" && value === "boom") throw new RangeError("Invalid code point");
+      return real(value, field, ...rest);
+    });
+    const spans = writeBody("x").sessions[0].spans;
+    const res = await api()
+      .post("/agent-sessions/import")
+      .set(a.auth)
+      .send({ sessions: [{ sessionKey: "a", spans }, { sessionKey: "b", title: "boom", spans }, { sessionKey: "c", spans }] });
+    expect(res.status).toBe(200);
+    expect(res.body.sessions.map((r: { status: string }) => r.status)).toEqual(["imported", "invalid", "imported"]);
+    expect(res.body.sessions[1].reason).toMatch(/could not be cleaned/);
   });
 
   it("counts another import of the account that is still writing (when more than one may run)", async () => {

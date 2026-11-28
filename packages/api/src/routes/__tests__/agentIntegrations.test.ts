@@ -243,6 +243,16 @@ describe("POST /agent-events (hooks)", () => {
     expect((await api().post("/agent-events").send(ccPayload("SessionStart"))).status).toBe(401);
   });
 
+  it("starts a session whose generated description would end in half an emoji", async () => {
+    const { auth } = await createUser();
+    // "Claude Code · " + the folder: an emoji straddles the 500-unit cut.
+    const res = await api().post("/agent-events").set(auth).send(ccPayload("SessionStart", { cwd: "/x" + "😀".repeat(400) }));
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe("started");
+    const t = await prisma.timer.findFirstOrThrow({});
+    expect(t.description).toMatch(/😀$/);
+  });
+
   it("keeps other users' sessions separate even with the same session id", async () => {
     const alice = await createUser();
     const bob = await createUser();

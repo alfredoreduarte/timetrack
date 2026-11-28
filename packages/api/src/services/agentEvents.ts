@@ -10,6 +10,7 @@ import {
   TimerView,
 } from "./timers";
 import { repoLabel } from "./repos";
+import { cutText } from "./text";
 
 /**
  * Translates agent lifecycle events (Claude Code hooks, Cursor hooks, or any
@@ -188,7 +189,7 @@ export async function handleAgentEvent(
       isAiGenerated: opts.isAiGenerated,
       // Hook-fed timers get reliable heartbeats, so they may auto-pause.
       idleTimeoutSeconds: existing ? undefined : user.agentIdleTimeoutSeconds,
-      description: existing ? undefined : `${label}${repo ? ` · ${repo}` : ""}${branch}`.slice(0, 500),
+      description: existing ? undefined : cutText(`${label}${repo ? ` · ${repo}` : ""}${branch}`, 500),
     });
     const action: AgentEventAction = res.created ? "started" : res.changed ? "resumed" : "touched";
     return {
