@@ -234,6 +234,11 @@ describe("POST /agent-events (hooks)", () => {
   it("ignores unknown events and rejects missing session ids", async () => {
     const { auth } = await createUser();
     expect((await api().post("/agent-events").set(auth).send({ event: "Bogus", sessionKey: "x" })).body.action).toBe("ignored");
+    // Not Object's properties either.
+    for (const event of ["constructor", "Con-structor", "toString"]) {
+      expect((await api().post("/agent-events").set(auth).send({ event, sessionKey: "x" })).body.action).toBe("ignored");
+    }
+    expect(await prisma.timer.count()).toBe(0);
     expect((await api().post("/agent-events").set(auth).send({ hook_event_name: "SessionStart" })).status).toBe(400);
     expect((await api().post("/agent-events").send(ccPayload("SessionStart"))).status).toBe(401);
   });

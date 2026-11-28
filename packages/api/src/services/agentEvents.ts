@@ -54,8 +54,11 @@ const EVENT_KINDS: Record<string, AgentEventKind> = {
   beforereadfile: "activity",
 };
 
-export const classifyAgentEvent = (event: string | undefined | null): AgentEventKind | null =>
-  event ? EVENT_KINDS[event.toLowerCase().replace(/[^a-z0-9]/g, "")] ?? null : null;
+export const classifyAgentEvent = (event: string | undefined | null): AgentEventKind | null => {
+  const key = event ? event.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+  // Own keys only: "constructor" is not an event.
+  return Object.prototype.hasOwnProperty.call(EVENT_KINDS, key) ? EVENT_KINDS[key] : null;
+};
 
 const AGENT_LABELS: Record<string, string> = {
   claude_code: "Claude Code",

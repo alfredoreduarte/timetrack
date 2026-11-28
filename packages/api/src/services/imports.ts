@@ -102,8 +102,8 @@ const utf8 = (v: string | null | undefined) => (v ? Buffer.byteLength(v) : 0);
 
 /**
  * Estimated on-disk size of one imported session's timer and segments (its
- * audit row is charged separately). The description is stored on the timer
- * and again on every segment.
+ * audit row is charged separately). The description (its UTF-8 size) is
+ * stored on the timer and again on every segment.
  */
 export function importedSessionBytes(
   session: {
@@ -112,12 +112,12 @@ export function importedSessionBytes(
     cwd?: string | null;
     gitRemote?: string | null;
     gitBranch?: string | null;
-    description?: string | null;
+    descriptionBytes: number;
     usage?: unknown;
   },
   segments: number
 ): number {
-  const description = utf8(session.description);
+  const description = session.descriptionBytes;
   return (
     IMPORT_ROW_BYTES.timer +
     utf8(session.sessionKey) * 2 + // also in the (user, sessionKey) index
@@ -132,39 +132,45 @@ export function importedSessionBytes(
   );
 }
 
-/** A session's text as importOne stores it: cleaned, normalized, and its description. */
-function storedText(s: ImportSessionInput) {
+/** A session's fields as importOne stores them (cheap: no HTML sanitizing). */
+function storedFields(s: ImportSessionInput) {
   const gitRemote = normalizeGitRemote(s.gitRemote);
   const cwd = cleanToken(s.cwd?.slice(0, 1000), "cwd", 1000) ?? null;
   const gitBranch = cleanToken(s.gitBranch?.slice(0, 255), "gitBranch", 255) ?? null;
   const agent = cleanAgent(s.agent) ?? "claude_code";
   const repo = repoLabel({ gitRemote, cwd });
-  const description =
-    cleanText(s.title, "title", 500, { truncate: true }) ??
-    cleanText(`${agentLabel(agent)}${repo ? ` · ${repo}` : ""}${gitBranch ? ` (${gitBranch})` : ""}`, "description", 500, {
-      truncate: true,
-    });
-  return { gitRemote, cwd, gitBranch, agent, description };
+  // Cut before cleaning, as for live sessions: cleaning costs grow with length.
+  const generated = `${agentLabel(agent)}${repo ? ` · ${repo}` : ""}${gitBranch ? ` (${gitBranch})` : ""}`.slice(0, 500);
+  return { gitRemote, cwd, gitBranch, agent, generated };
 }
 
+/** The stored description: the cleaned title, else the generated one. Sanitizes HTML, so only on writes. */
+const storedDescription = (s: ImportSessionInput, generated: string) =>
+  cleanText(s.title, "title", 500, { truncate: true }) ?? cleanText(generated, "description", 500, { truncate: true });
+
 /**
- * An upper bound on what importing these sessions can add: what each would
- * store (the same cleaned text importOne records) with every span its own
- * segment, and an audit row each.
+ * An upper bound on what importing these sessions can add, with every span
+ * its own segment and an audit row each. Priced from the stored fields and,
+ * without sanitizing anything, the description: cleaning only removes,
+ * decodes or collapses text and then keeps at most 500 UTF-16 units, and a
+ * unit takes at most 3 bytes in UTF-8.
  */
 export function importRequestBytes(sessions: ImportSessionInput[]): number {
   return sessions.reduce((sum, s) => {
-    let text: ReturnType<typeof storedText>;
+    let fields: ReturnType<typeof storedFields>;
     let sessionKey: string | null;
     try {
-      text = storedText(s);
+      fields = storedFields(s);
       sessionKey = cleanSessionKey(s.sessionKey);
     } catch {
       return sum; // reported invalid: nothing is written for it
     }
     if (!sessionKey) return sum;
+    const units = Math.min(500, Math.max(s.title?.length ?? 0, fields.generated.length));
     const spans = Array.isArray(s.spans) ? s.spans.length : 0;
-    return sum + IMPORT_ROW_BYTES.audit + importedSessionBytes({ ...text, sessionKey, usage: s.usage }, spans);
+    return (
+      sum + IMPORT_ROW_BYTES.audit + importedSessionBytes({ ...fields, sessionKey, descriptionBytes: 3 * units, usage: s.usage }, spans)
+    );
   }, 0);
 }
 
@@ -312,8 +318,8 @@ async function importOne(
     if (skip) throw new SkipSession(skip);
   }
 
-  // The same text importRequestBytes priced before the import.
-  const { gitRemote, cwd, gitBranch, agent, description } = storedText(s);
+  // The same fields importRequestBytes priced before the import.
+  const { gitRemote, cwd, gitBranch, agent, generated } = storedFields(s);
   let project: { id: string; name: string } | null = null;
   let projectId: string | null = null;
   if (s.projectId) {
@@ -344,6 +350,7 @@ async function importOne(
   };
   if (dryRun) return result;
 
+  const description = storedDescription(s, generated);
   result.timerId = await prisma.$transaction(
     async (tx) => {
       if (existing) {
@@ -441,7 +448,10 @@ async function importOne(
           // Estimated on-disk size, for the daily import budget.
           storedBytes: {
             from: replacedBytes,
-            to: importedSessionBytes({ sessionKey, agent, cwd, gitRemote, gitBranch, description, usage: s.usage }, segments.length),
+            to: importedSessionBytes(
+              { sessionKey, agent, cwd, gitRemote, gitBranch, descriptionBytes: utf8(description), usage: s.usage },
+              segments.length
+            ),
           },
         },
       });

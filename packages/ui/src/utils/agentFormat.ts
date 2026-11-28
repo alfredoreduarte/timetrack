@@ -25,9 +25,13 @@ export const money = (amount: number, currency = "USD") => {
 
 const AGENTS: Record<string, string> = { claude_code: "Claude Code", cursor: "Cursor", codex: "Codex", mcp: "MCP agent" };
 
+// Own keys only: "constructor" is a valid agent slug.
+const known = (key: string | null | undefined) =>
+  key && Object.prototype.hasOwnProperty.call(AGENTS, key) ? AGENTS[key] : null;
+
 /** Human label for who's doing the work. */
 export const agentLabel = (agent: string | null | undefined, via?: string | null, isAi?: boolean) =>
-  (agent && AGENTS[agent]) || (via && AGENTS[via]) || (isAi ? "AI agent" : "You");
+  known(agent) || known(via) || (isAi ? "AI agent" : "You");
 
 /** "acme/web" from a normalized remote, else the folder name. */
 export const repoLabel = (gitRemote?: string | null, cwd?: string | null) => {

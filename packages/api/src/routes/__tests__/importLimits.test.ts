@@ -1,5 +1,6 @@
 import * as imports from "../../services/imports";
 import { importRequestBytes, IMPORT_ROW_BYTES } from "../../services/imports";
+import * as text from "../../services/text";
 import { api, resetDb, createUser, disconnect } from "../../test/helpers";
 import { prisma } from "../../utils/database";
 
@@ -338,6 +339,38 @@ describe("transcript import limits", () => {
     expect(res.body.sessions[0].status).toBe("imported");
     const timer = await prisma.timer.findFirstOrThrow({ where: { userId: a.user.id } });
     expect(timer.description).toBe("constructor · app");
+  });
+
+  // Nested markup is what makes HTML sanitizing slow.
+  const markup = (sessionKey: string) => ({
+    sessionKey,
+    title: "<div>".repeat(100),
+    cwd: "/" + "<div>".repeat(150),
+    gitBranch: "<div>".repeat(50),
+    spans: writeBody("x").sessions[0].spans,
+  });
+
+  it("refuses an import over the cap without sanitizing it first", async () => {
+    const a = await createUser();
+    const sessions = Array.from({ length: 100 }, (_, i) => markup(`m${i}`));
+    capAt(1);
+    const started = Date.now();
+    const res = await api().post("/agent-sessions/import").set(a.auth).send({ sessions });
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect(res.status).toBe(429);
+    expect(res.body.code).toBe("import_daily_limit");
+  });
+
+  it("sanitizes descriptions only when it writes them, once per session", async () => {
+    const a = await createUser();
+    const clean = jest.spyOn(text, "cleanText");
+    const described = () => clean.mock.calls.filter(([, field]) => field === "title" || field === "description").length;
+    const sessions = [markup("m1"), { ...markup("m2"), title: "Invoice export" }];
+    expect((await api().post("/agent-sessions/import").set(a.auth).send({ dryRun: true, sessions })).status).toBe(200);
+    expect(described()).toBe(0);
+    expect((await api().post("/agent-sessions/import").set(a.auth).send({ sessions })).status).toBe(200);
+    // m1's title cleans to nothing, so its generated description is cleaned too.
+    expect(described()).toBe(3);
   });
 
   it("checks a sessionKey repeated in one request only once", async () => {
